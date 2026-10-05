@@ -6,3 +6,4 @@ CMakeFiles/
 *.user.*
 .vscode/
 .idea/
+third_party

@@ -53,7 +53,9 @@ VcCard {
                 }
 
                 Text {
-                    text: root.uiState.outputArmed ? "Armed" : "Disarmed"
+                    text: !root.uiState.outputAvailable
+                        ? "M1: disabled"
+                        : (root.uiState.outputArmed ? "Armed" : "Disarmed")
                     color: root.uiState.outputArmed
                         ? root.theme.accent
                         : root.theme.textMuted
@@ -65,7 +67,8 @@ VcCard {
                 VcSwitch {
                     id: outputSwitch
                     theme: root.theme
-                    enabled: root.uiState.pipelineRunning
+                    enabled: root.uiState.outputAvailable
+                        && root.uiState.pipelineRunning
                     checked: root.uiState.outputArmed
                     onToggled: root.uiState.outputArmed = checked
                 }
@@ -88,6 +91,7 @@ VcCard {
                     theme: root.theme
                     iconName: "reset"
                     text: "Reset"
+                    enabled: !root.uiState.pipelineRunning
                     onClicked: root.uiState.resetSettingsDefaults()
                 }
             }
@@ -111,8 +115,11 @@ VcCard {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "Tracking may stay live while system output is disarmed. "
-                        + "Stopping the pipeline always neutralizes output."
+                    text: root.uiState.outputAvailable
+                        ? "Tracking may stay live while system output is disarmed. "
+                            + "Stopping the pipeline always neutralizes output."
+                        : "M1 implements camera preview and two-hand tracking only. "
+                            + "Desktop output remains disabled until the next milestone."
                     color: root.theme.textSecondary
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10

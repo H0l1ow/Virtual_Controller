@@ -1,5 +1,6 @@
 import QtQuick
 import QtQml
+import QtMultimedia
 import QtQuick.Layouts
 
 VcCard {
@@ -34,6 +35,7 @@ VcCard {
 
     Text {
         anchors.centerIn: parent
+        visible: !root.uiState.cameraRunning
         text: "CAMERA PREVIEW"
         color: root.theme.textPrimary
         opacity: 0.055
@@ -43,13 +45,81 @@ VcCard {
         font.letterSpacing: 3
     }
 
+    VideoOutput {
+        id: videoOutput
+
+        anchors.fill: parent
+        fillMode: VideoOutput.PreserveAspectFit
+        visible: root.uiState.cameraRunning
+        mirrored: root.uiState.mirrorPreview
+
+        Component.onCompleted: {
+            root.uiState.attachVideoOutput(videoOutput)
+        }
+
+        Component.onDestruction: {
+            root.uiState.attachVideoOutput(null)
+        }
+    }
+
     Canvas {
         id: handCanvas
 
         anchors.fill: parent
         visible: root.uiState.cameraRunning && root.uiState.showLandmarks
 
-        function drawHand(ctx, cx, cy, scale, mirror, lineColor, pointColor) {
+        readonly property var bones: [
+            [0, 1], [1, 2], [2, 3], [3, 4],
+            [0, 5], [5, 6], [6, 7], [7, 8],
+            [5, 9], [9, 10], [10, 11], [11, 12],
+            [9, 13], [13, 14], [14, 15], [15, 16],
+            [13, 17], [17, 18], [18, 19], [19, 20],
+            [0, 17]
+        ]
+
+        function drawTrackedHand(ctx, landmarks, lineColor, pointColor) {
+            if (!landmarks || landmarks.length !== 21)
+                return
+
+            const rect = videoOutput.contentRect
+            if (rect.width <= 0 || rect.height <= 0)
+                return
+
+            function pointX(index) {
+                let x = landmarks[index].x
+                if (root.uiState.mirrorPreview)
+                    x = 1.0 - x
+                return rect.x + x * rect.width
+            }
+
+            function pointY(index) {
+                return rect.y + landmarks[index].y * rect.height
+            }
+
+            ctx.strokeStyle = lineColor
+            ctx.lineWidth = 1.5
+
+            for (let i = 0; i < bones.length; ++i) {
+                ctx.beginPath()
+                ctx.moveTo(pointX(bones[i][0]), pointY(bones[i][0]))
+                ctx.lineTo(pointX(bones[i][1]), pointY(bones[i][1]))
+                ctx.stroke()
+            }
+
+            for (let i = 0; i < landmarks.length; ++i) {
+                ctx.fillStyle = "#0D141A"
+                ctx.strokeStyle = pointColor
+                ctx.lineWidth = 2
+                ctx.beginPath()
+                ctx.arc(pointX(i), pointY(i), 3.3, 0, Math.PI * 2)
+                ctx.fill()
+                ctx.stroke()
+            }
+        }
+
+        // Retains the previous visual mock when the app is started with
+        // --mock-ui. The normal M1 path draws real MediaPipe landmarks.
+        function drawMockHand(ctx, cx, cy, scale, mirror, lineColor, pointColor) {
             const points = [
                 [0.00, 0.34],
                 [-0.18, 0.16],
@@ -83,35 +153,22 @@ VcCard {
                 return cy + points[index][1] * scale
             }
 
-            function bone(startIndex, endIndex) {
-                ctx.beginPath()
-                ctx.moveTo(pointX(startIndex), pointY(startIndex))
-                ctx.lineTo(pointX(endIndex), pointY(endIndex))
-                ctx.stroke()
-            }
-
-            const bones = [
-                [0, 1], [1, 2], [2, 3], [3, 4],
-                [0, 5], [5, 6], [6, 7], [7, 8],
-                [5, 9], [9, 10], [10, 11], [11, 12],
-                [9, 13], [13, 14], [14, 15], [15, 16],
-                [13, 17], [17, 18], [18, 19], [19, 20],
-                [0, 17]
-            ]
-
             ctx.strokeStyle = lineColor
             ctx.lineWidth = 1.5
 
             for (let i = 0; i < bones.length; ++i) {
-                bone(bones[i][0], bones[i][1])
+                ctx.beginPath()
+                ctx.moveTo(pointX(bones[i][0]), pointY(bones[i][0]))
+                ctx.lineTo(pointX(bones[i][1]), pointY(bones[i][1]))
+                ctx.stroke()
             }
 
-            for (let j = 0; j < points.length; ++j) {
+            for (let i = 0; i < points.length; ++i) {
                 ctx.fillStyle = "#0D141A"
                 ctx.strokeStyle = pointColor
                 ctx.lineWidth = 2
                 ctx.beginPath()
-                ctx.arc(pointX(j), pointY(j), 3.3, 0, Math.PI * 2)
+                ctx.arc(pointX(i), pointY(i), 3.3, 0, Math.PI * 2)
                 ctx.fill()
                 ctx.stroke()
             }
@@ -121,11 +178,38 @@ VcCard {
             const ctx = getContext("2d")
             ctx.clearRect(0, 0, width, height)
 
+            const liveLandmarks = root.uiState.leftLandmarks.length === 21
+                || root.uiState.rightLandmarks.length === 21
+
+            if (liveLandmarks) {
+                if (root.uiState.leftTracked) {
+                    drawTrackedHand(
+                        ctx,
+                        root.uiState.leftLandmarks,
+                        "#D8E4E7",
+                        root.theme.leftHand
+                    )
+                }
+
+                if (root.uiState.rightTracked) {
+                    drawTrackedHand(
+                        ctx,
+                        root.uiState.rightLandmarks,
+                        "#D8E4E7",
+                        root.theme.accent
+                    )
+                }
+
+                return
+            }
+
+            // --mock-ui path only.
             const scale = Math.min(width, height) * 0.30
             const leftX = root.uiState.mirrorPreview ? 0.62 : 0.38
             const rightX = root.uiState.mirrorPreview ? 0.40 : 0.60
+
             if (root.uiState.leftTracked) {
-                drawHand(
+                drawMockHand(
                     ctx,
                     width * leftX,
                     height * 0.68,
@@ -135,8 +219,9 @@ VcCard {
                     root.theme.leftHand
                 )
             }
+
             if (root.uiState.rightTracked) {
-                drawHand(
+                drawMockHand(
                     ctx,
                     width * rightX,
                     height * 0.68,
@@ -246,7 +331,9 @@ VcCard {
                 gesture: modelData.gesture
                 title: modelData.title
                 action: modelData.action
-                active: modelData.active && root.uiState.pipelineRunning
+                active: modelData.active
+                    && root.uiState.pipelineRunning
+                    && root.uiState.gestureRecognitionAvailable
             }
         }
     }
@@ -323,8 +410,11 @@ VcCard {
 
                 anchors.centerIn: parent
                 text: root.uiState.leftTracked
-                    ? "L  " + root.uiState.leftGesture + "  "
-                        + Math.round(root.uiState.leftConfidence * 100) + "%"
+                    ? (root.uiState.gestureRecognitionAvailable
+                        ? "L  " + root.uiState.leftGesture + "  "
+                            + Math.round(root.uiState.leftConfidence * 100) + "%"
+                        : "L  TRACKED  "
+                            + Math.round(root.uiState.leftConfidence * 100) + "%")
                     : "L  NOT TRACKED"
                 color: root.uiState.leftTracked
                     ? root.theme.textSecondary
@@ -353,8 +443,11 @@ VcCard {
 
                 anchors.centerIn: parent
                 text: root.uiState.rightTracked
-                    ? "R  " + root.uiState.rightGesture + "  "
-                        + Math.round(root.uiState.rightConfidence * 100) + "%"
+                    ? (root.uiState.gestureRecognitionAvailable
+                        ? "R  " + root.uiState.rightGesture + "  "
+                            + Math.round(root.uiState.rightConfidence * 100) + "%"
+                        : "R  TRACKED  "
+                            + Math.round(root.uiState.rightConfidence * 100) + "%")
                     : "R  NOT TRACKED"
                 color: root.uiState.rightTracked
                     ? root.theme.accent
@@ -365,6 +458,39 @@ VcCard {
             }
         }
     }
+
+    Rectangle {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: 64
+
+        visible: root.uiState.errorMessage.length > 0
+        width: Math.min(parent.width - 40, errorText.implicitWidth + 28)
+        height: errorText.implicitHeight + 18
+        radius: root.theme.controlRadius
+        color: Qt.rgba(
+            root.theme.background.r,
+            root.theme.background.g,
+            root.theme.background.b,
+            0.94
+        )
+        border.width: 1
+        border.color: root.theme.error
+
+        Text {
+            id: errorText
+
+            anchors.centerIn: parent
+            width: parent.width - 20
+            text: root.uiState.errorMessage
+            color: root.theme.error
+            font.family: root.theme.fontFamily
+            font.pixelSize: 11
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+        }
+    }
+
     Connections {
         target: root.uiState
 
@@ -373,6 +499,14 @@ VcCard {
         }
 
         function onRightTrackedChanged() {
+            handCanvas.requestPaint()
+        }
+
+        function onLeftLandmarksChanged() {
+            handCanvas.requestPaint()
+        }
+
+        function onRightLandmarksChanged() {
             handCanvas.requestPaint()
         }
 
@@ -385,4 +519,11 @@ VcCard {
         }
     }
 
+    Connections {
+        target: videoOutput
+
+        function onContentRectChanged() {
+            handCanvas.requestPaint()
+        }
+    }
 }

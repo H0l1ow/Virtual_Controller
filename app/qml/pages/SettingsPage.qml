@@ -179,8 +179,15 @@ Item {
                                 description: "Select the RGB camera used for hand tracking."
                                 VcComboBox {
                                     theme: root.theme
-                                    model: ["Integrated Camera", "USB Camera", "Virtual Camera"]
+                                    model: root.uiState.cameraNames
+                                    currentIndex: root.uiState.cameraIndex
+                                    enabled: !root.uiState.pipelineRunning
+                                        && root.uiState.cameraNames.length > 0
                                     implicitWidth: 280
+
+                                    onActivated: function(index) {
+                                        root.uiState.selectCamera(index)
+                                    }
                                 }
                             }
                             Rectangle {
@@ -195,8 +202,15 @@ Item {
                                 description: "Resolution and target frame rate."
                                 VcComboBox {
                                     theme: root.theme
-                                    model: ["640 × 480 @ 30 FPS", "1280 × 720 @ 30 FPS", "1280 × 720 @ 60 FPS"]
+                                    model: root.uiState.formatNames
+                                    currentIndex: root.uiState.formatIndex
+                                    enabled: !root.uiState.pipelineRunning
+                                        && root.uiState.formatNames.length > 0
                                     implicitWidth: 280
+
+                                    onActivated: function(index) {
+                                        root.uiState.selectFormat(index)
+                                    }
                                 }
                             }
                             Rectangle {
@@ -286,6 +300,7 @@ Item {
                                     id: detectionConfidenceSlider
                                     theme: root.theme
                                     value: root.uiState.detectionConfidence
+                                    enabled: !root.uiState.pipelineRunning
                                     implicitWidth: 230
                                     onMoved: root.uiState.detectionConfidence = Math.round(value)
                                 }
@@ -310,6 +325,7 @@ Item {
                                     id: trackingConfidenceSlider
                                     theme: root.theme
                                     value: root.uiState.trackingConfidence
+                                    enabled: !root.uiState.pipelineRunning
                                     implicitWidth: 230
                                     onMoved: root.uiState.trackingConfidence = Math.round(value)
                                 }

@@ -10,6 +10,29 @@ QtObject {
     property bool pipelineRunning: true
     property bool outputArmed: false
 
+    readonly property bool outputAvailable: true
+    readonly property bool gestureRecognitionAvailable: true
+    readonly property bool cursorControlAvailable: true
+    readonly property string errorMessage: ""
+
+    property var cameraNames: [
+        "Integrated Camera",
+        "USB Camera",
+        "Virtual Camera"
+    ]
+
+    property var formatNames: [
+        "640 x 480 @ 30 FPS",
+        "1280 x 720 @ 30 FPS",
+        "1280 x 720 @ 60 FPS"
+    ]
+
+    property int cameraIndex: 0
+    property int formatIndex: 0
+
+    readonly property var leftLandmarks: []
+    readonly property var rightLandmarks: []
+
     property string activeProfile: "Default"
     property var profileNames: ["Default", "Desktop", "Presentation", "Game"]
     property string outputMode: "Mouse / Keyboard"
@@ -293,6 +316,20 @@ QtObject {
         { keyName: "LB / RB", value: "Off / Off" },
         { keyName: "D-Pad", value: "Neutral" }
     ]
+
+    function attachVideoOutput(output) {
+        // No-op in mock mode.
+    }
+
+    function selectCamera(index) {
+        if (index >= 0 && index < cameraNames.length)
+            cameraIndex = index
+    }
+
+    function selectFormat(index) {
+        if (index >= 0 && index < formatNames.length)
+            formatIndex = index
+    }
 
     function setPipelineRunning(enabled) {
         cameraRunning = enabled

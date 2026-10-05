@@ -1,106 +1,124 @@
-# Virtual Controller - UI prototype v0.4
+# Virtual Controller - M1 real two-hand tracking
 
-Fourth UI iteration of the new Virtual Controller application, focused on layout stability, Gamepad cleanup and a slightly more modern visual language.
+M1 is the first runtime-enabled iteration of the new Virtual Controller.
+The existing QML interface is retained, while the Controller page is now connected
+to a real Qt Multimedia camera pipeline and MediaPipe Hand Landmarker.
 
-This version rebuilds the entire interface around the approved dark desktop concept: a top navigation bar, a large camera workspace, compact translucent gesture hints and rectangular graphite panels with green live-status accents.
+## M1 scope
 
-## What is included
+Implemented:
 
-### Application shell
+- Qt 6.11.2 / QML / C++20 application opened directly from the root `CMakeLists.txt`.
+- Real camera enumeration and capture format enumeration through Qt Multimedia.
+- Live camera preview with `QMediaCaptureSession`, `QCamera` and QML `VideoOutput`.
+- `QVideoSink` frame delivery to a C++ tracking worker.
+- Single-slot latest-frame mailbox: old waiting frames are replaced instead of queued.
+- MediaPipe 0.10.32 native Hand Landmarker loaded at runtime.
+- Simultaneous tracking of up to two hands.
+- 21 normalized landmarks per hand.
+- LEFT / RIGHT handedness and confidence.
+- Independent hand-loss handling: losing one hand does not stop the other hand.
+- Real landmark/skeleton overlay aligned with the camera preview.
+- Tracking FPS, resolution and processing latency in the UI.
+- Camera, format, detection threshold, tracking threshold, mirror preview and handedness settings.
+- Real runtime UI state separated from QML through `RuntimeController` + `UiState.qml`.
+- Existing mock mode preserved with the `--mock-ui` command-line argument.
 
-- Frameless desktop window with custom top bar and window controls.
-- Top navigation: **Controller / Mapping / Gestures / Gamepad / Settings**.
-- Central dark theme in `Theme.qml`.
-- Reusable controls for buttons, icons, sliders, switches, combo boxes, badges and panels.
-- Dark graphite visual language with subtle corner rounding; no blue action buttons or oversized pill-shaped controls.
+Not implemented in M1:
 
-### Controller
+- cursor movement,
+- mouse clicks / scroll,
+- keyboard output,
+- gesture TCN / ONNX Runtime,
+- PRESS / HOLD / RELEASE gesture semantics,
+- Xbox / PlayStation output.
 
-- Large camera workspace designed for a camera pointed at a desk/hands rather than a face.
-- Mock two-hand landmark overlay.
-- Compact semi-transparent gesture/action hints on the right side of the camera image.
-- LEFT / RIGHT hand status chips with detected gesture and confidence.
-- Camera status, FPS and resolution overlays.
-- Bottom dashboard with:
-  - Cursor Tracking,
-  - Controls,
-  - Quick Settings.
+The UI explicitly marks these areas as unavailable rather than pretending that
+system output or gesture recognition is already active.
 
-### Mapping
+## Bundled tracking files
 
-- Profile selector.
-- Mapping table with hand, source, type, logical action, output and state.
-- Source filters.
-- Mapping details editor.
-- Import/export/add mapping UI.
+For this development package the existing reference project's pinned tracking
+artifacts are included:
 
-### Gestures
+- `deps/mediapipe/libmediapipe.dll`
+- `models/hand_landmarker.task`
 
-- Gesture library with static, dynamic and two-hand categories.
-- Live recognition preview.
-- Availability/planned states.
-- Placeholder entry point for future custom gesture recording/training.
+CMake copies them next to the executable after a Windows build so Qt Creator
+Build / Run / Debug does not require a separate bootstrap step.
 
-### Gamepad
-
-- Logical controller monitor.
-- Xbox-style controller visualization.
-- Live mock values for sticks, triggers and buttons.
-- Backend selector and safe-neutralization option.
-
-### Settings
-
-- Internal sections for Camera, Tracking, Control, Gestures and Model.
-- UI for camera format, handedness, thresholds, sensitivity, smoothing, deadzone, debounce/cooldown and model paths.
-- Model/runtime entries remain mock UI only in this iteration.
-
-## Deliberately not connected yet
-
-This is still a UI-only iteration. There is no real:
-
-- camera stream,
-- MediaPipe tracking,
-- TCN/ONNX inference,
-- mouse/keyboard injection,
-- Xbox/PlayStation virtual device backend.
-
-`UiMock.qml` provides the data needed to exercise the interface without coupling the UI to unfinished runtime code.
+See `THIRD_PARTY_NOTICES.md` before redistributing binaries.
 
 ## Qt Creator
 
 1. Open the root `CMakeLists.txt` with **File -> Open File or Project...**.
 2. Select **Qt 6.11.2 MSVC 2022 64-bit**.
 3. Let Qt Creator configure CMake.
-4. Select the `VirtualController` target.
-5. Build / Run / Debug normally from Qt Creator.
+4. Select target `VirtualController`.
+5. Build and Run normally.
+6. Open **Settings -> Camera** to select a camera/format if needed.
+7. On **Controller**, press **Start tracking**.
 
-The UI currently requires only Qt Core, Gui, Qml, Quick and Quick Controls 2.
+Windows camera privacy settings must allow desktop applications to use the camera.
 
-## QML code style
+## Expected M1 behaviour
 
-- Keep one QML property per line inside object blocks.
-- Keep child QML objects on separate lines; do not separate child objects with semicolons.
-- Expand delegates, controls and settings rows into normal multi-line blocks.
-- Keep compact JavaScript only where it improves clarity; Canvas drawing code should use one statement per line.
-- Prefer readable object models with one field per line when a row contains several fields.
-- Keep source lines reasonably short so Qt Creator diagnostics point to a specific property or statement.
+### No hands
 
+- LEFT: NOT TRACKED
+- RIGHT: NOT TRACKED
+- Tracking status: `No hands`
 
-## v0.3 layout corrections
+### One hand
 
-- Removed the artificial keyboard grid, desk perspective lines and mouse circle from the Controller camera mock.
-- Simplified the Cursor Tracking preview: no decorative grid or concentric target circle, only a clean desktop preview and cursor position.
-- Reduced and simplified gesture hints so they stay inside the camera preview at the minimum supported window size.
-- Made gesture library cards taller and placed the grid inside an explicitly sized scroll content item to prevent icons/text from overlapping adjacent cards.
-- Added clipping to gesture glyphs.
-- Reworked the gamepad visualization around a fixed aspect ratio and scale factor so controls resize together instead of covering each other.
-- Replaced the D-pad made from two overlapping rectangles with a single cross-shaped Canvas path.
+- the visible hand remains tracked,
+- the missing hand becomes `NOT TRACKED`,
+- tracking status becomes `Degraded`,
+- the pipeline continues running.
 
-## UI revision v0.4
+### Two hands
 
-- Reworked the Gamepad Monitor layout so the controller visualization always scales to the available area instead of overflowing into neighbouring UI.
-- Rebuilt the gamepad visualization with explicit z-order and a single D-pad shape to avoid overlapping graphics.
-- Removed the large gamepad icon from the Controller State header and added safer clipping for cards and icons.
-- Added subtle 4-7 px corner radii to cards, controls, overlays, navigation states and gesture tiles.
-- Reduced top-navigation widths so the header still fits at the minimum supported window size.
-- Added explicit Canvas repaint handling to `VcIcon` to prevent stale icon drawings after property changes or resizing.
+- LEFT and RIGHT are shown independently,
+- both skeletons are rendered,
+- tracking status becomes `Stable`.
+
+### Stop tracking
+
+- camera stops,
+- landmarks disappear,
+- hand confidence returns to zero,
+- FPS and latency return to zero.
+
+## Architecture
+
+```text
+QCamera
+  -> QVideoSink
+  -> LatestFrameSlot
+  -> MediaPipeTracker worker
+  -> TrackingFrame
+  -> RuntimeController
+  -> UiState.qml
+  -> QML preview / overlay
+```
+
+The QML layer does not depend directly on MediaPipe. This keeps the runtime
+replaceable/testable and leaves the existing `UiMock.qml` path available.
+
+## Main source additions
+
+```text
+app/src/runtime/RuntimeController.hpp
+app/src/runtime/RuntimeController.cpp
+app/src/tracking/TrackingTypes.hpp
+app/src/tracking/MediaPipeAbi.hpp
+app/src/tracking/MediaPipeTracker.hpp
+app/src/tracking/MediaPipeTracker.cpp
+app/qml/UiState.qml
+```
+
+## Next milestone
+
+After M1 is verified on the target Windows machine, the next implementation step
+is cursor control: hand motion -> normalized workspace -> smoothing / One Euro ->
+mouse movement. Gesture recognition and clicking remain separate later work.

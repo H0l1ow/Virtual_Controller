@@ -26,6 +26,17 @@ ApplicationWindow {
         id: uiStateMock
     }
 
+    UiState {
+        id: runtimeUiState
+        runtimeBackend: runtimeController
+    }
+
+    readonly property bool mockUi:
+        Qt.application.arguments.indexOf("--mock-ui") !== -1
+
+    readonly property QtObject uiState:
+        mockUi ? uiStateMock : runtimeUiState
+
     property int currentPage: 0
 
     Rectangle {
@@ -58,23 +69,23 @@ ApplicationWindow {
 
             ControllerPage {
                 theme: theme
-                uiState: uiStateMock
+                uiState: window.uiState
             }
             MappingPage {
                 theme: theme
-                uiState: uiStateMock
+                uiState: window.uiState
             }
             GesturesPage {
                 theme: theme
-                uiState: uiStateMock
+                uiState: window.uiState
             }
             GamepadPage {
                 theme: theme
-                uiState: uiStateMock
+                uiState: window.uiState
             }
             SettingsPage {
                 theme: theme
-                uiState: uiStateMock
+                uiState: window.uiState
             }
         }
     }

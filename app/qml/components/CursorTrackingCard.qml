@@ -14,7 +14,9 @@ VcCard {
             Layout.fillWidth: true
             theme: root.theme
             iconName: "target"
-            title: "Cursor Tracking"
+            title: root.uiState.cursorControlAvailable
+                ? "Cursor Tracking"
+                : "Hand Tracking"
             statusText: root.uiState.trackingStatus
             statusKind: root.uiState.trackingStatus === "Stable"
                 ? "success"
@@ -74,7 +76,9 @@ VcCard {
                     }
 
                     Text {
-                        visible: root.uiState.pipelineRunning && root.uiState.rightTracked
+                        visible: root.uiState.cursorControlAvailable
+                            && root.uiState.pipelineRunning
+                            && root.uiState.rightTracked
                         x: Math.max(
                             8,
                             Math.min(
@@ -122,9 +126,11 @@ VcCard {
                 }
 
                 Text {
-                    text: root.uiState.pipelineRunning && root.uiState.rightTracked
-                        ? "X: " + root.uiState.cursorX + "    Y: " + root.uiState.cursorY
-                        : "X: --    Y: --"
+                    text: !root.uiState.cursorControlAvailable
+                        ? "Not enabled in M1"
+                        : (root.uiState.pipelineRunning && root.uiState.rightTracked
+                            ? "X: " + root.uiState.cursorX + "    Y: " + root.uiState.cursorY
+                            : "X: --    Y: --")
                     color: root.theme.textPrimary
                     font.family: root.theme.fontFamily
                     font.pixelSize: 13

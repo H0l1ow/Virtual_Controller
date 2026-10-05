@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(VirtualController VERSION 0.4.0 LANGUAGES CXX)
+project(VirtualController VERSION 0.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,8 +10,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(VC_QT_MIN_VERSION "6.11.2" CACHE STRING "Minimum supported Qt 6 version")
 option(VC_BUILD_GUI "Build the Qt Quick desktop application" ON)
 
-# Reserved project switches. They are intentionally not wired to dependencies
-# in this UI-only iteration.
+# Reserved project switches. ONNX/gamepad are intentionally not implemented in M1.
 option(VC_WITH_ONNX "Enable native ONNX gesture inference (future iteration)" ON)
 option(VC_WITH_GAMEPAD "Enable virtual gamepad backend (future iteration)" OFF)
 
@@ -23,6 +22,27 @@ else()
     set(_vc_ort_default "${CMAKE_SOURCE_DIR}/deps/onnxruntime")
 endif()
 set(VC_ONNXRUNTIME_ROOT "${_vc_ort_default}" CACHE PATH "ONNX Runtime SDK root for a future iteration")
+
+set(
+    VC_DEPS_DIR
+    "${CMAKE_SOURCE_DIR}/deps"
+    CACHE PATH
+    "Project-local dependencies"
+)
+
+set(
+    VC_MEDIAPIPE_ROOT
+    "${VC_DEPS_DIR}/mediapipe"
+    CACHE PATH
+    "MediaPipe 0.10.32 native runtime directory"
+)
+
+set(
+    VC_HAND_LANDMARKER_MODEL
+    "${CMAKE_SOURCE_DIR}/models/hand_landmarker.task"
+    CACHE FILEPATH
+    "MediaPipe hand landmarker model"
+)
 
 # Prevent choosing an unsupported Windows kit by accident.
 if(WIN32)
@@ -43,8 +63,10 @@ if(VC_BUILD_GUI)
     add_subdirectory(app)
 endif()
 
-message(STATUS "VirtualController UI v0.4 configuration:")
-message(STATUS "  GUI:             ${VC_BUILD_GUI}")
-message(STATUS "  Qt minimum:      ${VC_QT_MIN_VERSION}")
-message(STATUS "  ONNX reserved:   ${VC_WITH_ONNX}")
-message(STATUS "  Gamepad reserved:${VC_WITH_GAMEPAD}")
+message(STATUS "VirtualController M1 configuration:")
+message(STATUS "  GUI:              ${VC_BUILD_GUI}")
+message(STATUS "  Qt minimum:       ${VC_QT_MIN_VERSION}")
+message(STATUS "  MediaPipe runtime:${VC_MEDIAPIPE_ROOT}")
+message(STATUS "  Hand model:       ${VC_HAND_LANDMARKER_MODEL}")
+message(STATUS "  ONNX reserved:    ${VC_WITH_ONNX}")
+message(STATUS "  Gamepad reserved: ${VC_WITH_GAMEPAD}")

@@ -273,12 +273,16 @@ Item {
                         theme: root.theme
                         iconName: "camera"
                         title: "Live Recognition"
-                        statusText: !root.uiState.pipelineRunning
-                            ? "Off"
-                            : root.liveHandTracked ? "Live" : "Hand lost"
-                        statusKind: !root.uiState.pipelineRunning
+                        statusText: !root.uiState.gestureRecognitionAvailable
+                            ? "M1: disabled"
+                            : (!root.uiState.pipelineRunning
+                                ? "Off"
+                                : root.liveHandTracked ? "Live" : "Hand lost")
+                        statusKind: !root.uiState.gestureRecognitionAvailable
                             ? "neutral"
-                            : root.liveHandTracked ? "success" : "warning"
+                            : (!root.uiState.pipelineRunning
+                                ? "neutral"
+                                : root.liveHandTracked ? "success" : "warning")
                     }
 
                     Rectangle {
@@ -303,6 +307,7 @@ Item {
                             width: 96
                             height: 96
                             visible: root.liveHandTracked
+                                && root.uiState.gestureRecognitionAvailable
                             gesture: root.glyphForGesture(root.liveGesture)
                             color: root.theme.textPrimary
                         }
@@ -310,9 +315,12 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             visible: !root.liveHandTracked
-                            text: root.uiState.pipelineRunning
-                                ? "HAND NOT TRACKED"
-                                : "PIPELINE STOPPED"
+                                || !root.uiState.gestureRecognitionAvailable
+                            text: !root.uiState.gestureRecognitionAvailable
+                                ? "GESTURE RECOGNITION STARTS IN M2"
+                                : (root.uiState.pipelineRunning
+                                    ? "HAND NOT TRACKED"
+                                    : "PIPELINE STOPPED")
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 11
@@ -363,7 +371,9 @@ Item {
                         }
 
                         Text {
-                            text: root.liveGesture
+                            text: root.uiState.gestureRecognitionAvailable
+                                ? root.liveGesture
+                                : "Not implemented in M1"
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 20
@@ -382,8 +392,11 @@ Item {
                             }
 
                             Text {
-                                text: Math.round(root.liveConfidence * 100) + "%"
+                                text: root.uiState.gestureRecognitionAvailable
+                                    ? Math.round(root.liveConfidence * 100) + "%"
+                                    : "--"
                                 color: root.liveHandTracked
+                                    && root.uiState.gestureRecognitionAvailable
                                     ? root.theme.accent
                                     : root.theme.textMuted
                                 font.family: root.theme.fontFamily
@@ -398,9 +411,12 @@ Item {
                             color: root.theme.borderStrong
 
                             Rectangle {
-                                width: parent.width * root.liveConfidence
+                                width: root.uiState.gestureRecognitionAvailable
+                                    ? parent.width * root.liveConfidence
+                                    : 0
                                 height: parent.height
                                 color: root.liveHandTracked
+                                    && root.uiState.gestureRecognitionAvailable
                                     ? root.theme.accent
                                     : root.theme.textMuted
                             }

@@ -1,0 +1,338 @@
+#include "tracking/MediaPipeTracker.hpp"
+
+#include <QFile>
+
+#include <algorithm>
+#include <stdexcept>
+#include <string>
+
+namespace vc {
+
+namespace {
+
+template<typename T>
+T resolveSymbol(
+    QLibrary &library,
+    const char *name)
+{
+    const auto symbol =
+        library.resolve(name);
+
+    if (!symbol) {
+        throw std::runtime_error(
+            std::string(
+                "MediaPipe 0.10.32: missing symbol ")
+            + name);
+    }
+
+    return reinterpret_cast<T>(symbol);
+}
+
+} // namespace
+
+void MediaPipeTracker::check(
+    int code,
+    char *error)
+{
+    const std::string message =
+        error
+        ? error
+        : "MediaPipe native API error";
+
+    if (error) {
+        errorFree_(error);
+    }
+
+    if (code != 0) {
+        throw std::runtime_error(message);
+    }
+}
+
+MediaPipeTracker::MediaPipeTracker(
+    const QString &libraryPath,
+    const QString &modelPath,
+    float detectionConfidence,
+    float trackingConfidence)
+    : library_(libraryPath)
+{
+    if (!library_.load()) {
+        throw std::runtime_error(
+            ("Cannot load MediaPipe runtime: "
+             + library_.errorString())
+                .toStdString());
+    }
+
+    create_ =
+        resolveSymbol<mp::Create>(
+            library_,
+            "MpHandLandmarkerCreate");
+
+    detect_ =
+        resolveSymbol<mp::Detect>(
+            library_,
+            "MpHandLandmarkerDetectForVideo");
+
+    closeResult_ =
+        resolveSymbol<mp::CloseResult>(
+            library_,
+            "MpHandLandmarkerCloseResult");
+
+    close_ =
+        resolveSymbol<mp::Close>(
+            library_,
+            "MpHandLandmarkerClose");
+
+    imageCreate_ =
+        resolveSymbol<mp::ImageCreate>(
+            library_,
+            "MpImageCreateFromUint8Data");
+
+    imageFree_ =
+        resolveSymbol<mp::ImageFree>(
+            library_,
+            "MpImageFree");
+
+    errorFree_ =
+        resolveSymbol<mp::ErrorFree>(
+            library_,
+            "MpErrorFree");
+
+    QFile modelFile(modelPath);
+
+    if (!modelFile.open(QIODevice::ReadOnly)) {
+        throw std::runtime_error(
+            "Cannot open hand_landmarker.task");
+    }
+
+    const QByteArray bytes =
+        modelFile.readAll();
+
+    if (bytes.size() < 1024
+        || bytes.size() > 100000000) {
+        throw std::runtime_error(
+            "Invalid hand_landmarker.task size");
+    }
+
+    model_.assign(
+        bytes.begin(),
+        bytes.end());
+
+    mp::Options options{};
+
+    options.base.buffer =
+        model_.data();
+
+    options.base.count =
+        static_cast<unsigned int>(
+            model_.size());
+
+    options.base.delegate = 0;
+
+    // MediaPipe RunningMode::VIDEO.
+    options.runningMode = 2;
+
+    // M1 requirement: both hands from the start.
+    options.numHands = 2;
+
+    options.detection =
+        std::clamp(
+            detectionConfidence,
+            0.0F,
+            1.0F);
+
+    // M1 does not expose a separate presence threshold.
+    options.presence =
+        options.detection;
+
+    options.tracking =
+        std::clamp(
+            trackingConfidence,
+            0.0F,
+            1.0F);
+
+    char *error = nullptr;
+
+    const int code =
+        create_(
+            &options,
+            &handle_,
+            &error);
+
+    check(code, error);
+}
+
+MediaPipeTracker::~MediaPipeTracker()
+{
+    if (!handle_) {
+        return;
+    }
+
+    char *error = nullptr;
+
+    close_(
+        handle_,
+        &error);
+
+    if (error) {
+        errorFree_(error);
+    }
+}
+
+TrackingFrame MediaPipeTracker::process(
+    int width,
+    int height,
+    const std::vector<std::uint8_t> &rgb,
+    std::int64_t captureUs,
+    std::uint64_t sequence,
+    bool swapHandedness)
+{
+    const auto expectedSize =
+        static_cast<std::size_t>(width)
+        * static_cast<std::size_t>(height)
+        * 3U;
+
+    if (width <= 0
+        || height <= 0
+        || rgb.size() != expectedSize) {
+        throw std::runtime_error(
+            "Invalid RGB888 camera frame");
+    }
+
+    TrackingFrame output;
+
+    output.width = width;
+    output.height = height;
+    output.captureUs = captureUs;
+    output.sequence = sequence;
+    output.trackStartUs = nowUs();
+
+    output.hands[0].side =
+        HandSide::Left;
+
+    output.hands[1].side =
+        HandSide::Right;
+
+    mp::Image image = nullptr;
+    char *error = nullptr;
+
+    int code =
+        imageCreate_(
+            1,
+            width,
+            height,
+            rgb.data(),
+            static_cast<int>(rgb.size()),
+            &image,
+            &error);
+
+    check(code, error);
+
+    mp::Result result{};
+
+    try {
+        const auto timestampMs =
+            std::max(
+                lastTimestampMs_ + 1,
+                captureUs / 1000);
+
+        lastTimestampMs_ =
+            timestampMs;
+
+        error = nullptr;
+
+        code =
+            detect_(
+                handle_,
+                image,
+                nullptr,
+                timestampMs,
+                &result,
+                &error);
+
+        check(code, error);
+
+        const auto handCount =
+            std::min(
+                result.landmarksCount,
+                result.handednessCount);
+
+        for (std::uint32_t handIndex = 0;
+             handIndex < handCount;
+             ++handIndex) {
+
+            if (result.landmarks[handIndex].count != 21
+                || result.handedness[handIndex].count == 0) {
+                continue;
+            }
+
+            const auto &category =
+                result.handedness[handIndex].items[0];
+
+            if (!category.name) {
+                continue;
+            }
+
+            const std::string handedness(
+                category.name);
+
+            if (handedness != "Left"
+                && handedness != "Right") {
+                continue;
+            }
+
+            int sideIndex =
+                handedness == "Left"
+                ? 0
+                : 1;
+
+            if (swapHandedness) {
+                sideIndex =
+                    1 - sideIndex;
+            }
+
+            auto &hand =
+                output.hands[sideIndex];
+
+            // If MediaPipe reports duplicate handedness, keep the stronger one.
+            if (hand.tracked
+                && hand.confidence >= category.score) {
+                continue;
+            }
+
+            hand.tracked = true;
+            hand.confidence =
+                category.score;
+
+            for (int landmarkIndex = 0;
+                 landmarkIndex < 21;
+                 ++landmarkIndex) {
+
+                const auto &point =
+                    result
+                        .landmarks[handIndex]
+                        .points[landmarkIndex];
+
+                hand.landmarks[landmarkIndex] = {
+                    point.x,
+                    point.y,
+                    point.z
+                };
+            }
+        }
+    }
+    catch (...) {
+        closeResult_(&result);
+        imageFree_(image);
+        throw;
+    }
+
+    closeResult_(&result);
+    imageFree_(image);
+
+    output.trackEndUs =
+        nowUs();
+
+    return output;
+}
+
+} // namespace vc
