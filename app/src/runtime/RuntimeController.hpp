@@ -181,6 +181,17 @@ public:
 
     ~RuntimeController() override;
 
+    // Final application shutdown is different from the normal Stop action.
+    //
+    // stop() only stops the current camera/tracking session and deliberately
+    // keeps the persistent worker alive so tracking can be started again.
+    // shutdownForExit() also asks that worker to terminate and waits for a
+    // bounded amount of time.  Returning false means a native MediaPipe/TFLite
+    // call did not return and the caller must not destroy RuntimeController,
+    // because the worker may still be executing code that references it.
+    bool shutdownForExit(
+        std::chrono::milliseconds timeout);
+
 
     bool cameraRunning() const
     {
@@ -198,7 +209,19 @@ public:
     }
 
 
-    QStringList cameraNames() const;
+    QStringList cameraNames() const
+    {
+        QStringList names;
+
+        names.reserve(cameras_.size());
+
+        for (const auto &camera : cameras_) {
+            names.append(camera.description());
+        }
+
+        return names;
+    }
+
     QStringList formatNames() const;
 
 
@@ -297,11 +320,17 @@ public:
     Q_INVOKABLE void stop();
     Q_INVOKABLE void togglePipeline();
 
+    // Requested by the QML close handler. The actual process-exit policy is
+    // owned by main.cpp so RuntimeController does not need platform-specific
+    // process APIs.
+    Q_INVOKABLE void requestApplicationExit();
+
 
 signals:
     void stateChanged();
     void devicesChanged();
     void settingsChanged();
+    void applicationExitRequested();
 
 
 private:
@@ -316,6 +345,15 @@ private:
         float trackingConfidence{};
 
         std::uint64_t generation{};
+    };
+
+    // Lives independently from RuntimeController so final shutdown can wait
+    // until workerLoop() has returned without using std::thread::join().
+    struct WorkerExitState
+    {
+        std::mutex mutex;
+        std::condition_variable condition;
+        bool exited{};
     };
 
 
@@ -387,6 +425,7 @@ private:
 
     std::optional<WorkerSession> pendingWorkerSession_;
 
+    std::shared_ptr<WorkerExitState> workerExitState_;
     std::jthread worker_;
 
 

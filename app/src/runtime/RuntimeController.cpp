@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QFileInfo>
 #include <QImage>
+#include <QDebug>
 #include <QMetaObject>
 #include <QVariantMap>
 #include <QVideoSink>
@@ -13,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <exception>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -148,26 +150,67 @@ RuntimeController::RuntimeController(
     // this thread, but will NOT create/destroy the system thread itself.
     // --------------------------------------------------------------------
 
+    workerExitState_ =
+        std::make_shared<WorkerExitState>();
+
+    const auto workerExitState =
+        workerExitState_;
+
     worker_ =
         std::jthread(
-            [this](
+            [this, workerExitState](
                 std::stop_token stopToken) {
 
                 workerLoop(
                     stopToken);
+
+                // From this point onward the native worker thread no longer
+                // accesses RuntimeController. Signal through an object whose
+                // lifetime is independent from RuntimeController itself.
+                {
+                    std::lock_guard lock(
+                        workerExitState->mutex);
+
+                    workerExitState->exited = true;
+                }
+
+                workerExitState
+                    ->condition
+                    .notify_all();
             });
 }
 
 
 RuntimeController::~RuntimeController()
 {
-    // First stop camera + current tracking session.
-    //
-    // stop() is intentionally non-blocking with regard to the worker thread.
+    // main() performs the bounded shutdown before normal object destruction.
+    // In the regular path worker_ is already detached here and this call is
+    // effectively a no-op.  Keep a long fallback for non-main owners rather
+    // than reintroducing an unbounded destructor wait.
+    if (!shutdownForExit(
+            std::chrono::seconds(5))) {
+
+        // It is unsafe to continue destroying this QObject while workerLoop()
+        // may still be using `this`.  The process-level shutdown path in
+        // main.cpp prevents reaching this branch during normal application
+        // exit.  If a future owner destroys RuntimeController elsewhere,
+        // terminate rather than returning into a use-after-free.
+        std::terminate();
+    }
+}
+
+
+bool RuntimeController::shutdownForExit(
+    std::chrono::milliseconds timeout)
+{
+    qInfo() << "[shutdown] shutdownForExit begin";
+
+    // First stop camera + current tracking session. stop() intentionally does
+    // not wait for MediaPipe, so it remains suitable for the normal Stop UI.
     stop();
 
 
-    // Cancel a session that may still be waiting for the worker.
+    // Cancel a session that has not yet been picked up by the worker.
     {
         std::lock_guard lock(
             workerMutex_);
@@ -185,46 +228,63 @@ RuntimeController::~RuntimeController()
     }
 
 
-    // The system worker is terminated only once:
-    // when the RuntimeController itself is destroyed.
-    if (worker_.joinable()) {
+    // Disconnect the QML VideoOutput while the QML engine is still alive.
+    captureSession_.setVideoOutput(
+        nullptr);
 
-        worker_.request_stop();
 
-        workerCondition_.notify_all();
-
-        worker_.join();
+    if (!worker_.joinable()) {
+        qInfo() << "[shutdown] worker already not joinable";
+        return true;
     }
 
 
-    captureSession_.setVideoOutput(
-        nullptr);
+    worker_.request_stop();
+    workerCondition_.notify_all();
+
+
+    const auto workerExitState =
+        workerExitState_;
+
+
+    bool exited = false;
+
+    {
+        std::unique_lock lock(
+            workerExitState->mutex);
+
+        exited =
+            workerExitState
+                ->condition
+                .wait_for(
+                    lock,
+                    timeout,
+                    [&workerExitState] {
+                        return workerExitState->exited;
+                    });
+    }
+
+
+    if (!exited) {
+        qWarning() << "[shutdown] worker exit timeout";
+        return false;
+    }
+
+
+    // The latch is set only after workerLoop() has returned, so the worker no
+    // longer accesses RuntimeController.  Do not join here: some Windows ML
+    // runtimes can still spend an unbounded amount of time in native/TLS
+    // thread teardown after the C++ worker function has logically finished.
+    worker_.detach();
+
+    qInfo() << "[shutdown] shutdownForExit end";
+    return true;
 }
 
 
 // ============================================================================
 // Camera / format names
 // ============================================================================
-
-QStringList RuntimeController::cameraNames() const
-{
-    QStringList names;
-
-    names.reserve(
-        cameras_.size());
-
-
-    for (const auto &camera
-         : cameras_) {
-
-        names.append(
-            camera.description());
-    }
-
-
-    return names;
-}
-
 
 QStringList RuntimeController::formatNames() const
 {
@@ -1125,55 +1185,32 @@ void RuntimeController::start()
 
 void RuntimeController::stop()
 {
+    qInfo() << "[shutdown] RuntimeController::stop begin";
+
     // --------------------------------------------------------------------
     // Invalidate all queued results from the previous session immediately.
     // --------------------------------------------------------------------
 
     ++generation_;
 
-
     activeGeneration_.store(0);
-
 
     pipelineRunning_ = false;
     trackerReady_ = false;
 
 
     // --------------------------------------------------------------------
-    // Stop producing new frames.
+    // Stop handing Qt Multimedia buffers to the worker FIRST.
+    //
+    // A QVideoFrame may reference a backend-owned Media Foundation buffer.
+    // The previous implementation stopped/destroyed QCamera before closing
+    // the mailbox, so a queued frame could still pin that backend resource
+    // during camera teardown.
     // --------------------------------------------------------------------
 
     disconnect(
         frameConnection_);
 
-    disconnect(
-        cameraActiveConnection_);
-
-    disconnect(
-        cameraErrorConnection_);
-
-
-    if (camera_) {
-        camera_->stop();
-    }
-
-
-    captureSession_.setCamera(
-        nullptr);
-
-
-    camera_.reset();
-
-
-    cameraRunning_ = false;
-
-
-    // --------------------------------------------------------------------
-    // Signal current MediaPipe session to stop.
-    //
-    // IMPORTANT:
-    // There is deliberately NO worker_.join() here.
-    // --------------------------------------------------------------------
 
     const auto stoppingInbox =
         inbox_;
@@ -1213,6 +1250,37 @@ void RuntimeController::stop()
 
 
     // --------------------------------------------------------------------
+    // Now release the camera backend.
+    // --------------------------------------------------------------------
+
+    disconnect(
+        cameraActiveConnection_);
+
+    disconnect(
+        cameraErrorConnection_);
+
+
+    if (camera_) {
+        qInfo() << "[shutdown] stopping QCamera";
+        camera_->stop();
+        qInfo() << "[shutdown] QCamera::stop returned";
+    }
+
+
+    qInfo() << "[shutdown] detaching QCamera from capture session";
+    captureSession_.setCamera(
+        nullptr);
+    qInfo() << "[shutdown] QMediaCaptureSession::setCamera(nullptr) returned";
+
+
+    camera_.reset();
+    qInfo() << "[shutdown] QCamera destroyed";
+
+
+    cameraRunning_ = false;
+
+
+    // --------------------------------------------------------------------
     // Reset public runtime state immediately.
     // --------------------------------------------------------------------
 
@@ -1231,6 +1299,8 @@ void RuntimeController::stop()
 
 
     emit stateChanged();
+
+    qInfo() << "[shutdown] RuntimeController::stop end";
 }
 
 
@@ -1245,6 +1315,13 @@ void RuntimeController::togglePipeline()
     } else {
         start();
     }
+}
+
+
+void RuntimeController::requestApplicationExit()
+{
+    qInfo() << "[shutdown] application exit requested from QML";
+    emit applicationExitRequested();
 }
 
 
@@ -1391,11 +1468,26 @@ void RuntimeController::workerLoop(
                 }
 
 
+                const auto captureUs =
+                    packet->captureUs;
+
+                const auto sequence =
+                    packet->sequence;
+
+
+                // Make an owned CPU copy and release QVideoFrame BEFORE
+                // entering MediaPipe. QVideoFrame can hold a native camera
+                // buffer, and retaining it during inference/teardown can keep
+                // the Windows multimedia backend alive.
                 QImage image =
                     packet->frame
                         .toImage()
                         .convertToFormat(
-                            QImage::Format_RGB888);
+                            QImage::Format_RGB888)
+                        .copy();
+
+
+                packet.reset();
 
 
                 if (image.isNull()) {
@@ -1452,8 +1544,8 @@ void RuntimeController::workerLoop(
                         image.width(),
                         image.height(),
                         rgb,
-                        packet->captureUs,
-                        packet->sequence,
+                        captureUs,
+                        sequence,
                         swapHandedness_
                             .load());
 
@@ -1536,6 +1628,8 @@ void RuntimeController::workerLoop(
 
         // Loop back to IDLE and wait for the next Start.
     }
+
+    qInfo() << "[shutdown] workerLoop exited";
 }
 
 

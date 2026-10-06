@@ -1,6 +1,7 @@
 #include "tracking/MediaPipeTracker.hpp"
 
 #include <QFile>
+#include <QDebug>
 
 #include <algorithm>
 #include <stdexcept>
@@ -55,6 +56,13 @@ MediaPipeTracker::MediaPipeTracker(
     float trackingConfidence)
     : library_(libraryPath)
 {
+    // MediaPipe/TFLite owns process-wide native state and worker pools.
+    // Repeated FreeLibrary()/LoadLibrary() cycles are unnecessary and can be
+    // fragile on Windows. Keep the runtime mapped until process termination.
+    library_.setLoadHints(
+        library_.loadHints()
+        | QLibrary::PreventUnloadHint);
+
     if (!library_.load()) {
         throw std::runtime_error(
             ("Cannot load MediaPipe runtime: "
@@ -167,15 +175,21 @@ MediaPipeTracker::~MediaPipeTracker()
         return;
     }
 
+    qInfo() << "[shutdown] MpHandLandmarkerClose begin";
+
     char *error = nullptr;
 
     close_(
         handle_,
         &error);
 
+    handle_ = nullptr;
+
     if (error) {
         errorFree_(error);
     }
+
+    qInfo() << "[shutdown] MpHandLandmarkerClose end";
 }
 
 TrackingFrame MediaPipeTracker::process(

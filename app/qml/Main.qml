@@ -39,6 +39,14 @@ ApplicationWindow {
 
     property int currentPage: 0
 
+    // Route the close request through C++ so the application can bypass any
+    // stale Qt quit lock left by a multimedia backend and arm a process-level
+    // watchdog before teardown starts.
+    onClosing: function(closeEvent) {
+        closeEvent.accepted = true
+        runtimeController.requestApplicationExit()
+    }
+
     Rectangle {
         anchors.fill: parent
         color: theme.background
