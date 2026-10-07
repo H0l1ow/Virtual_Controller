@@ -1,11 +1,12 @@
 #pragma once
 
+#include "runtime/LatestFrameSlot.hpp"
+#include "runtime/RuntimeMetrics.hpp"
 #include "tracking/TrackingTypes.hpp"
 
 #include <QCamera>
 #include <QCameraDevice>
 #include <QCameraFormat>
-#include <QElapsedTimer>
 #include <QMediaCaptureSession>
 #include <QMediaDevices>
 #include <QMetaObject>
@@ -15,7 +16,6 @@
 #include <QStringList>
 #include <QTimer>
 #include <QVariant>
-#include <QVideoFrame>
 
 #include <atomic>
 #include <chrono>
@@ -29,43 +29,39 @@
 
 namespace vc {
 
-struct VideoPacket
-{
-    QVideoFrame frame;
-    std::int64_t captureUs{};
-    std::uint64_t sequence{};
-};
-
-
-// Single-slot mailbox.
-//
-// If inference is slower than the camera, the old waiting frame is replaced
-// by the newest one. This prevents an increasing latency queue.
-class LatestFrameSlot final
-{
-public:
-    void publish(VideoPacket packet);
-
-    std::optional<VideoPacket> take(
-        std::chrono::milliseconds timeout);
-
-    void close();
-
-    bool isClosed();
-
-private:
-    std::mutex mutex_;
-    std::condition_variable condition_;
-
-    std::optional<VideoPacket> packet_;
-
-    bool closed_{};
-};
-
-
 class RuntimeController final : public QObject
 {
     Q_OBJECT
+
+public:
+    enum class RuntimeState {
+        Stopped,
+        Starting,
+        Running,
+        Stopping,
+        Faulted
+    };
+    Q_ENUM(RuntimeState)
+
+    Q_PROPERTY(
+        RuntimeState runtimeState
+            READ runtimeState
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        QString runtimeStateName
+            READ runtimeStateName
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        bool canStart
+            READ canStart
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        bool canStop
+            READ canStop
+                NOTIFY stateChanged)
 
     Q_PROPERTY(
         bool cameraRunning
@@ -102,19 +98,70 @@ class RuntimeController final : public QObject
             READ formatIndex
                 NOTIFY devicesChanged)
 
+    // Backward-compatible aliases used by the existing M1 QML.
     Q_PROPERTY(
         int fps
-            READ fps
+            READ processedFps
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int latencyMs
+            READ latestLatencyMs
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int cameraFps
+            READ cameraFps
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int processedFps
+            READ processedFps
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        qulonglong replacedFrames
+            READ replacedFrames
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        double replacedPercent
+            READ replacedPercent
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int latencyP50Ms
+            READ latencyP50Ms
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int latencyP95Ms
+            READ latencyP95Ms
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int inferenceP50Ms
+            READ inferenceP50Ms
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int inferenceP95Ms
+            READ inferenceP95Ms
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int conversionP50Ms
+            READ conversionP50Ms
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int conversionP95Ms
+            READ conversionP95Ms
                 NOTIFY stateChanged)
 
     Q_PROPERTY(
         QString resolution
             READ resolution
-                NOTIFY stateChanged)
-
-    Q_PROPERTY(
-        int latencyMs
-            READ latencyMs
                 NOTIFY stateChanged)
 
     Q_PROPERTY(
@@ -145,6 +192,16 @@ class RuntimeController final : public QObject
     Q_PROPERTY(
         double rightConfidence
             READ rightConfidence
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        QString leftReportedSide
+            READ leftReportedSide
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        QString rightReportedSide
+            READ rightReportedSide
                 NOTIFY stateChanged)
 
     Q_PROPERTY(
@@ -181,26 +238,40 @@ public:
 
     ~RuntimeController() override;
 
-    // Final application shutdown is different from the normal Stop action.
-    //
-    // stop() only stops the current camera/tracking session and deliberately
-    // keeps the persistent worker alive so tracking can be started again.
-    // shutdownForExit() also asks that worker to terminate and waits for a
-    // bounded amount of time.  Returning false means a native MediaPipe/TFLite
-    // call did not return and the caller must not destroy RuntimeController,
-    // because the worker may still be executing code that references it.
     bool shutdownForExit(
         std::chrono::milliseconds timeout);
 
+    RuntimeState runtimeState() const
+    {
+        return runtimeState_;
+    }
+
+    QString runtimeStateName() const;
+
+    bool canStart() const
+    {
+        return runtimeState_ == RuntimeState::Stopped
+            || runtimeState_ == RuntimeState::Faulted;
+    }
+
+    bool canStop() const
+    {
+        return runtimeState_ == RuntimeState::Starting
+            || runtimeState_ == RuntimeState::Running;
+    }
 
     bool cameraRunning() const
     {
         return cameraRunning_;
     }
 
+    // A session remains logically active while its native tracker is being
+    // destroyed. This prevents Start from racing a previous Stop teardown.
     bool pipelineRunning() const
     {
-        return pipelineRunning_;
+        return runtimeState_ == RuntimeState::Starting
+            || runtimeState_ == RuntimeState::Running
+            || runtimeState_ == RuntimeState::Stopping;
     }
 
     bool trackerReady() const
@@ -208,22 +279,8 @@ public:
         return trackerReady_;
     }
 
-
-    QStringList cameraNames() const
-    {
-        QStringList names;
-
-        names.reserve(cameras_.size());
-
-        for (const auto &camera : cameras_) {
-            names.append(camera.description());
-        }
-
-        return names;
-    }
-
+    QStringList cameraNames() const;
     QStringList formatNames() const;
-
 
     int cameraIndex() const
     {
@@ -235,20 +292,65 @@ public:
         return formatIndex_;
     }
 
-
-    int fps() const
+    int cameraFps() const
     {
-        return fps_;
+        return metricsSnapshot_.cameraFps;
+    }
+
+    int processedFps() const
+    {
+        return metricsSnapshot_.processedFps;
+    }
+
+    qulonglong replacedFrames() const
+    {
+        return static_cast<qulonglong>(
+            metricsSnapshot_.replacedFrames);
+    }
+
+    double replacedPercent() const
+    {
+        return metricsSnapshot_.replacedPercent;
+    }
+
+    int latestLatencyMs() const
+    {
+        return metricsSnapshot_.latestPipelineLatencyMs;
+    }
+
+    int latencyP50Ms() const
+    {
+        return metricsSnapshot_.pipelineLatencyP50Ms;
+    }
+
+    int latencyP95Ms() const
+    {
+        return metricsSnapshot_.pipelineLatencyP95Ms;
+    }
+
+    int inferenceP50Ms() const
+    {
+        return metricsSnapshot_.inferenceP50Ms;
+    }
+
+    int inferenceP95Ms() const
+    {
+        return metricsSnapshot_.inferenceP95Ms;
+    }
+
+    int conversionP50Ms() const
+    {
+        return metricsSnapshot_.conversionP50Ms;
+    }
+
+    int conversionP95Ms() const
+    {
+        return metricsSnapshot_.conversionP95Ms;
     }
 
     QString resolution() const
     {
         return resolution_;
-    }
-
-    int latencyMs() const
-    {
-        return latencyMs_;
     }
 
     QString trackingStatus() const;
@@ -257,7 +359,6 @@ public:
     {
         return errorMessage_;
     }
-
 
     bool leftTracked() const
     {
@@ -271,12 +372,22 @@ public:
 
     double leftConfidence() const
     {
-        return leftConfidence_;
+        return leftHandednessConfidence_;
     }
 
     double rightConfidence() const
     {
-        return rightConfidence_;
+        return rightHandednessConfidence_;
+    }
+
+    QString leftReportedSide() const
+    {
+        return leftReportedSide_;
+    }
+
+    QString rightReportedSide() const
+    {
+        return rightReportedSide_;
     }
 
     QVariantList leftLandmarks() const
@@ -288,7 +399,6 @@ public:
     {
         return rightLandmarks_;
     }
-
 
     int detectionConfidence() const
     {
@@ -305,38 +415,35 @@ public:
         return swapHandedness_.load();
     }
 
-
     void setDetectionConfidence(int value);
     void setTrackingConfidence(int value);
     void setSwapHandedness(bool value);
 
-
     Q_INVOKABLE void attachVideoOutput(QObject *output);
-
     Q_INVOKABLE void selectCamera(int index);
     Q_INVOKABLE void selectFormat(int index);
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void togglePipeline();
-
-    // Requested by the QML close handler. The actual process-exit policy is
-    // owned by main.cpp so RuntimeController does not need platform-specific
-    // process APIs.
     Q_INVOKABLE void requestApplicationExit();
-
 
 signals:
     void stateChanged();
     void devicesChanged();
     void settingsChanged();
-    void applicationExitRequested();
 
+    // First signal lets main.cpp arm its process-level watchdog. The second is
+    // emitted only after the current tracking session reached a safe terminal
+    // state, so the Qt event loop can exit gracefully.
+    void applicationExitRequested();
+    void applicationExitReady();
 
 private:
     struct WorkerSession
     {
         std::shared_ptr<LatestFrameSlot> inbox;
+        std::shared_ptr<RuntimeMetrics> metrics;
 
         QString libraryPath;
         QString modelPath;
@@ -347,8 +454,6 @@ private:
         std::uint64_t generation{};
     };
 
-    // Lives independently from RuntimeController so final shutdown can wait
-    // until workerLoop() has returned without using std::thread::join().
     struct WorkerExitState
     {
         std::mutex mutex;
@@ -356,109 +461,73 @@ private:
         bool exited{};
     };
 
+    void setRuntimeState(RuntimeState state);
+    void failWithoutSession(const QString &message);
+    void requestSessionStop(RuntimeState terminalState);
+    void finalizeSessionStop(std::uint64_t generation);
+    void handleWorkerFault(
+        std::uint64_t generation,
+        const QString &message);
+    void handleWorkerSessionFinished(
+        std::uint64_t generation);
+    void maybeEmitApplicationExitReady();
+
+    void teardownCameraAndFramePath(
+        const std::shared_ptr<LatestFrameSlot> &stoppingInbox);
 
     void refreshDevices();
     void refreshFormats();
 
-
     QString mediaPipeLibraryPath() const;
     QString handLandmarkerModelPath() const;
 
-
     void clearTracking();
-
 
     void applyTrackingFrame(
         const TrackingFrame &frame,
         std::uint64_t generation);
 
-
-    // Persistent worker.
-    //
-    // The system thread is created once in RuntimeController's constructor.
-    // Start/Stop only create and destroy MediaPipe tracking sessions.
     void workerLoop(
         std::stop_token stopToken);
 
-
     void updateStats();
-
 
     static QVariantList toVariantLandmarks(
         const HandTrackingState &hand);
 
-
-    // ------------------------------------------------------------------------
-    // Qt Multimedia
-    // ------------------------------------------------------------------------
-
     QMediaDevices mediaDevices_;
-
     QList<QCameraDevice> cameras_;
     QList<QCameraFormat> formats_;
 
     std::unique_ptr<QCamera> camera_;
-
     QMediaCaptureSession captureSession_;
-
     QPointer<QObject> videoOutput_;
-
 
     QMetaObject::Connection frameConnection_;
     QMetaObject::Connection cameraActiveConnection_;
     QMetaObject::Connection cameraErrorConnection_;
 
-
-    // ------------------------------------------------------------------------
-    // Runtime frame path
-    // ------------------------------------------------------------------------
-
     std::shared_ptr<LatestFrameSlot> inbox_;
-
-
-    // ------------------------------------------------------------------------
-    // Persistent tracking worker
-    // ------------------------------------------------------------------------
+    std::shared_ptr<RuntimeMetrics> metrics_;
 
     std::mutex workerMutex_;
     std::condition_variable workerCondition_;
-
     std::optional<WorkerSession> pendingWorkerSession_;
+    std::optional<std::uint64_t> activeWorkerGeneration_;
 
     std::shared_ptr<WorkerExitState> workerExitState_;
     std::jthread worker_;
 
-
-    // ------------------------------------------------------------------------
-    // Statistics
-    // ------------------------------------------------------------------------
-
     QTimer statsTimer_;
-    QElapsedTimer statsClock_;
-
-    std::atomic<std::uint64_t> receivedFrames_{};
-    std::atomic<std::uint64_t> processedFrames_{};
-
-    std::atomic<std::int64_t> lastFrameReceivedUs_{};
-
-    // Worker uses this to make sure old sessions cannot affect statistics
-    // after a rapid Stop -> Start sequence.
-    std::atomic<std::uint64_t> activeGeneration_{};
-
-
-    // ------------------------------------------------------------------------
-    // Runtime settings shared with worker
-    // ------------------------------------------------------------------------
+    RuntimeMetricsSnapshot metricsSnapshot_;
 
     std::atomic_bool swapHandedness_{};
 
-
-    // ------------------------------------------------------------------------
-    // GUI-thread state
-    // ------------------------------------------------------------------------
-
     std::uint64_t generation_{};
-    std::uint64_t lastFpsSampleCount_{};
+
+    RuntimeState runtimeState_{RuntimeState::Stopped};
+    RuntimeState terminalStateAfterStop_{RuntimeState::Stopped};
+    bool exitRequested_{};
 
     int cameraIndex_{};
     int formatIndex_{};
@@ -467,11 +536,7 @@ private:
     int trackingConfidence_{55};
 
     bool cameraRunning_{};
-    bool pipelineRunning_{};
     bool trackerReady_{};
-
-    int fps_{};
-    int latencyMs_{};
 
     QString resolution_{"-"};
     QString errorMessage_;
@@ -479,8 +544,10 @@ private:
     bool leftTracked_{};
     bool rightTracked_{};
 
-    double leftConfidence_{};
-    double rightConfidence_{};
+    double leftHandednessConfidence_{};
+    double rightHandednessConfidence_{};
+    QString leftReportedSide_{"-"};
+    QString rightReportedSide_{"-"};
 
     QVariantList leftLandmarks_;
     QVariantList rightLandmarks_;

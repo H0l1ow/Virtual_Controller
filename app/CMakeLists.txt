@@ -21,10 +21,16 @@ qt_add_executable(
 
     src/main.cpp
 
+    src/runtime/LatestFrameSlot.hpp
+    src/runtime/LatestFrameSlot.cpp
+    src/runtime/RuntimeMetrics.hpp
+    src/runtime/RuntimeMetrics.cpp
     src/runtime/RuntimeController.hpp
     src/runtime/RuntimeController.cpp
 
     src/tracking/TrackingTypes.hpp
+    src/tracking/HandIdentityStabilizer.hpp
+    src/tracking/HandIdentityStabilizer.cpp
     src/tracking/MediaPipeAbi.hpp
     src/tracking/MediaPipeTracker.hpp
     src/tracking/MediaPipeTracker.cpp
@@ -51,6 +57,7 @@ target_link_libraries(
 target_compile_definitions(
     VirtualController
     PRIVATE
+        VC_APP_VERSION="${PROJECT_VERSION}"
         VC_SOURCE_ROOT="${CMAKE_SOURCE_DIR}"
         VC_MEDIAPIPE_ROOT_PATH="${VC_MEDIAPIPE_ROOT}"
         VC_HAND_LANDMARKER_MODEL_PATH="${VC_HAND_LANDMARKER_MODEL}"
@@ -75,6 +82,7 @@ qt_add_resources(
         qml/Main.qml
         qml/UiState.qml
 
+        qml/catalog/UiCatalog.qml
         qml/theme/Theme.qml
         qml/mock/UiMock.qml
 
@@ -102,6 +110,7 @@ qt_add_resources(
         qml/components/VcSlider.qml
         qml/components/VcSwitch.qml
         qml/components/VcTextField.qml
+        qml/components/ViewOptionsPanel.qml
         qml/components/WindowControlButton.qml
 
         qml/pages/ControllerPage.qml
@@ -148,3 +157,17 @@ install(
     RUNTIME DESTINATION .
     BUNDLE DESTINATION .
 )
+
+if(WIN32 AND EXISTS "${VC_MEDIAPIPE_ROOT}/libmediapipe.dll")
+    install(
+        FILES "${VC_MEDIAPIPE_ROOT}/libmediapipe.dll"
+        DESTINATION native
+    )
+endif()
+
+if(EXISTS "${VC_HAND_LANDMARKER_MODEL}")
+    install(
+        FILES "${VC_HAND_LANDMARKER_MODEL}"
+        DESTINATION models
+    )
+endif()

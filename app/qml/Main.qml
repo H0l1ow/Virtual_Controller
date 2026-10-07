@@ -39,11 +39,40 @@ ApplicationWindow {
 
     property int currentPage: 0
 
-    // Route the close request through C++ so the application can bypass any
-    // stale Qt quit lock left by a multimedia backend and arm a process-level
-    // watchdog before teardown starts.
+    // Controller fullscreen is a presentation mode only. Tracking keeps using
+    // the same camera pipeline and the same VideoOutput instance.
+    property bool controllerFullscreen: false
+    property int visibilityBeforeControllerFullscreen: Window.Windowed
+
+    function setControllerFullscreen(enabled) {
+        if (enabled === window.controllerFullscreen)
+            return
+
+        if (enabled) {
+            window.visibilityBeforeControllerFullscreen = window.visibility
+            window.controllerFullscreen = true
+            window.showFullScreen()
+            return
+        }
+
+        window.controllerFullscreen = false
+        if (window.visibilityBeforeControllerFullscreen === Window.Maximized)
+            window.showMaximized()
+        else
+            window.showNormal()
+    }
+
+    Shortcut {
+        sequence: "Esc"
+        enabled: window.controllerFullscreen
+        onActivated: window.setControllerFullscreen(false)
+    }
+
+    // Keep the window alive while the native tracking session moves through
+    // Stopping. C++ emits applicationExitReady only after worker teardown has
+    // completed (or the last-resort watchdog eventually terminates a hang).
     onClosing: function(closeEvent) {
-        closeEvent.accepted = true
+        closeEvent.accepted = false
         runtimeController.requestApplicationExit()
     }
 
@@ -66,6 +95,8 @@ ApplicationWindow {
             windowRef: window
             currentIndex: window.currentPage
             onPageSelected: function(index) {
+                if (window.controllerFullscreen && index !== 0)
+                    window.setControllerFullscreen(false)
                 window.currentPage = index
             }
         }
@@ -78,6 +109,10 @@ ApplicationWindow {
             ControllerPage {
                 theme: theme
                 uiState: window.uiState
+                immersiveMode: window.controllerFullscreen
+                onImmersiveModeRequested: function(enabled) {
+                    window.setControllerFullscreen(enabled)
+                }
             }
             MappingPage {
                 theme: theme
@@ -104,6 +139,7 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: 5
+        enabled: !window.controllerFullscreen
         cursorShape: Qt.SizeHorCursor
         onPressed: window.startSystemResize(Qt.LeftEdge)
     }
@@ -112,6 +148,7 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: 5
+        enabled: !window.controllerFullscreen
         cursorShape: Qt.SizeHorCursor
         onPressed: window.startSystemResize(Qt.RightEdge)
     }
@@ -120,6 +157,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         height: 5
+        enabled: !window.controllerFullscreen
         cursorShape: Qt.SizeVerCursor
         onPressed: window.startSystemResize(Qt.TopEdge)
     }
@@ -128,6 +166,7 @@ ApplicationWindow {
         anchors.left: parent.left
         anchors.right: parent.right
         height: 5
+        enabled: !window.controllerFullscreen
         cursorShape: Qt.SizeVerCursor
         onPressed: window.startSystemResize(Qt.BottomEdge)
     }
@@ -139,6 +178,7 @@ ApplicationWindow {
         anchors.top: parent.top
         width: 8
         height: 8
+        enabled: !window.controllerFullscreen
         cursorShape: Qt.SizeFDiagCursor
         onPressed: window.startSystemResize(Qt.LeftEdge | Qt.TopEdge)
     }
@@ -148,6 +188,7 @@ ApplicationWindow {
         anchors.top: parent.top
         width: 8
         height: 8
+        enabled: !window.controllerFullscreen
         cursorShape: Qt.SizeBDiagCursor
         onPressed: window.startSystemResize(Qt.RightEdge | Qt.TopEdge)
     }
@@ -157,6 +198,7 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         width: 8
         height: 8
+        enabled: !window.controllerFullscreen
         cursorShape: Qt.SizeBDiagCursor
         onPressed: window.startSystemResize(Qt.LeftEdge | Qt.BottomEdge)
     }
@@ -166,6 +208,7 @@ ApplicationWindow {
         anchors.bottom: parent.bottom
         width: 8
         height: 8
+        enabled: !window.controllerFullscreen
         cursorShape: Qt.SizeFDiagCursor
         onPressed: window.startSystemResize(Qt.RightEdge | Qt.BottomEdge)
     }

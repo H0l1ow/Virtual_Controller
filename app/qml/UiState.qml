@@ -1,19 +1,22 @@
 import QtQuick
-import "mock"
+import "catalog"
 
 QtObject {
     id: root
 
     required property QtObject runtimeBackend
 
-    // Reuse the UI catalog prepared in the mock. Camera and tracking values
-    // below come from the real C++ runtime in M1.
-    property QtObject catalog: UiMock {
-    }
+    property QtObject catalog: UiCatalog {}
+
+    readonly property string runtimeStateName:
+        runtimeBackend.runtimeStateName
+    readonly property bool canStart:
+        runtimeBackend.canStart
+    readonly property bool canStop:
+        runtimeBackend.canStop
 
     readonly property bool cameraRunning:
         runtimeBackend.cameraRunning
-
     readonly property bool pipelineRunning:
         runtimeBackend.pipelineRunning
 
@@ -25,40 +28,33 @@ QtObject {
 
     readonly property var cameraNames:
         runtimeBackend.cameraNames
-
     readonly property var formatNames:
         runtimeBackend.formatNames
-
     readonly property int cameraIndex:
         runtimeBackend.cameraIndex
-
     readonly property int formatIndex:
         runtimeBackend.formatIndex
-
     readonly property string errorMessage:
         runtimeBackend.errorMessage
 
     property string activeProfile: "Default"
-
     readonly property var profileNames:
         catalog.profileNames
+    property string outputMode: "Mouse / Keyboard"
 
-    property string outputMode:
-        "Mouse / Keyboard"
-
-    // Retained for the UI; cursor control is implemented in a later milestone.
+    // Future control settings retained for the UI only.
     property int sensitivity: 70
     property bool smoothing: true
     property int deadzone: 12
 
-    // These two already configure MediaPipe when the M1 pipeline starts.
-    property int detectionConfidence:
+    // Backend is the single source of truth for live tracking settings.
+    readonly property int detectionConfidence:
         runtimeBackend.detectionConfidence
-
-    property int trackingConfidence:
+    readonly property int trackingConfidence:
         runtimeBackend.trackingConfidence
+    readonly property bool swapHandedness:
+        runtimeBackend.swapHandedness
 
-    // Gesture settings stay visible but are inactive in M1.
     property int recognitionThreshold: 80
     property int debounceMs: 120
     property int cooldownMs: 250
@@ -67,78 +63,73 @@ QtObject {
     property bool showLandmarks: true
     property bool mirrorPreview: false
 
-    property bool swapHandedness:
-        runtimeBackend.swapHandedness
-
-    onDetectionConfidenceChanged: {
-        runtimeBackend.detectionConfidence = detectionConfidence
-    }
-
-    onTrackingConfidenceChanged: {
-        runtimeBackend.trackingConfidence = trackingConfidence
-    }
-
-    onSwapHandednessChanged: {
-        runtimeBackend.swapHandedness = swapHandedness
-    }
-
     readonly property bool leftTracked:
         runtimeBackend.leftTracked
-
     readonly property bool rightTracked:
         runtimeBackend.rightTracked
 
+    // These are MediaPipe handedness classification scores, not generic
+    // tracking confidence values.
     readonly property real leftConfidence:
         runtimeBackend.leftConfidence
-
     readonly property real rightConfidence:
         runtimeBackend.rightConfidence
+    readonly property string leftReportedSide:
+        runtimeBackend.leftReportedSide
+    readonly property string rightReportedSide:
+        runtimeBackend.rightReportedSide
 
     readonly property var leftLandmarks:
         runtimeBackend.leftLandmarks
-
     readonly property var rightLandmarks:
         runtimeBackend.rightLandmarks
 
+    // Metrics. fps/latencyMs remain aliases for existing components.
     readonly property int fps:
-        runtimeBackend.fps
+        runtimeBackend.processedFps
+    readonly property int cameraFps:
+        runtimeBackend.cameraFps
+    readonly property int processedFps:
+        runtimeBackend.processedFps
+    readonly property int latencyMs:
+        runtimeBackend.latencyMs
+    readonly property int latencyP50Ms:
+        runtimeBackend.latencyP50Ms
+    readonly property int latencyP95Ms:
+        runtimeBackend.latencyP95Ms
+    readonly property int inferenceP50Ms:
+        runtimeBackend.inferenceP50Ms
+    readonly property int inferenceP95Ms:
+        runtimeBackend.inferenceP95Ms
+    readonly property int conversionP50Ms:
+        runtimeBackend.conversionP50Ms
+    readonly property int conversionP95Ms:
+        runtimeBackend.conversionP95Ms
+    readonly property real replacedFrames:
+        Number(runtimeBackend.replacedFrames)
+    readonly property real replacedPercent:
+        runtimeBackend.replacedPercent
 
     readonly property string resolution:
         runtimeBackend.resolution
-
-    readonly property int latencyMs:
-        runtimeBackend.latencyMs
-
     readonly property string trackingStatus:
         runtimeBackend.trackingStatus
 
-    // GestureRecognizer does not exist in M1.
     readonly property string leftGesture: "NONE"
     readonly property string rightGesture: "NONE"
-
-    // Cursor mapping does not exist in M1.
     readonly property int cursorX: 0
     readonly property int cursorY: 0
 
     readonly property var gestureHints:
         catalog.gestureHints
-
     readonly property var mappingRows:
         catalog.mappingRows
-
     readonly property var gestureLibrary:
         catalog.gestureLibrary
 
-    // Gamepad is outside M1 and therefore always neutral.
-    readonly property string leftStickValue:
-        "0.00 / 0.00"
-
-    readonly property string rightStickValue:
-        "0.00 / 0.00"
-
-    readonly property string triggerValue:
-        "0.00 / 0.00"
-
+    readonly property string leftStickValue: "0.00 / 0.00"
+    readonly property string rightStickValue: "0.00 / 0.00"
+    readonly property string triggerValue: "0.00 / 0.00"
     readonly property var gamepadInputs: [
         { keyName: "A", value: "Released" },
         { keyName: "B", value: "Released" },
@@ -160,10 +151,22 @@ QtObject {
         runtimeBackend.selectFormat(index)
     }
 
+    function setDetectionConfidence(value) {
+        runtimeBackend.detectionConfidence = Math.round(value)
+    }
+
+    function setTrackingConfidence(value) {
+        runtimeBackend.trackingConfidence = Math.round(value)
+    }
+
+    function setSwapHandedness(value) {
+        runtimeBackend.swapHandedness = value
+    }
+
     function setPipelineRunning(enabled) {
-        if (enabled)
+        if (enabled && canStart)
             runtimeBackend.start()
-        else
+        else if (!enabled && canStop)
             runtimeBackend.stop()
     }
 
@@ -179,8 +182,8 @@ QtObject {
         smoothing = true
         deadzone = 12
 
-        detectionConfidence = 60
-        trackingConfidence = 55
+        setDetectionConfidence(60)
+        setTrackingConfidence(55)
 
         recognitionThreshold = 80
         debounceMs = 120
@@ -189,7 +192,7 @@ QtObject {
 
         showLandmarks = true
         mirrorPreview = false
-        swapHandedness = false
+        setSwapHandedness(false)
 
         activeProfile = "Default"
         outputArmed = false

@@ -17,6 +17,10 @@
 #include <QtCore/qt_windows.h>
 #endif
 
+#ifndef VC_APP_VERSION
+#define VC_APP_VERSION "0.0.0"
+#endif
+
 namespace {
 
 [[noreturn]] void forceTerminateProcess(
@@ -33,22 +37,15 @@ namespace {
 #endif
 }
 
-
 void armExitWatchdog(
     std::chrono::milliseconds timeout)
 {
-    // This watchdog is armed at the instant the user presses X, before Qt
-    // Multimedia, MediaPipe, destructors or aboutToQuit handlers can block the
-    // GUI thread. If normal shutdown succeeds the process disappears first and
-    // this detached thread disappears with it. If teardown deadlocks, the
-    // process is terminated after the bounded grace period.
+    // Last-resort safety net only. Normal window close now keeps the Qt event
+    // loop alive until RuntimeController reaches Stopped/Faulted and emits
+    // applicationExitReady().
     std::thread(
         [timeout] {
-            std::this_thread::sleep_for(
-                timeout);
-
-            // Avoid Qt logging here: if shutdown is deadlocked while holding
-            // an internal Qt lock, even a log call could block this watchdog.
+            std::this_thread::sleep_for(timeout);
             forceTerminateProcess(0);
         })
         .detach();
@@ -67,11 +64,8 @@ int main(int argc, char *argv[])
         QStringLiteral("VirtualController"));
 
     QCoreApplication::setApplicationVersion(
-        QStringLiteral("0.5.1"));
+        QStringLiteral(VC_APP_VERSION));
 
-    // A multimedia backend is allowed to own QEventLoopLocker objects. For a
-    // desktop controller there is no useful background mode after the only
-    // window closes, so a quit lock must never keep the process alive.
     QCoreApplication::setQuitLockEnabled(false);
     app.setQuitOnLastWindowClosed(true);
 
@@ -79,7 +73,6 @@ int main(int argc, char *argv[])
         QStringLiteral("Basic"));
 
     vc::RuntimeController runtimeController;
-
     QQmlApplicationEngine engine;
 
     engine.rootContext()->setContextProperty(
@@ -91,23 +84,30 @@ int main(int argc, char *argv[])
         &vc::RuntimeController::applicationExitRequested,
         &app,
         [] {
-            qInfo() << "[shutdown] close request reached C++";
+            qInfo()
+                << "[shutdown] graceful close requested";
 
-            // Arm before any cleanup. This also covers a hang inside
-            // QCamera::stop(), QMediaCaptureSession teardown or a native ML
-            // destructor.
+            // If a native runtime never returns, the process still cannot hang
+            // forever. This is no longer the normal shutdown mechanism.
             armExitWatchdog(
-                std::chrono::seconds(3));
-
-            // exit() bypasses an interruptible Quit event. The signal is
-            // emitted from QML on the GUI thread, which is the required thread
-            // for QCoreApplication::exit().
-            QCoreApplication::exit(0);
+                std::chrono::seconds(5));
         },
         Qt::DirectConnection);
 
-    // Keep these for other QML/application exit paths. They no longer perform
-    // cleanup; cleanup happens only after app.exec() has returned.
+    QObject::connect(
+        &runtimeController,
+        &vc::RuntimeController::applicationExitReady,
+        &app,
+        [] {
+            qInfo()
+                << "[shutdown] runtime reached safe terminal state";
+
+            QCoreApplication::exit(0);
+        },
+        Qt::QueuedConnection);
+
+    // Non-window QML exits remain supported. Final bounded cleanup still runs
+    // after app.exec() returns.
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::exit,
@@ -133,33 +133,30 @@ int main(int argc, char *argv[])
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,
         &app,
-        []() {
+        [] {
             QCoreApplication::exit(-1);
         },
         Qt::QueuedConnection);
 
     engine.load(url);
 
-    const int exitCode =
-        app.exec();
+    const int exitCode = app.exec();
 
-    qInfo() << "[shutdown] app.exec returned" << exitCode;
+    qInfo()
+        << "[shutdown] app.exec returned"
+        << exitCode;
 
-    // Important: there is intentionally NO RuntimeController::stop() connected
-    // to aboutToQuit. aboutToQuit is emitted before app.exec() returns, so one
-    // blocking multimedia call there would prevent us from ever reaching the
-    // bounded fallback below.
     if (!runtimeController.shutdownForExit(
-            std::chrono::seconds(1))) {
+            std::chrono::seconds(2))) {
 
         qCritical()
             << "[shutdown] worker did not exit within timeout";
 
-        forceTerminateProcess(
-            exitCode);
+        forceTerminateProcess(exitCode);
     }
 
-    qInfo() << "[shutdown] RuntimeController shutdown complete";
+    qInfo()
+        << "[shutdown] RuntimeController shutdown complete";
 
     return exitCode;
 }

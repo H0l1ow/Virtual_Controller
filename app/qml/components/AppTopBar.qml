@@ -10,6 +10,18 @@ Rectangle {
     property int currentIndex: 0
     signal pageSelected(int index)
 
+    function toggleWindowSize() {
+        if (root.windowRef.controllerFullscreen) {
+            root.windowRef.setControllerFullscreen(false)
+            return
+        }
+
+        if (root.windowRef.visibility === Window.Maximized)
+            root.windowRef.showNormal()
+        else
+            root.windowRef.showMaximized()
+    }
+
     color: theme.topBar
     border.width: 1
     border.color: theme.border
@@ -60,14 +72,14 @@ Rectangle {
                 Row {
                     spacing: 0
                     Text {
-                        text: "Virtual"
+                        text: "Hollow's"
                         color: root.theme.textPrimary
                         font.family: root.theme.fontFamily
                         font.pixelSize: 25
                         font.weight: Font.Bold
                     }
                     Text {
-                        text: "Controller"
+                        text: " Sheeeeeet"
                         color: root.theme.textSecondary
                         font.family: root.theme.fontFamily
                         font.pixelSize: 25
@@ -79,13 +91,11 @@ Rectangle {
             MouseArea {
                 anchors.fill: parent
                 acceptedButtons: Qt.LeftButton
-                onPressed: root.windowRef.startSystemMove()
-                onDoubleClicked: {
-                    if (root.windowRef.visibility === Window.Maximized)
-                        root.windowRef.showNormal()
-                    else
-                        root.windowRef.showMaximized()
+                onPressed: {
+                    if (!root.windowRef.controllerFullscreen)
+                        root.windowRef.startSystemMove()
                 }
+                onDoubleClicked: root.toggleWindowSize()
             }
         }
 
@@ -111,13 +121,11 @@ Rectangle {
             MouseArea {
                 anchors.fill: parent
                 acceptedButtons: Qt.LeftButton
-                onPressed: root.windowRef.startSystemMove()
-                onDoubleClicked: {
-                    if (root.windowRef.visibility === Window.Maximized)
-                        root.windowRef.showNormal()
-                    else
-                        root.windowRef.showMaximized()
+                onPressed: {
+                    if (!root.windowRef.controllerFullscreen)
+                        root.windowRef.startSystemMove()
                 }
+                onDoubleClicked: root.toggleWindowSize()
             }
         }
 
@@ -130,13 +138,9 @@ Rectangle {
         WindowControlButton {
             Layout.fillHeight: true
             theme: root.theme
-            symbol: root.windowRef.visibility === Window.Maximized ? "❐" : "□"
-            onClicked: {
-                if (root.windowRef.visibility === Window.Maximized)
-                    root.windowRef.showNormal()
-                else
-                    root.windowRef.showMaximized()
-            }
+            symbol: (root.windowRef.controllerFullscreen
+                || root.windowRef.visibility === Window.Maximized) ? "❐" : "□"
+            onClicked: root.toggleWindowSize()
         }
         WindowControlButton {
             Layout.fillHeight: true

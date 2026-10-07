@@ -8,12 +8,29 @@ VcCard {
 
     required property QtObject uiState
 
+    // Normal mode deliberately keeps the original M1 layout and aspect-fit
+    // preview. Immersive mode only changes presentation: the same VideoOutput
+    // becomes the background while the rest of the Controller UI stays on top.
+    property bool immersiveMode: false
+    property bool uiOptionsOpen: false
+    property bool showCameraStatus: true
+    property bool showGestureHints: true
+    property bool showMetrics: true
+    property bool showHandBadges: true
+    property real overlayBottomInset: 0
+
+    signal fullscreenRequested(bool enabled)
+    signal uiOptionsRequested()
+
     clip: true
     color: "#151C22"
+    radius: root.immersiveMode ? 0 : root.theme.cardRadius
+    border.width: root.immersiveMode ? 0 : 1
+
 
     Rectangle {
         anchors.fill: parent
-        radius: root.theme.cardRadius
+        radius: root.immersiveMode ? 0 : root.theme.cardRadius
 
         gradient: Gradient {
             GradientStop {
@@ -49,7 +66,9 @@ VcCard {
         id: videoOutput
 
         anchors.fill: parent
-        fillMode: VideoOutput.PreserveAspectFit
+        fillMode: root.immersiveMode
+            ? VideoOutput.PreserveAspectCrop
+            : VideoOutput.PreserveAspectFit
         visible: root.uiState.cameraRunning
         mirrored: root.uiState.mirrorPreview
 
@@ -238,6 +257,7 @@ VcCard {
     }
 
     Rectangle {
+        visible: root.showCameraStatus
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.leftMargin: 14
@@ -302,20 +322,32 @@ VcCard {
             enabled: false
         }
 
+        // UI visibility controls are intentionally fullscreen-only. This keeps
+        // the normal Controller page visually identical to M1 hardening.
+        VcIconButton {
+            visible: root.immersiveMode
+            theme: root.theme
+            iconName: "menu"
+            checked: root.uiOptionsOpen
+            onClicked: root.uiOptionsRequested()
+        }
+
         VcIconButton {
             theme: root.theme
             iconName: "fullscreen"
-            enabled: false
+            checked: root.immersiveMode
+            onClicked: root.fullscreenRequested(!root.immersiveMode)
         }
     }
 
     Column {
+        visible: root.showGestureHints
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.rightMargin: 14
         anchors.topMargin: 66
-        anchors.bottomMargin: 50
+        anchors.bottomMargin: 50 + root.overlayBottomInset
 
         width: Math.min(230, parent.width * 0.20)
         spacing: 4
@@ -339,10 +371,11 @@ VcCard {
     }
 
     Rectangle {
+        visible: root.showMetrics
         anchors.left: parent.left
         anchors.bottom: parent.bottom
         anchors.leftMargin: 14
-        anchors.bottomMargin: 14
+        anchors.bottomMargin: 14 + root.overlayBottomInset
 
         height: 32
         width: stats.implicitWidth + 22
@@ -363,7 +396,10 @@ VcCard {
             spacing: 10
 
             Text {
-                text: "FPS  " + root.uiState.fps
+                text: "CAM  " + root.uiState.cameraFps
+                    + "   |   TRACK  " + root.uiState.processedFps
+                    + "   |   DROP  " + root.uiState.replacedPercent.toFixed(1) + "%"
+                    + "   |   P95  " + root.uiState.latencyP95Ms + " ms"
                 color: root.theme.textPrimary
                 font.family: root.theme.fontFamily
                 font.pixelSize: 11
@@ -387,9 +423,10 @@ VcCard {
     }
 
     Row {
+        visible: root.showHandBadges
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 14
+        anchors.bottomMargin: 14 + root.overlayBottomInset
         spacing: 6
 
         Rectangle {
@@ -413,7 +450,7 @@ VcCard {
                     ? (root.uiState.gestureRecognitionAvailable
                         ? "L  " + root.uiState.leftGesture + "  "
                             + Math.round(root.uiState.leftConfidence * 100) + "%"
-                        : "L  TRACKED  "
+                        : "L  TRACKED  MP " + root.uiState.leftReportedSide + " "
                             + Math.round(root.uiState.leftConfidence * 100) + "%")
                     : "L  NOT TRACKED"
                 color: root.uiState.leftTracked
@@ -446,7 +483,7 @@ VcCard {
                     ? (root.uiState.gestureRecognitionAvailable
                         ? "R  " + root.uiState.rightGesture + "  "
                             + Math.round(root.uiState.rightConfidence * 100) + "%"
-                        : "R  TRACKED  "
+                        : "R  TRACKED  MP " + root.uiState.rightReportedSide + " "
                             + Math.round(root.uiState.rightConfidence * 100) + "%")
                     : "R  NOT TRACKED"
                 color: root.uiState.rightTracked

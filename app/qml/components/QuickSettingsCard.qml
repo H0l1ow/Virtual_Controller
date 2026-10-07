@@ -5,6 +5,10 @@ import QtQuick.Layouts
 VcCard {
     id: root
     required property QtObject uiState
+    property bool overlayMode: false
+
+    translucent: root.overlayMode
+    translucentOpacity: 0.80
 
     ColumnLayout {
         anchors.fill: parent

@@ -5,6 +5,10 @@ import QtQuick.Layouts
 VcCard {
     id: root
     required property QtObject uiState
+    property bool overlayMode: false
+
+    translucent: root.overlayMode
+    translucentOpacity: 0.80
 
     ColumnLayout {
         anchors.fill: parent
@@ -33,9 +37,12 @@ VcCard {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 48
                 theme: root.theme
-                iconName: root.uiState.pipelineRunning ? "reset" : "play"
-                text: root.uiState.pipelineRunning ? "Stop tracking" : "Start tracking"
+                iconName: root.uiState.canStop ? "reset" : "play"
+                text: root.uiState.runtimeStateName === "Stopping"
+                    ? "Stopping..."
+                    : (root.uiState.canStop ? "Stop tracking" : "Start tracking")
                 variant: "secondary"
+                enabled: root.uiState.canStart || root.uiState.canStop
                 onClicked: root.uiState.togglePipeline()
             }
 

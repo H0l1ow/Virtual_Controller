@@ -5,6 +5,10 @@ VcCard {
     id: root
 
     required property QtObject uiState
+    property bool overlayMode: false
+
+    translucent: root.overlayMode
+    translucentOpacity: 0.80
 
     ColumnLayout {
         anchors.fill: parent
@@ -191,36 +195,5 @@ VcCard {
             }
         }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.leftMargin: 14
-            Layout.rightMargin: 14
-            Layout.bottomMargin: 14
-            spacing: 8
-
-            MetricTile {
-                Layout.fillWidth: true
-                theme: root.theme
-                iconName: "target"
-                value: root.uiState.fps.toString()
-                label: "FPS"
-            }
-
-            MetricTile {
-                Layout.fillWidth: true
-                theme: root.theme
-                iconName: "monitor"
-                value: root.uiState.resolution
-                label: "Resolution"
-            }
-
-            MetricTile {
-                Layout.fillWidth: true
-                theme: root.theme
-                iconName: "play"
-                value: root.uiState.latencyMs + " ms"
-                label: "Latency"
-            }
-        }
     }
 }

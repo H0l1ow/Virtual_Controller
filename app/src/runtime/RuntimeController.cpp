@@ -1,13 +1,15 @@
 #include "runtime/RuntimeController.hpp"
 
+#include "tracking/HandIdentityStabilizer.hpp"
 #include "tracking/MediaPipeTracker.hpp"
 
 #include <QCoreApplication>
+#include <QDebug>
 #include <QFileInfo>
 #include <QImage>
-#include <QDebug>
 #include <QMetaObject>
 #include <QVariantMap>
+#include <QVideoFrameFormat>
 #include <QVideoSink>
 #include <QtGlobal>
 
@@ -21,93 +23,6 @@
 
 namespace vc {
 
-
-// ============================================================================
-// LatestFrameSlot
-// ============================================================================
-
-void LatestFrameSlot::publish(
-    VideoPacket packet)
-{
-    {
-        std::lock_guard lock(mutex_);
-
-        if (closed_) {
-            return;
-        }
-
-        // Replace the previous waiting frame.
-        //
-        // We intentionally do not build a frame queue because for interactive
-        // control the newest frame is more useful than an old frame.
-        packet_ =
-            std::move(packet);
-    }
-
-    condition_.notify_one();
-}
-
-
-std::optional<VideoPacket>
-LatestFrameSlot::take(
-    std::chrono::milliseconds timeout)
-{
-    std::unique_lock lock(mutex_);
-
-    condition_.wait_for(
-        lock,
-        timeout,
-        [this] {
-            return closed_
-                   || packet_.has_value();
-        });
-
-
-    if (!packet_) {
-        return std::nullopt;
-    }
-
-
-    auto result =
-        std::move(packet_);
-
-    packet_.reset();
-
-    return result;
-}
-
-
-void LatestFrameSlot::close()
-{
-    {
-        std::lock_guard lock(mutex_);
-
-        if (closed_) {
-            return;
-        }
-
-        closed_ = true;
-
-        // Do not allow a stale frame to be processed after STOP.
-        packet_.reset();
-    }
-
-    condition_.notify_all();
-}
-
-
-bool LatestFrameSlot::isClosed()
-{
-    std::lock_guard lock(mutex_);
-
-    return closed_;
-}
-
-
-// ============================================================================
-// RuntimeController
-// ============================================================================
-
 RuntimeController::RuntimeController(
     QObject *parent)
     : QObject(parent)
@@ -117,38 +32,26 @@ RuntimeController::RuntimeController(
 {
     refreshDevices();
 
-
     connect(
         &mediaDevices_,
         &QMediaDevices::videoInputsChanged,
         this,
         [this] {
-            if (pipelineRunning_) {
-                stop();
+            if (pipelineRunning()) {
+                requestSessionStop(
+                    RuntimeState::Stopped);
             }
 
             refreshDevices();
         });
 
-
     statsTimer_.setInterval(500);
-
 
     connect(
         &statsTimer_,
         &QTimer::timeout,
         this,
         &RuntimeController::updateStats);
-
-
-    // --------------------------------------------------------------------
-    // Create exactly one system worker thread.
-    //
-    // It remains alive for the entire RuntimeController lifetime.
-    //
-    // Start/Stop will create and destroy MediaPipeTracker instances inside
-    // this thread, but will NOT create/destroy the system thread itself.
-    // --------------------------------------------------------------------
 
     workerExitState_ =
         std::make_shared<WorkerExitState>();
@@ -161,12 +64,8 @@ RuntimeController::RuntimeController(
             [this, workerExitState](
                 std::stop_token stopToken) {
 
-                workerLoop(
-                    stopToken);
+                workerLoop(stopToken);
 
-                // From this point onward the native worker thread no longer
-                // accesses RuntimeController. Signal through an object whose
-                // lifetime is independent from RuntimeController itself.
                 {
                     std::lock_guard lock(
                         workerExitState->mutex);
@@ -180,43 +79,28 @@ RuntimeController::RuntimeController(
             });
 }
 
-
 RuntimeController::~RuntimeController()
 {
-    // main() performs the bounded shutdown before normal object destruction.
-    // In the regular path worker_ is already detached here and this call is
-    // effectively a no-op.  Keep a long fallback for non-main owners rather
-    // than reintroducing an unbounded destructor wait.
     if (!shutdownForExit(
             std::chrono::seconds(5))) {
-
-        // It is unsafe to continue destroying this QObject while workerLoop()
-        // may still be using `this`.  The process-level shutdown path in
-        // main.cpp prevents reaching this branch during normal application
-        // exit.  If a future owner destroys RuntimeController elsewhere,
-        // terminate rather than returning into a use-after-free.
         std::terminate();
     }
 }
-
 
 bool RuntimeController::shutdownForExit(
     std::chrono::milliseconds timeout)
 {
     qInfo() << "[shutdown] shutdownForExit begin";
 
-    // First stop camera + current tracking session. stop() intentionally does
-    // not wait for MediaPipe, so it remains suitable for the normal Stop UI.
-    stop();
+    if (pipelineRunning()) {
+        requestSessionStop(
+            RuntimeState::Stopped);
+    }
 
-
-    // Cancel a session that has not yet been picked up by the worker.
     {
-        std::lock_guard lock(
-            workerMutex_);
+        std::lock_guard lock(workerMutex_);
 
         if (pendingWorkerSession_) {
-
             if (pendingWorkerSession_->inbox) {
                 pendingWorkerSession_
                     ->inbox
@@ -227,25 +111,18 @@ bool RuntimeController::shutdownForExit(
         }
     }
 
-
-    // Disconnect the QML VideoOutput while the QML engine is still alive.
-    captureSession_.setVideoOutput(
-        nullptr);
-
+    captureSession_.setVideoOutput(nullptr);
 
     if (!worker_.joinable()) {
         qInfo() << "[shutdown] worker already not joinable";
         return true;
     }
 
-
     worker_.request_stop();
     workerCondition_.notify_all();
 
-
     const auto workerExitState =
         workerExitState_;
-
 
     bool exited = false;
 
@@ -264,278 +141,242 @@ bool RuntimeController::shutdownForExit(
                     });
     }
 
-
     if (!exited) {
         qWarning() << "[shutdown] worker exit timeout";
         return false;
     }
 
-
-    // The latch is set only after workerLoop() has returned, so the worker no
-    // longer accesses RuntimeController.  Do not join here: some Windows ML
-    // runtimes can still spend an unbounded amount of time in native/TLS
-    // thread teardown after the C++ worker function has logically finished.
+    // The worker function has returned and no longer accesses this QObject.
+    // Keep the previous bounded-shutdown protection against native/TLS thread
+    // teardown that can outlive the C++ worker function on Windows.
     worker_.detach();
 
     qInfo() << "[shutdown] shutdownForExit end";
     return true;
 }
 
-
-// ============================================================================
-// Camera / format names
-// ============================================================================
-
-QStringList RuntimeController::formatNames() const
+QStringList RuntimeController::cameraNames() const
 {
     QStringList names;
+    names.reserve(cameras_.size());
 
-    names.reserve(
-        formats_.size());
-
-
-    for (const auto &format
-         : formats_) {
-
-        const auto size =
-            format.resolution();
-
-
-        names.append(
-            QStringLiteral(
-                "%1 x %2 @ %3 FPS")
-                .arg(
-                    size.width())
-                .arg(
-                    size.height())
-                .arg(
-                    qRound(
-                        format.maxFrameRate())));
+    for (const auto &camera : cameras_) {
+        names.append(camera.description());
     }
-
 
     return names;
 }
 
+QStringList RuntimeController::formatNames() const
+{
+    QStringList names;
+    names.reserve(formats_.size());
 
-// ============================================================================
-// Tracking status
-// ============================================================================
+    for (const auto &format : formats_) {
+        const auto size = format.resolution();
+
+        const QString pixelFormat =
+            QVideoFrameFormat::pixelFormatToString(
+                format.pixelFormat());
+
+        names.append(
+            QStringLiteral(
+                "%1 x %2 @ %3 FPS | %4")
+                .arg(size.width())
+                .arg(size.height())
+                .arg(qRound(format.maxFrameRate()))
+                .arg(pixelFormat));
+    }
+
+    return names;
+}
+
+QString RuntimeController::runtimeStateName() const
+{
+    switch (runtimeState_) {
+    case RuntimeState::Stopped:
+        return QStringLiteral("Stopped");
+    case RuntimeState::Starting:
+        return QStringLiteral("Starting");
+    case RuntimeState::Running:
+        return QStringLiteral("Running");
+    case RuntimeState::Stopping:
+        return QStringLiteral("Stopping");
+    case RuntimeState::Faulted:
+        return QStringLiteral("Faulted");
+    }
+
+    return QStringLiteral("Unknown");
+}
 
 QString RuntimeController::trackingStatus() const
 {
-    if (!pipelineRunning_) {
-        return QStringLiteral(
-            "Stopped");
+    if (runtimeState_ == RuntimeState::Faulted) {
+        return QStringLiteral("Error");
     }
 
-
-    if (!errorMessage_.isEmpty()) {
-        return QStringLiteral(
-            "Error");
+    if (runtimeState_ == RuntimeState::Stopped) {
+        return QStringLiteral("Stopped");
     }
 
-
-    if (!trackerReady_) {
-        return QStringLiteral(
-            "Starting");
+    if (runtimeState_ == RuntimeState::Stopping) {
+        return QStringLiteral("Stopping");
     }
 
+    if (runtimeState_ == RuntimeState::Starting
+        || !trackerReady_) {
+        return QStringLiteral("Starting");
+    }
 
     const auto lastFrameUs =
-        lastFrameReceivedUs_.load();
+        metricsSnapshot_.lastFrameReceivedUs;
 
-
-    if (lastFrameUs > 0
-        && nowUs() - lastFrameUs
-               > 500000) {
-
-        return QStringLiteral(
-            "No frames");
+    if (lastFrameUs <= 0) {
+        return QStringLiteral("Waiting for frames");
     }
 
-
-    if (leftTracked_
-        && rightTracked_) {
-
-        return QStringLiteral(
-            "Stable");
+    if (nowUs() - lastFrameUs > 500000) {
+        return QStringLiteral("No frames");
     }
 
-
-    if (leftTracked_
-        || rightTracked_) {
-
-        return QStringLiteral(
-            "Degraded");
+    if (leftTracked_ && rightTracked_) {
+        return QStringLiteral("Stable");
     }
 
+    if (leftTracked_ || rightTracked_) {
+        return QStringLiteral("Degraded");
+    }
 
-    return QStringLiteral(
-        "No hands");
+    return QStringLiteral("No hands");
 }
 
+void RuntimeController::setRuntimeState(
+    RuntimeState state)
+{
+    if (runtimeState_ == state) {
+        return;
+    }
 
-// ============================================================================
-// Settings
-// ============================================================================
+    qInfo()
+        << "[runtime] state"
+        << runtimeStateName()
+        << "->";
+
+    runtimeState_ = state;
+
+    qInfo()
+        << "[runtime] state now"
+        << runtimeStateName();
+
+    emit stateChanged();
+}
+
+void RuntimeController::failWithoutSession(
+    const QString &message)
+{
+    errorMessage_ = message;
+    trackerReady_ = false;
+    cameraRunning_ = false;
+    clearTracking();
+    metricsSnapshot_ = {};
+
+    setRuntimeState(
+        RuntimeState::Faulted);
+
+    emit stateChanged();
+    maybeEmitApplicationExitReady();
+}
 
 void RuntimeController::setDetectionConfidence(
     int value)
 {
-    value =
-        std::clamp(
-            value,
-            0,
-            100);
+    value = std::clamp(value, 0, 100);
 
-
-    if (detectionConfidence_
-        == value) {
-
+    if (detectionConfidence_ == value) {
         return;
     }
 
-
-    detectionConfidence_ =
-        value;
-
-
+    detectionConfidence_ = value;
     emit settingsChanged();
 }
-
 
 void RuntimeController::setTrackingConfidence(
     int value)
 {
-    value =
-        std::clamp(
-            value,
-            0,
-            100);
+    value = std::clamp(value, 0, 100);
 
-
-    if (trackingConfidence_
-        == value) {
-
+    if (trackingConfidence_ == value) {
         return;
     }
 
-
-    trackingConfidence_ =
-        value;
-
-
+    trackingConfidence_ = value;
     emit settingsChanged();
 }
-
 
 void RuntimeController::setSwapHandedness(
     bool value)
 {
-    if (swapHandedness_.exchange(
-            value)
-        == value) {
-
+    if (swapHandedness_.exchange(value) == value) {
         return;
     }
-
 
     emit settingsChanged();
 }
 
-
-// ============================================================================
-// Devices
-// ============================================================================
-
 void RuntimeController::refreshDevices()
 {
-    cameras_ =
-        QMediaDevices::videoInputs();
-
+    cameras_ = QMediaDevices::videoInputs();
 
     if (cameras_.isEmpty()) {
-
         cameraIndex_ = 0;
         formatIndex_ = 0;
-
         formats_.clear();
-
-        resolution_ =
-            QStringLiteral("-");
-
+        resolution_ = QStringLiteral("-");
 
         emit devicesChanged();
         emit stateChanged();
-
         return;
     }
-
 
     cameraIndex_ =
         std::clamp(
             cameraIndex_,
             0,
             static_cast<int>(
-                cameras_.size())
-                - 1);
-
+                cameras_.size()) - 1);
 
     refreshFormats();
-
-
     emit devicesChanged();
 }
-
 
 void RuntimeController::refreshFormats()
 {
     formats_.clear();
-
     formatIndex_ = 0;
 
-
     if (cameras_.isEmpty()) {
-
-        resolution_ =
-            QStringLiteral("-");
-
+        resolution_ = QStringLiteral("-");
         return;
     }
-
 
     formats_ =
         cameras_[cameraIndex_]
             .videoFormats();
 
-
-    // Prefer a practical tracking default:
-    // approximately 1280x720 @ 30 FPS.
     std::sort(
         formats_.begin(),
         formats_.end(),
-        [](
-            const QCameraFormat &a,
-            const QCameraFormat &b) {
+        [](const QCameraFormat &a,
+           const QCameraFormat &b) {
 
             const auto score =
-                [](
-                    const QCameraFormat &format) {
-
+                [](const QCameraFormat &format) {
                     const auto size =
                         format.resolution();
 
-
                     const int resolutionPenalty =
-                        std::abs(
-                            size.width()
-                            - 1280)
-                        +
-                        std::abs(
-                            size.height()
-                            - 720);
-
+                        std::abs(size.width() - 1280)
+                        + std::abs(size.height() - 720);
 
                     const int fpsPenalty =
                         qRound(
@@ -544,67 +385,42 @@ void RuntimeController::refreshFormats()
                                 - 30.0F)
                             * 12.0F);
 
-
                     return resolutionPenalty
-                           + fpsPenalty;
+                        + fpsPenalty;
                 };
 
-
-            return score(a)
-                   < score(b);
+            return score(a) < score(b);
         });
 
-
     if (!formats_.isEmpty()) {
-
         const auto size =
-            formats_.front()
-                .resolution();
-
+            formats_.front().resolution();
 
         resolution_ =
-            QStringLiteral(
-                "%1 x %2")
-                .arg(
-                    size.width())
-                .arg(
-                    size.height());
-
-    } else {
-
-        resolution_ =
-            QStringLiteral(
-                "Default");
+            QStringLiteral("%1 x %2")
+                .arg(size.width())
+                .arg(size.height());
+    }
+    else {
+        resolution_ = QStringLiteral("Default");
     }
 }
-
-
-// ============================================================================
-// VideoOutput
-// ============================================================================
 
 void RuntimeController::attachVideoOutput(
     QObject *output)
 {
     if (!output) {
-
-        if (pipelineRunning_) {
-            stop();
+        if (pipelineRunning()) {
+            requestSessionStop(
+                RuntimeState::Stopped);
         }
 
-
         videoOutput_.clear();
-
-
-        captureSession_.setVideoOutput(
-            nullptr);
-
-
+        captureSession_.setVideoOutput(nullptr);
         return;
     }
 
-
-    if (pipelineRunning_
+    if (pipelineRunning()
         && videoOutput_ != output) {
 
         errorMessage_ =
@@ -612,164 +428,97 @@ void RuntimeController::attachVideoOutput(
                 "Stop tracking before replacing "
                 "the video output.");
 
-
         emit stateChanged();
-
         return;
     }
 
-
-    videoOutput_ =
-        output;
-
-
-    captureSession_.setVideoOutput(
-        output);
+    videoOutput_ = output;
+    captureSession_.setVideoOutput(output);
 }
-
-
-// ============================================================================
-// Camera selection
-// ============================================================================
 
 void RuntimeController::selectCamera(
     int index)
 {
-    if (pipelineRunning_
+    if (pipelineRunning()
         || index < 0
-        || index
-               >= static_cast<int>(
-                   cameras_.size())) {
-
+        || index >= static_cast<int>(
+            cameras_.size())) {
         return;
     }
 
-
-    if (cameraIndex_
-        == index) {
-
+    if (cameraIndex_ == index) {
         return;
     }
 
-
-    cameraIndex_ =
-        index;
-
-
+    cameraIndex_ = index;
     refreshFormats();
-
 
     emit devicesChanged();
     emit stateChanged();
 }
 
-
 void RuntimeController::selectFormat(
     int index)
 {
-    if (pipelineRunning_
+    if (pipelineRunning()
         || index < 0
-        || index
-               >= static_cast<int>(
-                   formats_.size())) {
-
+        || index >= static_cast<int>(
+            formats_.size())) {
         return;
     }
 
-
-    if (formatIndex_
-        == index) {
-
+    if (formatIndex_ == index) {
         return;
     }
 
-
-    formatIndex_ =
-        index;
-
+    formatIndex_ = index;
 
     const auto size =
         formats_[formatIndex_]
             .resolution();
 
-
     resolution_ =
-        QStringLiteral(
-            "%1 x %2")
-            .arg(
-                size.width())
-            .arg(
-                size.height());
-
+        QStringLiteral("%1 x %2")
+            .arg(size.width())
+            .arg(size.height());
 
     emit devicesChanged();
     emit stateChanged();
 }
 
-
-// ============================================================================
-// MediaPipe paths
-// ============================================================================
-
 QString RuntimeController::mediaPipeLibraryPath() const
 {
 #ifdef _WIN32
-
-    constexpr auto libraryName =
-        "libmediapipe.dll";
-
+    constexpr auto libraryName = "libmediapipe.dll";
 #elif defined(__APPLE__)
-
-    constexpr auto libraryName =
-        "libmediapipe.dylib";
-
+    constexpr auto libraryName = "libmediapipe.dylib";
 #else
-
-    constexpr auto libraryName =
-        "libmediapipe.so";
-
+    constexpr auto libraryName = "libmediapipe.so";
 #endif
-
 
     const QString besideExecutable =
         QCoreApplication::applicationDirPath()
-        + QStringLiteral(
-            "/native/")
-        + QString::fromLatin1(
-            libraryName);
+        + QStringLiteral("/native/")
+        + QString::fromLatin1(libraryName);
 
-
-    if (QFileInfo::exists(
-            besideExecutable)) {
-
+    if (QFileInfo::exists(besideExecutable)) {
         return besideExecutable;
     }
-
 
     const QString configured =
         QString::fromUtf8(
             VC_MEDIAPIPE_ROOT_PATH)
         + QLatin1Char('/')
-        + QString::fromLatin1(
-            libraryName);
+        + QString::fromLatin1(libraryName);
 
-
-    if (QFileInfo::exists(
-            configured)) {
-
+    if (QFileInfo::exists(configured)) {
         return configured;
     }
 
-
-    return
-        QString::fromUtf8(
-            VC_SOURCE_ROOT)
-        + QStringLiteral(
-            "/deps/mediapipe/")
-        + QString::fromLatin1(
-            libraryName);
+    return QString::fromUtf8(VC_SOURCE_ROOT)
+        + QStringLiteral("/deps/mediapipe/")
+        + QString::fromLatin1(libraryName);
 }
-
 
 QString RuntimeController::handLandmarkerModelPath() const
 {
@@ -778,285 +527,173 @@ QString RuntimeController::handLandmarkerModelPath() const
         + QStringLiteral(
             "/models/hand_landmarker.task");
 
-
-    if (QFileInfo::exists(
-            besideExecutable)) {
-
+    if (QFileInfo::exists(besideExecutable)) {
         return besideExecutable;
     }
-
 
     const QString configured =
         QString::fromUtf8(
             VC_HAND_LANDMARKER_MODEL_PATH);
 
-
-    if (QFileInfo::exists(
-            configured)) {
-
+    if (QFileInfo::exists(configured)) {
         return configured;
     }
 
-
-    return
-        QString::fromUtf8(
-            VC_SOURCE_ROOT)
+    return QString::fromUtf8(VC_SOURCE_ROOT)
         + QStringLiteral(
             "/models/hand_landmarker.task");
 }
 
-
-// ============================================================================
-// START
-// ============================================================================
-
 void RuntimeController::start()
 {
-    if (pipelineRunning_) {
+    if (!canStart()) {
         return;
     }
-
 
     errorMessage_.clear();
 
-
-    // --------------------------------------------------------------------
-    // Validate dependencies before changing runtime state.
-    // --------------------------------------------------------------------
-
     if (cameras_.isEmpty()) {
-
-        errorMessage_ =
+        failWithoutSession(
             QStringLiteral(
                 "No camera detected. "
-                "Check Windows camera permissions.");
-
-
-        emit stateChanged();
-
+                "Check Windows camera permissions."));
         return;
     }
-
 
     if (!videoOutput_) {
-
-        errorMessage_ =
+        failWithoutSession(
             QStringLiteral(
-                "Camera preview is not attached yet.");
-
-
-        emit stateChanged();
-
+                "Camera preview is not attached yet."));
         return;
     }
-
 
     const QString libraryPath =
         mediaPipeLibraryPath();
 
-
     const QString modelPath =
         handLandmarkerModelPath();
 
-
-    if (!QFileInfo::exists(
-            libraryPath)) {
-
-        errorMessage_ =
+    if (!QFileInfo::exists(libraryPath)) {
+        failWithoutSession(
             QStringLiteral(
                 "Missing MediaPipe runtime: %1")
-                .arg(
-                    libraryPath);
-
-
-        emit stateChanged();
-
+                .arg(libraryPath));
         return;
     }
 
-
-    if (!QFileInfo::exists(
-            modelPath)) {
-
-        errorMessage_ =
+    if (!QFileInfo::exists(modelPath)) {
+        failWithoutSession(
             QStringLiteral(
                 "Missing hand_landmarker.task: %1")
-                .arg(
-                    modelPath);
-
-
-        emit stateChanged();
-
+                .arg(modelPath));
         return;
     }
-
 
     auto *videoSink =
         captureSession_.videoSink();
 
-
     if (!videoSink) {
-
-        errorMessage_ =
+        failWithoutSession(
             QStringLiteral(
                 "VideoOutput did not expose "
-                "a QVideoSink.");
-
-
-        emit stateChanged();
-
+                "a QVideoSink."));
         return;
     }
 
-
-    // --------------------------------------------------------------------
-    // Prepare GUI/runtime state.
-    // --------------------------------------------------------------------
-
     clearTracking();
-
+    metricsSnapshot_ = {};
 
     trackerReady_ = false;
     cameraRunning_ = false;
-    pipelineRunning_ = true;
-
-
-    fps_ = 0;
-    latencyMs_ = 0;
-
-
-    receivedFrames_.store(0);
-    processedFrames_.store(0);
-    lastFrameReceivedUs_.store(0);
-
-
-    lastFpsSampleCount_ = 0;
-
-
-    statsClock_.restart();
-
+    terminalStateAfterStop_ =
+        RuntimeState::Stopped;
 
     const std::uint64_t generation =
         ++generation_;
 
-
-    activeGeneration_.store(
-        generation);
-
-
-    // Every tracking session gets a fresh mailbox.
-    //
-    // close() is intentionally terminal for LatestFrameSlot, therefore a
-    // new slot is created on every Start.
     inbox_ =
-        std::make_shared<
-            LatestFrameSlot>();
+        std::make_shared<LatestFrameSlot>();
 
+    metrics_ =
+        std::make_shared<RuntimeMetrics>();
 
-    std::weak_ptr<LatestFrameSlot>
-        weakInbox =
+    std::weak_ptr<LatestFrameSlot> weakInbox =
         inbox_;
 
+    std::weak_ptr<RuntimeMetrics> weakMetrics =
+        metrics_;
 
-    // --------------------------------------------------------------------
-    // Camera frame callback.
-    //
-    // Do not perform frame conversion or MediaPipe inference here.
-    // --------------------------------------------------------------------
+    setRuntimeState(
+        RuntimeState::Starting);
 
     frameConnection_ =
         connect(
             videoSink,
             &QVideoSink::videoFrameChanged,
             this,
-            [this, weakInbox](
+            [weakInbox, weakMetrics](
                 const QVideoFrame &frame) {
 
                 if (!frame.isValid()) {
                     return;
                 }
 
-
                 const auto inbox =
                     weakInbox.lock();
 
+                const auto metrics =
+                    weakMetrics.lock();
 
-                if (!inbox) {
+                if (!inbox || !metrics
+                    || inbox->isClosed()) {
                     return;
                 }
 
-
-                if (inbox->isClosed()) {
-                    return;
-                }
-
-
-                const auto captureUs =
-                    nowUs();
-
+                const auto captureUs = nowUs();
 
                 const auto sequence =
-                    receivedFrames_
-                        .fetch_add(1)
-                    + 1;
-
-
-                lastFrameReceivedUs_
-                    .store(
+                    metrics->recordFrameReceived(
                         captureUs);
 
+                const auto publishResult =
+                    inbox->publish({
+                        frame,
+                        captureUs,
+                        sequence
+                    });
 
-                inbox->publish({
-                    frame,
-                    captureUs,
-                    sequence
-                });
+                if (publishResult
+                    == LatestFrameSlot::PublishResult::Replaced) {
+                    metrics->recordFrameReplaced();
+                }
             },
             Qt::DirectConnection);
-
-
-    // --------------------------------------------------------------------
-    // Camera
-    // --------------------------------------------------------------------
 
     camera_ =
         std::make_unique<QCamera>(
             cameras_[cameraIndex_]);
 
-
     if (!formats_.isEmpty()) {
-
         camera_->setCameraFormat(
             formats_[formatIndex_]);
     }
 
-
     captureSession_.setCamera(
         camera_.get());
-
 
     cameraActiveConnection_ =
         connect(
             camera_.get(),
             &QCamera::activeChanged,
             this,
-            [this, generation](
-                bool active) {
-
-                if (generation
-                    != generation_) {
-
+            [this, generation](bool active) {
+                if (generation != generation_) {
                     return;
                 }
 
-
-                cameraRunning_ =
-                    active;
-
-
+                cameraRunning_ = active;
                 emit stateChanged();
             });
-
 
     cameraErrorConnection_ =
         connect(
@@ -1067,763 +704,607 @@ void RuntimeController::start()
                 QCamera::Error error,
                 const QString &message) {
 
-                if (generation
-                        != generation_
-                    || error
-                           == QCamera::NoError) {
-
+                if (generation != generation_
+                    || error == QCamera::NoError) {
                     return;
                 }
 
-
-                errorMessage_ =
+                const QString resolved =
                     message.isEmpty()
-                        ? QStringLiteral(
-                              "Camera error")
-                        : message;
+                    ? QStringLiteral("Camera error")
+                    : message;
 
-
-                emit stateChanged();
-
-
-                // Never destroy the camera directly from its own signal.
                 QMetaObject::invokeMethod(
                     this,
-                    [this, generation] {
-
-                        if (generation
-                            == generation_) {
-
-                            stop();
+                    [this, generation, resolved] {
+                        if (generation == generation_) {
+                            errorMessage_ = resolved;
+                            requestSessionStop(
+                                RuntimeState::Faulted);
                         }
                     },
                     Qt::QueuedConnection);
             });
 
-
-    // --------------------------------------------------------------------
-    // Submit tracking session to the persistent worker.
-    // --------------------------------------------------------------------
-
     WorkerSession session;
-
-    session.inbox =
-        inbox_;
-
-    session.libraryPath =
-        libraryPath;
-
-    session.modelPath =
-        modelPath;
-
+    session.inbox = inbox_;
+    session.metrics = metrics_;
+    session.libraryPath = libraryPath;
+    session.modelPath = modelPath;
     session.detectionConfidence =
         static_cast<float>(
             detectionConfidence_)
         / 100.0F;
-
     session.trackingConfidence =
         static_cast<float>(
             trackingConfidence_)
         / 100.0F;
-
-    session.generation =
-        generation;
-
+    session.generation = generation;
 
     {
-        std::lock_guard lock(
-            workerMutex_);
+        std::lock_guard lock(workerMutex_);
 
-
-        // Normally there should be no pending session here.
-        //
-        // Still, if the user performs an extremely fast Stop -> Start ->
-        // Start sequence, replacing a not-yet-started request is safer than
-        // starting an obsolete tracker.
+        // Lifecycle rules allow only one requested/active session. If this is
+        // ever hit, drop the stale pending request rather than running it.
         if (pendingWorkerSession_) {
-
-            if (pendingWorkerSession_
-                    ->inbox) {
-
+            if (pendingWorkerSession_->inbox) {
                 pendingWorkerSession_
                     ->inbox
                     ->close();
             }
 
-
-            pendingWorkerSession_
-                .reset();
+            pendingWorkerSession_.reset();
         }
-
 
         pendingWorkerSession_ =
             std::move(session);
     }
 
+    workerCondition_.notify_one();
 
-    workerCondition_
-        .notify_one();
-
-
-    // Start camera after the worker request has been submitted.
-    //
-    // It is fine if frames arrive while MediaPipe is initializing:
-    // LatestFrameSlot will retain only the newest one.
     camera_->start();
-
-
     statsTimer_.start();
-
 
     emit stateChanged();
 }
 
-
-// ============================================================================
-// STOP
-// ============================================================================
-
-void RuntimeController::stop()
+void RuntimeController::teardownCameraAndFramePath(
+    const std::shared_ptr<LatestFrameSlot> &stoppingInbox)
 {
-    qInfo() << "[shutdown] RuntimeController::stop begin";
-
-    // --------------------------------------------------------------------
-    // Invalidate all queued results from the previous session immediately.
-    // --------------------------------------------------------------------
-
-    ++generation_;
-
-    activeGeneration_.store(0);
-
-    pipelineRunning_ = false;
-    trackerReady_ = false;
-
-
-    // --------------------------------------------------------------------
-    // Stop handing Qt Multimedia buffers to the worker FIRST.
-    //
-    // A QVideoFrame may reference a backend-owned Media Foundation buffer.
-    // The previous implementation stopped/destroyed QCamera before closing
-    // the mailbox, so a queued frame could still pin that backend resource
-    // during camera teardown.
-    // --------------------------------------------------------------------
-
-    disconnect(
-        frameConnection_);
-
-
-    const auto stoppingInbox =
-        inbox_;
-
+    disconnect(frameConnection_);
 
     if (stoppingInbox) {
         stoppingInbox->close();
     }
 
-
-    {
-        std::lock_guard lock(
-            workerMutex_);
-
-
-        // If the worker has not picked this session up yet, remove the
-        // pending request completely.
-        if (pendingWorkerSession_
-            && pendingWorkerSession_->inbox
-                   == stoppingInbox) {
-
-            pendingWorkerSession_
-                ->inbox
-                ->close();
-
-            pendingWorkerSession_
-                .reset();
-        }
-    }
-
-
-    workerCondition_
-        .notify_all();
-
-
-    inbox_.reset();
-
-
-    // --------------------------------------------------------------------
-    // Now release the camera backend.
-    // --------------------------------------------------------------------
-
-    disconnect(
-        cameraActiveConnection_);
-
-    disconnect(
-        cameraErrorConnection_);
-
+    disconnect(cameraActiveConnection_);
+    disconnect(cameraErrorConnection_);
 
     if (camera_) {
-        qInfo() << "[shutdown] stopping QCamera";
         camera_->stop();
-        qInfo() << "[shutdown] QCamera::stop returned";
     }
 
-
-    qInfo() << "[shutdown] detaching QCamera from capture session";
-    captureSession_.setCamera(
-        nullptr);
-    qInfo() << "[shutdown] QMediaCaptureSession::setCamera(nullptr) returned";
-
-
+    captureSession_.setCamera(nullptr);
     camera_.reset();
-    qInfo() << "[shutdown] QCamera destroyed";
-
-
     cameraRunning_ = false;
+}
 
+void RuntimeController::requestSessionStop(
+    RuntimeState terminalState)
+{
+    if (runtimeState_ == RuntimeState::Stopped) {
+        if (terminalState == RuntimeState::Faulted) {
+            setRuntimeState(RuntimeState::Faulted);
+        }
 
-    // --------------------------------------------------------------------
-    // Reset public runtime state immediately.
-    // --------------------------------------------------------------------
+        maybeEmitApplicationExitReady();
+        return;
+    }
 
+    if (runtimeState_ == RuntimeState::Faulted) {
+        maybeEmitApplicationExitReady();
+        return;
+    }
+
+    if (runtimeState_ == RuntimeState::Stopping) {
+        if (terminalState == RuntimeState::Faulted) {
+            terminalStateAfterStop_ =
+                RuntimeState::Faulted;
+        }
+
+        return;
+    }
+
+    terminalStateAfterStop_ = terminalState;
+    trackerReady_ = false;
+
+    setRuntimeState(
+        RuntimeState::Stopping);
+
+    const std::uint64_t stoppingGeneration =
+        generation_;
+
+    const auto stoppingInbox = inbox_;
+
+    teardownCameraAndFramePath(
+        stoppingInbox);
+
+    bool workerOwnsSession = false;
+
+    {
+        std::lock_guard lock(workerMutex_);
+
+        if (pendingWorkerSession_
+            && pendingWorkerSession_->generation
+                   == stoppingGeneration) {
+
+            if (pendingWorkerSession_->inbox) {
+                pendingWorkerSession_
+                    ->inbox
+                    ->close();
+            }
+
+            pendingWorkerSession_.reset();
+        }
+
+        workerOwnsSession =
+            activeWorkerGeneration_
+                .has_value()
+            && *activeWorkerGeneration_
+                   == stoppingGeneration;
+    }
+
+    workerCondition_.notify_all();
+
+    inbox_.reset();
     statsTimer_.stop();
-
-
-    fps_ = 0;
-    latencyMs_ = 0;
-
-
-    lastFrameReceivedUs_
-        .store(0);
-
-
     clearTracking();
-
 
     emit stateChanged();
 
-    qInfo() << "[shutdown] RuntimeController::stop end";
+    if (!workerOwnsSession) {
+        finalizeSessionStop(
+            stoppingGeneration);
+    }
 }
 
+void RuntimeController::finalizeSessionStop(
+    std::uint64_t generation)
+{
+    if (generation != generation_
+        || runtimeState_
+               != RuntimeState::Stopping) {
+        return;
+    }
 
-// ============================================================================
-// Toggle
-// ============================================================================
+    trackerReady_ = false;
+    cameraRunning_ = false;
+    metrics_.reset();
+    metricsSnapshot_ = {};
+    clearTracking();
+
+    const RuntimeState terminalState =
+        terminalStateAfterStop_;
+
+    if (terminalState == RuntimeState::Stopped) {
+        errorMessage_.clear();
+    }
+
+    setRuntimeState(terminalState);
+    emit stateChanged();
+
+    maybeEmitApplicationExitReady();
+}
+
+void RuntimeController::handleWorkerFault(
+    std::uint64_t generation,
+    const QString &message)
+{
+    if (generation != generation_
+        || (runtimeState_ != RuntimeState::Starting
+            && runtimeState_ != RuntimeState::Running)) {
+        return;
+    }
+
+    errorMessage_ = message;
+    requestSessionStop(
+        RuntimeState::Faulted);
+}
+
+void RuntimeController::handleWorkerSessionFinished(
+    std::uint64_t generation)
+{
+    if (generation != generation_) {
+        return;
+    }
+
+    if (runtimeState_ == RuntimeState::Stopping) {
+        finalizeSessionStop(generation);
+    }
+}
+
+void RuntimeController::stop()
+{
+    requestSessionStop(
+        RuntimeState::Stopped);
+}
 
 void RuntimeController::togglePipeline()
 {
-    if (pipelineRunning_) {
+    if (canStop()) {
         stop();
-    } else {
+    }
+    else if (canStart()) {
         start();
     }
 }
 
-
 void RuntimeController::requestApplicationExit()
 {
-    qInfo() << "[shutdown] application exit requested from QML";
+    if (exitRequested_) {
+        return;
+    }
+
+    exitRequested_ = true;
     emit applicationExitRequested();
+
+    if (canStop()) {
+        requestSessionStop(
+            RuntimeState::Stopped);
+        return;
+    }
+
+    if (runtimeState_ != RuntimeState::Stopping) {
+        maybeEmitApplicationExitReady();
+    }
 }
 
+void RuntimeController::maybeEmitApplicationExitReady()
+{
+    if (!exitRequested_) {
+        return;
+    }
 
-// ============================================================================
-// Persistent worker
-// ============================================================================
+    if (runtimeState_ != RuntimeState::Stopped
+        && runtimeState_ != RuntimeState::Faulted) {
+        return;
+    }
+
+    exitRequested_ = false;
+    emit applicationExitReady();
+}
 
 void RuntimeController::workerLoop(
     std::stop_token stopToken)
 {
     while (!stopToken.stop_requested()) {
-
-        std::optional<WorkerSession>
-            session;
-
-
-        // ----------------------------------------------------------------
-        // IDLE state.
-        //
-        // The OS thread remains alive here between Start/Stop cycles.
-        // ----------------------------------------------------------------
+        std::optional<WorkerSession> session;
 
         {
-            std::unique_lock lock(
-                workerMutex_);
-
+            std::unique_lock lock(workerMutex_);
 
             workerCondition_.wait(
                 lock,
                 [this, &stopToken] {
-
-                    return
-                        stopToken
-                            .stop_requested()
-                        ||
-                        pendingWorkerSession_
+                    return stopToken.stop_requested()
+                        || pendingWorkerSession_
                             .has_value();
                 });
 
-
-            if (stopToken
-                    .stop_requested()) {
-
+            if (stopToken.stop_requested()) {
                 break;
             }
-
 
             session =
                 std::move(
                     pendingWorkerSession_);
 
+            pendingWorkerSession_.reset();
 
-            pendingWorkerSession_
-                .reset();
+            if (session) {
+                activeWorkerGeneration_ =
+                    session->generation;
+            }
         }
 
-
-        if (!session
-            || !session->inbox) {
-
+        if (!session || !session->inbox) {
+            std::lock_guard lock(workerMutex_);
+            activeWorkerGeneration_.reset();
             continue;
         }
-
-
-        // The user may have pressed STOP before the worker even managed to
-        // create MediaPipeTracker.
-        if (session->inbox
-                ->isClosed()) {
-
-            continue;
-        }
-
 
         const std::uint64_t generation =
             session->generation;
 
+        if (!session->inbox->isClosed()) {
+            try {
+                MediaPipeTracker tracker(
+                    session->libraryPath,
+                    session->modelPath,
+                    session->detectionConfidence,
+                    session->trackingConfidence);
 
-        try {
+                HandIdentityStabilizer stabilizer;
+                bool previousSwap =
+                    swapHandedness_.load();
 
-            // ------------------------------------------------------------
-            // TRACKING SESSION begins.
-            //
-            // MediaPipeTracker is created and destroyed on this same
-            // persistent worker thread.
-            // ------------------------------------------------------------
-
-            MediaPipeTracker tracker(
-                session->libraryPath,
-                session->modelPath,
-                session->detectionConfidence,
-                session->trackingConfidence);
-
-
-            // Inform GUI that MediaPipe initialization completed.
-            QMetaObject::invokeMethod(
-                this,
-                [this, generation] {
-
-                    if (generation
-                            != generation_
-                        || !pipelineRunning_) {
-
-                        return;
-                    }
-
-
-                    trackerReady_ =
-                        true;
-
-
-                    emit stateChanged();
-                },
-                Qt::QueuedConnection);
-
-
-            // ------------------------------------------------------------
-            // PROCESSING LOOP
-            // ------------------------------------------------------------
-
-            while (
-                !stopToken.stop_requested()
-                && !session->inbox
-                        ->isClosed()) {
-
-                auto packet =
-                    session->inbox
-                        ->take(
-                            std::chrono::milliseconds(
-                                25));
-
-
-                if (!packet) {
-                    continue;
-                }
-
-
-                // STOP might have happened between take() and this point.
-                if (stopToken
-                        .stop_requested()
-                    || session->inbox
-                           ->isClosed()) {
-
-                    break;
-                }
-
-
-                const auto captureUs =
-                    packet->captureUs;
-
-                const auto sequence =
-                    packet->sequence;
-
-
-                // Make an owned CPU copy and release QVideoFrame BEFORE
-                // entering MediaPipe. QVideoFrame can hold a native camera
-                // buffer, and retaining it during inference/teardown can keep
-                // the Windows multimedia backend alive.
-                QImage image =
-                    packet->frame
-                        .toImage()
-                        .convertToFormat(
-                            QImage::Format_RGB888)
-                        .copy();
-
-
-                packet.reset();
-
-
-                if (image.isNull()) {
-
-                    throw std::runtime_error(
-                        "Cannot convert camera frame "
-                        "to RGB888");
-                }
-
-
-                std::vector<std::uint8_t>
-                    rgb(
-                        static_cast<std::size_t>(
-                            image.width())
-                        *
-                        static_cast<std::size_t>(
-                            image.height())
-                        *
-                        3U);
-
-
-                // QImage scanlines can contain padding.
-                // MediaPipe gets tightly packed RGB888.
-                for (int y = 0;
-                     y < image.height();
-                     ++y) {
-
-                    std::memcpy(
-                        rgb.data()
-                            +
-                            static_cast<
-                                std::size_t>(y)
-                                *
-                                static_cast<
-                                    std::size_t>(
-                                    image.width())
-                                *
-                                3U,
-
-                        image.constScanLine(
-                            y),
-
-                        static_cast<
-                            std::size_t>(
-                            image.width())
-                            *
-                            3U);
-                }
-
-
-                const TrackingFrame
-                    tracking =
-                    tracker.process(
-                        image.width(),
-                        image.height(),
-                        rgb,
-                        captureUs,
-                        sequence,
-                        swapHandedness_
-                            .load());
-
-
-                // Statistics only belong to the currently active session.
-                //
-                // An old tracker may finish its last inference slightly
-                // after a rapid Stop -> Start sequence.
-                if (activeGeneration_
-                        .load()
-                    == generation) {
-
-                    processedFrames_
-                        .fetch_add(1);
-                }
-
-
-                // Tracking result is copied to the GUI thread.
                 QMetaObject::invokeMethod(
                     this,
-                    [this,
-                     tracking,
-                     generation] {
+                    [this, generation] {
+                        if (generation != generation_
+                            || runtimeState_
+                                   != RuntimeState::Starting) {
+                            return;
+                        }
 
-                        applyTrackingFrame(
-                            tracking,
-                            generation);
+                        trackerReady_ = true;
+                        setRuntimeState(
+                            RuntimeState::Running);
+                    },
+                    Qt::QueuedConnection);
+
+                while (!stopToken.stop_requested()
+                       && !session->inbox->isClosed()) {
+
+                    auto packet =
+                        session->inbox->take(
+                            std::chrono::milliseconds(25));
+
+                    if (!packet) {
+                        continue;
+                    }
+
+                    if (stopToken.stop_requested()
+                        || session->inbox->isClosed()) {
+                        break;
+                    }
+
+                    const auto captureUs =
+                        packet->captureUs;
+                    const auto sequence =
+                        packet->sequence;
+
+                    const auto conversionStartUs =
+                        nowUs();
+
+                    QImage image =
+                        packet->frame
+                            .toImage()
+                            .convertToFormat(
+                                QImage::Format_RGB888)
+                            .copy();
+
+                    packet.reset();
+
+                    if (image.isNull()) {
+                        throw std::runtime_error(
+                            "Cannot convert camera frame "
+                            "to RGB888");
+                    }
+
+                    std::vector<std::uint8_t> rgb(
+                        static_cast<std::size_t>(
+                            image.width())
+                        * static_cast<std::size_t>(
+                            image.height())
+                        * 3U);
+
+                    for (int y = 0;
+                         y < image.height();
+                         ++y) {
+
+                        std::memcpy(
+                            rgb.data()
+                                + static_cast<std::size_t>(y)
+                                    * static_cast<std::size_t>(
+                                        image.width())
+                                    * 3U,
+                            image.constScanLine(y),
+                            static_cast<std::size_t>(
+                                image.width())
+                                * 3U);
+                    }
+
+                    const auto conversionEndUs =
+                        nowUs();
+
+                    const RawTrackingFrame raw =
+                        tracker.process(
+                            image.width(),
+                            image.height(),
+                            rgb,
+                            captureUs,
+                            sequence);
+
+                    const bool currentSwap =
+                        swapHandedness_.load();
+
+                    if (currentSwap != previousSwap) {
+                        stabilizer.reset();
+                        previousSwap = currentSwap;
+                    }
+
+                    const TrackingFrame tracking =
+                        stabilizer.update(
+                            raw,
+                            currentSwap);
+
+                    const auto processingEndUs =
+                        nowUs();
+
+                    if (session->metrics) {
+                        session->metrics
+                            ->recordProcessed(
+                                conversionEndUs
+                                    - conversionStartUs,
+                                raw.trackEndUs
+                                    - raw.trackStartUs,
+                                processingEndUs
+                                    - captureUs);
+                    }
+
+                    QMetaObject::invokeMethod(
+                        this,
+                        [this, tracking, generation] {
+                            applyTrackingFrame(
+                                tracking,
+                                generation);
+                        },
+                        Qt::QueuedConnection);
+                }
+            }
+            catch (const std::exception &error) {
+                const QString message =
+                    QString::fromUtf8(
+                        error.what());
+
+                QMetaObject::invokeMethod(
+                    this,
+                    [this, message, generation] {
+                        handleWorkerFault(
+                            generation,
+                            message);
                     },
                     Qt::QueuedConnection);
             }
-
-
-            // ------------------------------------------------------------
-            // Leaving this scope destroys MediaPipeTracker.
-            //
-            // We already confirmed through logging that
-            // MpHandLandmarkerClose() completes correctly.
-            //
-            // The OS worker thread itself remains alive and returns to
-            // IDLE instead of terminating.
-            // ------------------------------------------------------------
-        }
-        catch (const std::exception &error) {
-
-            const QString message =
-                QString::fromUtf8(
-                    error.what());
-
-
-            // Only the currently active generation is allowed to report an
-            // error to the GUI.
-            QMetaObject::invokeMethod(
-                this,
-                [this,
-                 message,
-                 generation] {
-
-                    if (generation
-                            != generation_
-                        || !pipelineRunning_) {
-
-                        return;
-                    }
-
-
-                    errorMessage_ =
-                        message;
-
-
-                    emit stateChanged();
-
-
-                    // stop() no longer joins this worker, therefore calling
-                    // it asynchronously from the GUI thread is safe.
-                    stop();
-                },
-                Qt::QueuedConnection);
         }
 
+        {
+            std::lock_guard lock(workerMutex_);
 
-        // Loop back to IDLE and wait for the next Start.
+            if (activeWorkerGeneration_
+                    .has_value()
+                && *activeWorkerGeneration_
+                       == generation) {
+                activeWorkerGeneration_.reset();
+            }
+        }
+
+        QMetaObject::invokeMethod(
+            this,
+            [this, generation] {
+                handleWorkerSessionFinished(
+                    generation);
+            },
+            Qt::QueuedConnection);
     }
 
     qInfo() << "[shutdown] workerLoop exited";
 }
-
-
-// ============================================================================
-// Tracking result conversion
-// ============================================================================
 
 QVariantList RuntimeController::toVariantLandmarks(
     const HandTrackingState &hand)
 {
     QVariantList result;
 
-
     if (!hand.tracked) {
         return result;
     }
 
+    result.reserve(
+        static_cast<qsizetype>(
+            kHandLandmarkCount));
 
-    result.reserve(21);
-
-
-    for (const auto &landmark
-         : hand.landmarks) {
-
+    for (const auto &landmark : hand.landmarks) {
         QVariantMap point;
-
-
-        point.insert(
-            QStringLiteral("x"),
-            landmark.x);
-
-        point.insert(
-            QStringLiteral("y"),
-            landmark.y);
-
-        point.insert(
-            QStringLiteral("z"),
-            landmark.z);
-
-
-        result.append(
-            point);
+        point.insert(QStringLiteral("x"), landmark.x);
+        point.insert(QStringLiteral("y"), landmark.y);
+        point.insert(QStringLiteral("z"), landmark.z);
+        result.append(point);
     }
-
 
     return result;
 }
-
-
-// ============================================================================
-// Apply tracking result on GUI thread
-// ============================================================================
 
 void RuntimeController::applyTrackingFrame(
     const TrackingFrame &frame,
     std::uint64_t generation)
 {
-    // Results from a stopped or superseded tracking session are discarded.
-    if (generation
-            != generation_
-        || !pipelineRunning_) {
-
+    if (generation != generation_
+        || runtimeState_ != RuntimeState::Running) {
         return;
     }
 
-
     leftTracked_ =
-        frame.hands[0]
+        frame.hands[handIndex(HandSide::Left)]
             .tracked;
 
     rightTracked_ =
-        frame.hands[1]
+        frame.hands[handIndex(HandSide::Right)]
             .tracked;
 
+    leftHandednessConfidence_ =
+        frame.hands[handIndex(HandSide::Left)]
+            .handednessConfidence;
 
-    leftConfidence_ =
-        frame.hands[0]
-            .confidence;
+    rightHandednessConfidence_ =
+        frame.hands[handIndex(HandSide::Right)]
+            .handednessConfidence;
 
-    rightConfidence_ =
-        frame.hands[1]
-            .confidence;
+    const auto sideName = [](HandSide side) {
+        return side == HandSide::Left
+            ? QStringLiteral("L")
+            : QStringLiteral("R");
+    };
 
+    leftReportedSide_ = leftTracked_
+        ? sideName(
+              frame.hands[handIndex(HandSide::Left)]
+                  .reportedSide)
+        : QStringLiteral("-");
+
+    rightReportedSide_ = rightTracked_
+        ? sideName(
+              frame.hands[handIndex(HandSide::Right)]
+                  .reportedSide)
+        : QStringLiteral("-");
 
     leftLandmarks_ =
         toVariantLandmarks(
-            frame.hands[0]);
+            frame.hands[
+                handIndex(HandSide::Left)]);
 
     rightLandmarks_ =
         toVariantLandmarks(
-            frame.hands[1]);
-
-
-    latencyMs_ =
-        static_cast<int>(
-            std::max<
-                std::int64_t>(
-                0,
-                nowUs()
-                    - frame.captureUs)
-            /
-            1000);
-
+            frame.hands[
+                handIndex(HandSide::Right)]);
 
     resolution_ =
-        QStringLiteral(
-            "%1 x %2")
-            .arg(
-                frame.width)
-            .arg(
-                frame.height);
-
+        QStringLiteral("%1 x %2")
+            .arg(frame.width)
+            .arg(frame.height);
 
     emit stateChanged();
 }
-
-
-// ============================================================================
-// Tracking reset
-// ============================================================================
 
 void RuntimeController::clearTracking()
 {
     leftTracked_ = false;
     rightTracked_ = false;
-
-
-    leftConfidence_ = 0.0;
-    rightConfidence_ = 0.0;
-
-
+    leftHandednessConfidence_ = 0.0;
+    rightHandednessConfidence_ = 0.0;
+    leftReportedSide_ = QStringLiteral("-");
+    rightReportedSide_ = QStringLiteral("-");
     leftLandmarks_.clear();
     rightLandmarks_.clear();
 }
 
-
-// ============================================================================
-// Statistics
-// ============================================================================
-
 void RuntimeController::updateStats()
 {
-    if (!pipelineRunning_) {
+    if (!metrics_ || !pipelineRunning()) {
         return;
     }
 
-
-    const qint64 elapsedMs =
-        statsClock_.restart();
-
-
-    if (elapsedMs > 0) {
-
-        const auto currentCount =
-            processedFrames_
-                .load();
-
-
-        const auto delta =
-            currentCount
-            - lastFpsSampleCount_;
-
-
-        lastFpsSampleCount_ =
-            currentCount;
-
-
-        fps_ =
-            qRound(
-                static_cast<double>(
-                    delta)
-                *
-                1000.0
-                /
-                static_cast<double>(
-                    elapsedMs));
-    }
-
+    metricsSnapshot_ =
+        metrics_->snapshot(nowUs());
 
     const auto lastFrameUs =
-        lastFrameReceivedUs_
-            .load();
+        metricsSnapshot_.lastFrameReceivedUs;
 
-
-    // Do not leave an old hand visible when the camera stream disappears.
     if (lastFrameUs > 0
-        && nowUs() - lastFrameUs
-               > 500000) {
-
+        && nowUs() - lastFrameUs > 500000) {
         clearTracking();
-
-        latencyMs_ = 0;
     }
-
 
     emit stateChanged();
 }

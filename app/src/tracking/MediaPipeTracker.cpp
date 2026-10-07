@@ -192,13 +192,12 @@ MediaPipeTracker::~MediaPipeTracker()
     qInfo() << "[shutdown] MpHandLandmarkerClose end";
 }
 
-TrackingFrame MediaPipeTracker::process(
+RawTrackingFrame MediaPipeTracker::process(
     int width,
     int height,
     const std::vector<std::uint8_t> &rgb,
     std::int64_t captureUs,
-    std::uint64_t sequence,
-    bool swapHandedness)
+    std::uint64_t sequence)
 {
     const auto expectedSize =
         static_cast<std::size_t>(width)
@@ -212,19 +211,13 @@ TrackingFrame MediaPipeTracker::process(
             "Invalid RGB888 camera frame");
     }
 
-    TrackingFrame output;
+    RawTrackingFrame output;
 
     output.width = width;
     output.height = height;
     output.captureUs = captureUs;
     output.sequence = sequence;
     output.trackStartUs = nowUs();
-
-    output.hands[0].side =
-        HandSide::Left;
-
-    output.hands[1].side =
-        HandSide::Right;
 
     mp::Image image = nullptr;
     char *error = nullptr;
@@ -270,11 +263,16 @@ TrackingFrame MediaPipeTracker::process(
                 result.landmarksCount,
                 result.handednessCount);
 
+        std::size_t outputIndex = 0;
+
         for (std::uint32_t handIndex = 0;
-             handIndex < handCount;
+             handIndex < handCount
+             && outputIndex < kHandCount;
              ++handIndex) {
 
-            if (result.landmarks[handIndex].count != 21
+            if (result.landmarks[handIndex].count
+                    != static_cast<std::uint32_t>(
+                        kHandLandmarkCount)
                 || result.handedness[handIndex].count == 0) {
                 continue;
             }
@@ -294,31 +292,19 @@ TrackingFrame MediaPipeTracker::process(
                 continue;
             }
 
-            int sideIndex =
+            auto &detection =
+                output.detections[outputIndex++];
+
+            detection.detected = true;
+            detection.reportedSide =
                 handedness == "Left"
-                ? 0
-                : 1;
-
-            if (swapHandedness) {
-                sideIndex =
-                    1 - sideIndex;
-            }
-
-            auto &hand =
-                output.hands[sideIndex];
-
-            // If MediaPipe reports duplicate handedness, keep the stronger one.
-            if (hand.tracked
-                && hand.confidence >= category.score) {
-                continue;
-            }
-
-            hand.tracked = true;
-            hand.confidence =
+                ? HandSide::Left
+                : HandSide::Right;
+            detection.handednessConfidence =
                 category.score;
 
-            for (int landmarkIndex = 0;
-                 landmarkIndex < 21;
+            for (std::size_t landmarkIndex = 0;
+                 landmarkIndex < kHandLandmarkCount;
                  ++landmarkIndex) {
 
                 const auto &point =
@@ -326,7 +312,7 @@ TrackingFrame MediaPipeTracker::process(
                         .landmarks[handIndex]
                         .points[landmarkIndex];
 
-                hand.landmarks[landmarkIndex] = {
+                detection.landmarks[landmarkIndex] = {
                     point.x,
                     point.y,
                     point.z

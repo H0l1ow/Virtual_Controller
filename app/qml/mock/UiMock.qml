@@ -10,6 +10,11 @@ QtObject {
     property bool pipelineRunning: true
     property bool outputArmed: false
 
+    readonly property string runtimeStateName:
+        pipelineRunning ? "Running" : "Stopped"
+    readonly property bool canStart: !pipelineRunning
+    readonly property bool canStop: pipelineRunning
+
     readonly property bool outputAvailable: true
     readonly property bool gestureRecognitionAvailable: true
     readonly property bool cursorControlAvailable: true
@@ -22,9 +27,9 @@ QtObject {
     ]
 
     property var formatNames: [
-        "640 x 480 @ 30 FPS",
-        "1280 x 720 @ 30 FPS",
-        "1280 x 720 @ 60 FPS"
+        "640 x 480 @ 30 FPS | YUYV",
+        "1280 x 720 @ 30 FPS | NV12",
+        "1280 x 720 @ 60 FPS | MJPEG"
     ]
 
     property int cameraIndex: 0
@@ -65,8 +70,18 @@ QtObject {
         : physicalRightTracked
 
     property int fps: cameraRunning ? 30 : 0
+    readonly property int cameraFps: cameraRunning ? 60 : 0
+    readonly property int processedFps: fps
+    readonly property int replacedFrames: pipelineRunning ? 42 : 0
+    readonly property real replacedPercent: pipelineRunning ? 48.0 : 0.0
+    readonly property int latencyP50Ms: pipelineRunning ? 18 : 0
+    readonly property int latencyP95Ms: pipelineRunning ? 31 : 0
+    readonly property int inferenceP50Ms: pipelineRunning ? 14 : 0
+    readonly property int inferenceP95Ms: pipelineRunning ? 24 : 0
+    readonly property int conversionP50Ms: pipelineRunning ? 2 : 0
+    readonly property int conversionP95Ms: pipelineRunning ? 4 : 0
     property string resolution: "640 × 480"
-    property int latencyMs: pipelineRunning ? 12 : 0
+    property int latencyMs: pipelineRunning ? 20 : 0
     property int cursorX: pipelineRunning ? 1280 : 0
     property int cursorY: pipelineRunning ? 720 : 0
     readonly property string trackingStatus: {
@@ -91,6 +106,8 @@ QtObject {
     readonly property real rightConfidence: !rightTracked
         ? 0.0
         : swapHandedness ? 0.96 : 0.93
+    readonly property string leftReportedSide: leftTracked ? "L" : "-"
+    readonly property string rightReportedSide: rightTracked ? "R" : "-"
 
     property var gestureHints: [
         {
@@ -329,6 +346,19 @@ QtObject {
     function selectFormat(index) {
         if (index >= 0 && index < formatNames.length)
             formatIndex = index
+    }
+
+
+    function setDetectionConfidence(value) {
+        detectionConfidence = Math.round(value)
+    }
+
+    function setTrackingConfidence(value) {
+        trackingConfidence = Math.round(value)
+    }
+
+    function setSwapHandedness(value) {
+        swapHandedness = value
     }
 
     function setPipelineRunning(enabled) {

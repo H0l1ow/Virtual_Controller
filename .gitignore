@@ -1,9 +1,35 @@
-build*/
+# CMake / Qt Creator build output
+build/
+build-*/
+cmake-build-*/
 CMakeUserPresets.json
 CMakeCache.txt
 CMakeFiles/
+compile_commands.json
+
+# IDE-local state
+.qtcreator/
 *.user
 *.user.*
 .vscode/
 .idea/
-third_party
+
+# Compiler / linker output
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.exe
+
+# Python / ML local output
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*~

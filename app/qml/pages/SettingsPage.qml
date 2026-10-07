@@ -19,15 +19,15 @@ Item {
             icon: "hand"
         },
         {
-            title: "Control",
+            title: "Control (M2)",
             icon: "target"
         },
         {
-            title: "Gestures",
+            title: "Gestures (M3)",
             icon: "mapping"
         },
         {
-            title: "Model",
+            title: "Model (M3)",
             icon: "settings"
         }
     ]
@@ -134,7 +134,7 @@ Item {
                         color: root.theme.borderSubtle
                     }
                     Text {
-                        text: "Virtual Controller UI v0.2"
+                        text: "Virtual Controller v" + Qt.application.version
                         color: root.theme.textMuted
                         font.family: root.theme.fontFamily
                         font.pixelSize: 9
@@ -244,7 +244,7 @@ Item {
                                     id: swapHandednessSwitch
                                     theme: root.theme
                                     checked: root.uiState.swapHandedness
-                                    onToggled: root.uiState.swapHandedness = checked
+                                    onToggled: root.uiState.setSwapHandedness(checked)
                                 }
                             }
                             Item {
@@ -302,7 +302,7 @@ Item {
                                     value: root.uiState.detectionConfidence
                                     enabled: !root.uiState.pipelineRunning
                                     implicitWidth: 230
-                                    onMoved: root.uiState.detectionConfidence = Math.round(value)
+                                    onMoved: root.uiState.setDetectionConfidence(value)
                                 }
                                 Text {
                                     text: Math.round(detectionConfidenceSlider.value) + "%"
@@ -327,7 +327,7 @@ Item {
                                     value: root.uiState.trackingConfidence
                                     enabled: !root.uiState.pipelineRunning
                                     implicitWidth: 230
-                                    onMoved: root.uiState.trackingConfidence = Math.round(value)
+                                    onMoved: root.uiState.setTrackingConfidence(value)
                                 }
                                 Text {
                                     text: Math.round(trackingConfidenceSlider.value) + "%"
@@ -361,6 +361,7 @@ Item {
 
                     // CONTROL
                     Item {
+                        enabled: root.uiState.cursorControlAvailable
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: 18
@@ -466,6 +467,7 @@ Item {
 
                     // GESTURES
                     Item {
+                        enabled: root.uiState.gestureRecognitionAvailable
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: 18
@@ -566,6 +568,7 @@ Item {
 
                     // MODEL
                     Item {
+                        enabled: root.uiState.gestureRecognitionAvailable
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: 18

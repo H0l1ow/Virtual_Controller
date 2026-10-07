@@ -28,13 +28,14 @@ public:
     MediaPipeTracker &operator=(
         const MediaPipeTracker &) = delete;
 
-    TrackingFrame process(
+    // Returns raw detections exactly as produced by MediaPipe. Stable logical
+    // Left/Right identity is intentionally handled by HandIdentityStabilizer.
+    RawTrackingFrame process(
         int width,
         int height,
         const std::vector<std::uint8_t> &rgb,
         std::int64_t captureUs,
-        std::uint64_t sequence,
-        bool swapHandedness);
+        std::uint64_t sequence);
 
 private:
     void check(

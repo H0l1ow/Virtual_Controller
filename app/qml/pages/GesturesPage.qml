@@ -385,7 +385,7 @@ Item {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: "Confidence"
+                                text: "Handedness score"
                                 color: root.theme.textSecondary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
