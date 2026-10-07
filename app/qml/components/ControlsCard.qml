@@ -61,7 +61,7 @@ VcCard {
 
                 Text {
                     text: !root.uiState.outputAvailable
-                        ? "M1: disabled"
+                        ? "Unavailable"
                         : (root.uiState.outputArmed ? "Armed" : "Disarmed")
                     color: root.uiState.outputArmed
                         ? root.theme.accent
@@ -75,9 +75,9 @@ VcCard {
                     id: outputSwitch
                     theme: root.theme
                     enabled: root.uiState.outputAvailable
-                        && root.uiState.pipelineRunning
+                        && root.uiState.runtimeStateName === "Running"
                     checked: root.uiState.outputArmed
-                    onToggled: root.uiState.outputArmed = checked
+                    onToggled: root.uiState.setOutputArmed(checked)
                 }
             }
 
@@ -122,11 +122,12 @@ VcCard {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.uiState.outputAvailable
-                        ? "Tracking may stay live while system output is disarmed. "
-                            + "Stopping the pipeline always neutralizes output."
-                        : "M1 implements camera preview and two-hand tracking only. "
-                            + "Desktop output remains disabled until the next milestone."
+                    text: root.uiState.outputError.length > 0
+                        ? root.uiState.outputError
+                        : (root.uiState.outputAvailable
+                            ? "M2: the right hand drives continuous cursor movement. "
+                                + "System output is opt-in; STOP, stale frames and F8 neutralize it."
+                            : "Windows mouse output is not available in this build.")
                     color: root.theme.textSecondary
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10

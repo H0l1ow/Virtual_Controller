@@ -19,6 +19,7 @@ QtObject {
     readonly property bool gestureRecognitionAvailable: true
     readonly property bool cursorControlAvailable: true
     readonly property string errorMessage: ""
+    readonly property string outputError: ""
 
     property var cameraNames: [
         "Integrated Camera",
@@ -84,6 +85,8 @@ QtObject {
     property int latencyMs: pipelineRunning ? 20 : 0
     property int cursorX: pipelineRunning ? 1280 : 0
     property int cursorY: pipelineRunning ? 720 : 0
+    readonly property int cursorScreenWidth: 1920
+    readonly property int cursorScreenHeight: 1080
     readonly property string trackingStatus: {
         if (!pipelineRunning)
             return "Stopped"
@@ -359,6 +362,22 @@ QtObject {
 
     function setSwapHandedness(value) {
         swapHandedness = value
+    }
+
+    function setOutputArmed(value) {
+        outputArmed = value && pipelineRunning
+    }
+
+    function setSensitivity(value) {
+        sensitivity = Math.round(value)
+    }
+
+    function setSmoothing(value) {
+        smoothing = value
+    }
+
+    function setDeadzone(value) {
+        deadzone = Math.round(value)
     }
 
     function setPipelineRunning(enabled) {

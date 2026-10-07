@@ -5,9 +5,11 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QGuiApplication>
 #include <QFileInfo>
 #include <QImage>
 #include <QMetaObject>
+#include <QScreen>
 #include <QVariantMap>
 #include <QVideoFrameFormat>
 #include <QVideoSink>
@@ -31,6 +33,11 @@ RuntimeController::RuntimeController(
     , statsTimer_(this)
 {
     refreshDevices();
+    updateCursorGeometry();
+    cursorX_ = cursorScreenWidth_ / 2;
+    cursorY_ = cursorScreenHeight_ / 2;
+    cursorAccumulatorX_ = static_cast<double>(cursorX_);
+    cursorAccumulatorY_ = static_cast<double>(cursorY_);
 
     connect(
         &mediaDevices_,
@@ -45,7 +52,7 @@ RuntimeController::RuntimeController(
             refreshDevices();
         });
 
-    statsTimer_.setInterval(500);
+    statsTimer_.setInterval(250);
 
     connect(
         &statsTimer_,
@@ -91,6 +98,10 @@ bool RuntimeController::shutdownForExit(
     std::chrono::milliseconds timeout)
 {
     qInfo() << "[shutdown] shutdownForExit begin";
+
+    outputService_.stop();
+    refreshOutputStatus();
+    resetContinuousControl();
 
     if (pipelineRunning()) {
         requestSessionStop(
@@ -277,6 +288,8 @@ void RuntimeController::failWithoutSession(
     errorMessage_ = message;
     trackerReady_ = false;
     cameraRunning_ = false;
+    outputService_.stop();
+    refreshOutputStatus();
     clearTracking();
     metricsSnapshot_ = {};
 
@@ -320,6 +333,108 @@ void RuntimeController::setSwapHandedness(
         return;
     }
 
+    emit settingsChanged();
+}
+
+void RuntimeController::setOutputArmed(
+    bool value)
+{
+    refreshOutputStatus();
+
+    if (outputSnapshot_.armed == value) {
+        return;
+    }
+
+    if (value) {
+        if (runtimeState_ != RuntimeState::Running
+            || !outputSnapshot_.ready) {
+            emit stateChanged();
+            return;
+        }
+
+        // Re-prime continuous control when output becomes live. The next hand
+        // frame therefore establishes a baseline instead of moving the mouse.
+        resetContinuousControl();
+        outputService_.arm();
+    }
+    else {
+        outputService_.stop();
+    }
+
+    refreshOutputStatus();
+    emit stateChanged();
+}
+
+void RuntimeController::setSensitivity(
+    int value)
+{
+    value = std::clamp(value, 0, 100);
+
+    if (sensitivity_ == value) {
+        return;
+    }
+
+    sensitivity_ = value;
+    emit settingsChanged();
+}
+
+void RuntimeController::setSmoothing(
+    bool value)
+{
+    if (smoothing_ == value) {
+        return;
+    }
+
+    smoothing_ = value;
+    resetContinuousControl();
+    emit settingsChanged();
+}
+
+void RuntimeController::setCursorSpeedPercent(
+    int value)
+{
+    value = std::clamp(value, 50, 400);
+
+    if (cursorSpeedPercent_ == value) {
+        return;
+    }
+
+    cursorSpeedPercent_ = value;
+    emit settingsChanged();
+}
+
+void RuntimeController::setInvertX(
+    bool value)
+{
+    if (invertX_ == value) {
+        return;
+    }
+
+    invertX_ = value;
+    emit settingsChanged();
+}
+
+void RuntimeController::setInvertY(
+    bool value)
+{
+    if (invertY_ == value) {
+        return;
+    }
+
+    invertY_ = value;
+    emit settingsChanged();
+}
+
+void RuntimeController::setDeadzone(
+    int value)
+{
+    value = std::clamp(value, 0, 100);
+
+    if (deadzone_ == value) {
+        return;
+    }
+
+    deadzone_ = value;
     emit settingsChanged();
 }
 
@@ -600,7 +715,10 @@ void RuntimeController::start()
         return;
     }
 
+    outputService_.stop();
+    refreshOutputStatus();
     clearTracking();
+    resetContinuousControl();
     metricsSnapshot_ = {};
 
     trackerReady_ = false;
@@ -817,6 +935,12 @@ void RuntimeController::requestSessionStop(
 
     terminalStateAfterStop_ = terminalState;
     trackerReady_ = false;
+
+    // System input is neutralized immediately on every explicit STOP/fault,
+    // before native tracker teardown begins.
+    outputService_.stop();
+    refreshOutputStatus();
+    resetContinuousControl();
 
     setRuntimeState(
         RuntimeState::Stopping);
@@ -1274,6 +1398,7 @@ void RuntimeController::applyTrackingFrame(
             .arg(frame.width)
             .arg(frame.height);
 
+    updateContinuousControl(frame);
     emit stateChanged();
 }
 
@@ -1287,11 +1412,108 @@ void RuntimeController::clearTracking()
     rightReportedSide_ = QStringLiteral("-");
     leftLandmarks_.clear();
     rightLandmarks_.clear();
+    resetContinuousControl();
+}
+
+void RuntimeController::resetContinuousControl()
+{
+    continuousControl_.reset();
+    controllerState_ = {};
+}
+
+void RuntimeController::updateCursorGeometry()
+{
+    const QScreen *screen =
+        QGuiApplication::primaryScreen();
+
+    if (!screen) {
+        cursorScreenWidth_ = 1920;
+        cursorScreenHeight_ = 1080;
+        return;
+    }
+
+    const QSize size =
+        screen->availableGeometry().size();
+
+    cursorScreenWidth_ =
+        std::max(size.width(), 1);
+    cursorScreenHeight_ =
+        std::max(size.height(), 1);
+}
+
+void RuntimeController::updateContinuousControl(
+    const TrackingFrame &frame)
+{
+    ContinuousControlConfig config;
+    config.sensitivity = sensitivity_;
+    config.cursorSpeedPercent = cursorSpeedPercent_;
+    config.deadzone = deadzone_;
+    config.smoothing = smoothing_;
+    config.invertX = invertX_;
+    config.invertY = invertY_;
+
+    const auto &rightHand =
+        frame.hands[handIndex(HandSide::Right)];
+
+    const auto result =
+        continuousControl_.update(
+            rightHand,
+            frame.captureUs,
+            config);
+
+    controllerState_ = result.controller;
+
+    if (result.cursorTracked) {
+        if (!cursorPreviewInitialized_) {
+            updateCursorGeometry();
+            cursorX_ = cursorScreenWidth_ / 2;
+            cursorY_ = cursorScreenHeight_ / 2;
+            cursorAccumulatorX_ = static_cast<double>(cursorX_);
+            cursorAccumulatorY_ = static_cast<double>(cursorY_);
+            cursorPreviewInitialized_ = true;
+        }
+
+        cursorAccumulatorX_ = std::clamp(
+            cursorAccumulatorX_
+                + static_cast<double>(controllerState_.mouseX),
+            0.0,
+            static_cast<double>(
+                std::max(cursorScreenWidth_ - 1, 0)));
+
+        cursorAccumulatorY_ = std::clamp(
+            cursorAccumulatorY_
+                + static_cast<double>(controllerState_.mouseY),
+            0.0,
+            static_cast<double>(
+                std::max(cursorScreenHeight_ - 1, 0)));
+
+        cursorX_ = static_cast<int>(
+            std::lround(cursorAccumulatorX_));
+        cursorY_ = static_cast<int>(
+            std::lround(cursorAccumulatorY_));
+    }
+
+    // The output guard ignores submissions while disarmed. When armed, even a
+    // neutral frame is submitted so losing the right hand immediately stops
+    // motion without requiring the output service to wait for its watchdog.
+    outputService_.submit(
+        controllerState_,
+        frame.captureUs,
+        frame.sequence);
+}
+
+void RuntimeController::refreshOutputStatus()
+{
+    outputSnapshot_ =
+        outputService_.status();
 }
 
 void RuntimeController::updateStats()
 {
+    refreshOutputStatus();
+
     if (!metrics_ || !pipelineRunning()) {
+        emit stateChanged();
         return;
     }
 

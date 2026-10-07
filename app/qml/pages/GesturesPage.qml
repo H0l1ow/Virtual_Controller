@@ -274,7 +274,7 @@ Item {
                         iconName: "camera"
                         title: "Live Recognition"
                         statusText: !root.uiState.gestureRecognitionAvailable
-                            ? "M1: disabled"
+                            ? "M3: disabled"
                             : (!root.uiState.pipelineRunning
                                 ? "Off"
                                 : root.liveHandTracked ? "Live" : "Hand lost")
@@ -317,7 +317,7 @@ Item {
                             visible: !root.liveHandTracked
                                 || !root.uiState.gestureRecognitionAvailable
                             text: !root.uiState.gestureRecognitionAvailable
-                                ? "GESTURE RECOGNITION STARTS IN M2"
+                                ? "GESTURE RECOGNITION STARTS IN M3"
                                 : (root.uiState.pipelineRunning
                                     ? "HAND NOT TRACKED"
                                     : "PIPELINE STOPPED")
@@ -373,7 +373,7 @@ Item {
                         Text {
                             text: root.uiState.gestureRecognitionAvailable
                                 ? root.liveGesture
-                                : "Not implemented in M1"
+                                : "Not implemented yet (M3)"
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 20

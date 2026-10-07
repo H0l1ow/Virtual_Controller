@@ -30,26 +30,24 @@ VcCard {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.margins: 16
-            spacing: 9
+            Layout.margins: 14
+            spacing: 6
 
             RowLayout {
                 Layout.fillWidth: true
-
                 Text {
                     Layout.fillWidth: true
                     text: "Sensitivity"
                     color: root.theme.textPrimary
                     font.family: root.theme.fontFamily
-                    font.pixelSize: 12
+                    font.pixelSize: 11
                     font.weight: Font.DemiBold
                 }
-
                 Text {
                     text: Math.round(sensitivitySlider.value) + "%"
                     color: root.theme.textPrimary
                     font.family: root.theme.fontFamily
-                    font.pixelSize: 12
+                    font.pixelSize: 11
                     font.weight: Font.DemiBold
                 }
             }
@@ -59,53 +57,90 @@ VcCard {
                 Layout.fillWidth: true
                 theme: root.theme
                 value: root.uiState.sensitivity
-                onMoved: root.uiState.sensitivity = Math.round(value)
+                onMoved: root.uiState.setSensitivity(value)
             }
 
-            Text {
+            RowLayout {
                 Layout.fillWidth: true
-                text: "Adjust how responsive the cursor is to hand movement."
-                color: root.theme.textMuted
-                font.family: root.theme.fontFamily
-                font.pixelSize: 10
-                wrapMode: Text.WordWrap
+                Layout.topMargin: 2
+                Text {
+                    Layout.fillWidth: true
+                    text: "Cursor speed"
+                    color: root.theme.textPrimary
+                    font.family: root.theme.fontFamily
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    text: (cursorSpeedSlider.value / 100.0).toFixed(1) + "x"
+                    color: root.theme.textPrimary
+                    font.family: root.theme.fontFamily
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                }
+            }
+
+            VcSlider {
+                id: cursorSpeedSlider
+                Layout.fillWidth: true
+                theme: root.theme
+                from: 50
+                to: 400
+                stepSize: 10
+                value: root.uiState.cursorSpeedPercent
+                onMoved: root.uiState.setCursorSpeedPercent(value)
             }
 
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1
+                Layout.topMargin: 2
                 color: root.theme.borderSubtle
             }
 
-            Text {
-                text: "Active Profile"
-                color: root.theme.textPrimary
-                font.family: root.theme.fontFamily
-                font.pixelSize: 12
-                font.weight: Font.DemiBold
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+
+                Text {
+                    text: "Invert X"
+                    color: root.theme.textSecondary
+                    font.family: root.theme.fontFamily
+                    font.pixelSize: 10
+                }
+                VcSwitch {
+                    id: invertXSwitch
+                    theme: root.theme
+                    checked: root.uiState.invertX
+                    onToggled: root.uiState.setInvertX(checked)
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Text {
+                    text: "Invert Y"
+                    color: root.theme.textSecondary
+                    font.family: root.theme.fontFamily
+                    font.pixelSize: 10
+                }
+                VcSwitch {
+                    id: invertYSwitch
+                    theme: root.theme
+                    checked: root.uiState.invertY
+                    onToggled: root.uiState.setInvertY(checked)
+                }
             }
 
-            VcComboBox {
-                id: profileCombo
-                Layout.fillWidth: true
-                theme: root.theme
-                model: root.uiState.profileNames
-                currentIndex: Math.max(0, root.uiState.profileNames.indexOf(root.uiState.activeProfile))
-                onActivated: root.uiState.activeProfile = currentText
-            }
-
             Text {
                 Layout.fillWidth: true
-                text: "Profiles keep gesture mappings and control tuning together."
+                text: "Speed is a DPI-like multiplier: raise it to cross the screen with less hand travel."
                 color: root.theme.textMuted
                 font.family: root.theme.fontFamily
-                font.pixelSize: 10
+                font.pixelSize: 9
                 wrapMode: Text.WordWrap
             }
 
-            Item {
-                Layout.fillHeight: true
-            }
+            Item { Layout.fillHeight: true }
         }
     }
 
@@ -119,10 +154,21 @@ VcCard {
             }
         }
 
-        function onActiveProfileChanged() {
-            const index = root.uiState.profileNames.indexOf(root.uiState.activeProfile)
-            if (index >= 0 && profileCombo.currentIndex !== index)
-                profileCombo.currentIndex = index
+        function onCursorSpeedPercentChanged() {
+            if (!cursorSpeedSlider.pressed
+                    && Math.round(cursorSpeedSlider.value) !== root.uiState.cursorSpeedPercent) {
+                cursorSpeedSlider.value = root.uiState.cursorSpeedPercent
+            }
+        }
+
+        function onInvertXChanged() {
+            if (invertXSwitch.checked !== root.uiState.invertX)
+                invertXSwitch.checked = root.uiState.invertX
+        }
+
+        function onInvertYChanged() {
+            if (invertYSwitch.checked !== root.uiState.invertY)
+                invertYSwitch.checked = root.uiState.invertY
         }
     }
 }

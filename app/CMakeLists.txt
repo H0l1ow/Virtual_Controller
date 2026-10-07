@@ -28,6 +28,19 @@ qt_add_executable(
     src/runtime/RuntimeController.hpp
     src/runtime/RuntimeController.cpp
 
+    src/control/ControllerState.hpp
+    src/control/OneEuroFilter.hpp
+    src/control/OneEuroFilter.cpp
+    src/control/ContinuousControlInterpreter.hpp
+    src/control/ContinuousControlInterpreter.cpp
+
+    src/input/InputBackend.hpp
+    src/input/InputBackend.cpp
+    src/input/OutputGuard.hpp
+    src/input/OutputGuard.cpp
+    src/input/OutputService.hpp
+    src/input/OutputService.cpp
+
     src/tracking/TrackingTypes.hpp
     src/tracking/HandIdentityStabilizer.hpp
     src/tracking/HandIdentityStabilizer.cpp

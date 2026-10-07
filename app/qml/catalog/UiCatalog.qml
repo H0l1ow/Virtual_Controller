@@ -8,21 +8,21 @@ QtObject {
     ]
 
     readonly property var gestureHints: [
-        { id: "open_hand", gesture: "open", title: "Open Hand", action: "Move Cursor", active: true },
-        { id: "pinch", gesture: "pinch", title: "Pinch", action: "Left Click", active: true },
-        { id: "point", gesture: "point", title: "Point", action: "Right Click", active: true },
-        { id: "thumb_up", gesture: "up", title: "Thumbs Up", action: "Scroll Up", active: true },
-        { id: "thumb_down", gesture: "down", title: "Thumbs Down", action: "Scroll Down", active: true },
-        { id: "fist", gesture: "fist", title: "Fist", action: "Pause / Resume", active: true }
+        { id: "right_hand_motion", gesture: "open", title: "Right Hand", action: "Move Cursor", active: true },
+        { id: "pinch", gesture: "pinch", title: "Pinch", action: "Left Click · M3", active: false },
+        { id: "point", gesture: "point", title: "Point", action: "Right Click · M3", active: false },
+        { id: "thumb_up", gesture: "up", title: "Thumbs Up", action: "Scroll Up · M3", active: false },
+        { id: "thumb_down", gesture: "down", title: "Thumbs Down", action: "Scroll Down · M3", active: false },
+        { id: "fist", gesture: "fist", title: "Fist", action: "Pause / Resume · M3", active: false }
     ]
 
     // Demo/catalog rows only. Real mapping storage is a later milestone.
     readonly property var mappingRows: [
         {
             id: "right_move_cursor", handId: "right", hand: "Right",
-            sourceId: "open_hand", source: "Open Hand", typeId: "continuous",
+            sourceId: "right_hand_motion", source: "Hand movement", typeId: "continuous",
             type: "Continuous", actionId: "mouse.move", action: "Move cursor",
-            outputId: "mouse", output: "Mouse", state: "Planned"
+            outputId: "mouse", output: "Mouse", state: "Enabled"
         },
         {
             id: "right_left_click", handId: "right", hand: "Right",

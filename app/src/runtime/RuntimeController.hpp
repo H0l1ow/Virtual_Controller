@@ -1,5 +1,8 @@
 #pragma once
 
+#include "control/ContinuousControlInterpreter.hpp"
+#include "control/ControllerState.hpp"
+#include "input/OutputService.hpp"
 #include "runtime/LatestFrameSlot.hpp"
 #include "runtime/RuntimeMetrics.hpp"
 #include "tracking/TrackingTypes.hpp"
@@ -232,6 +235,83 @@ public:
                 WRITE setSwapHandedness
                     NOTIFY settingsChanged)
 
+    Q_PROPERTY(
+        bool cursorControlAvailable
+            READ cursorControlAvailable
+                CONSTANT)
+
+    Q_PROPERTY(
+        bool outputAvailable
+            READ outputAvailable
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        bool outputArmed
+            READ outputArmed
+                WRITE setOutputArmed
+                    NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        QString outputError
+            READ outputError
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int cursorX
+            READ cursorX
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int cursorY
+            READ cursorY
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int cursorScreenWidth
+            READ cursorScreenWidth
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int cursorScreenHeight
+            READ cursorScreenHeight
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int sensitivity
+            READ sensitivity
+                WRITE setSensitivity
+                    NOTIFY settingsChanged)
+
+    Q_PROPERTY(
+        bool smoothing
+            READ smoothing
+                WRITE setSmoothing
+                    NOTIFY settingsChanged)
+
+    Q_PROPERTY(
+        int cursorSpeedPercent
+            READ cursorSpeedPercent
+                WRITE setCursorSpeedPercent
+                    NOTIFY settingsChanged)
+
+    Q_PROPERTY(
+        bool invertX
+            READ invertX
+                WRITE setInvertX
+                    NOTIFY settingsChanged)
+
+    Q_PROPERTY(
+        bool invertY
+            READ invertY
+                WRITE setInvertY
+                    NOTIFY settingsChanged)
+
+    Q_PROPERTY(
+        int deadzone
+            READ deadzone
+                WRITE setDeadzone
+                    NOTIFY settingsChanged)
+
 public:
     explicit RuntimeController(
         QObject *parent = nullptr);
@@ -415,9 +495,87 @@ public:
         return swapHandedness_.load();
     }
 
+    bool cursorControlAvailable() const
+    {
+        return true;
+    }
+
+    bool outputAvailable() const
+    {
+        return outputSnapshot_.ready;
+    }
+
+    bool outputArmed() const
+    {
+        return outputSnapshot_.armed;
+    }
+
+    QString outputError() const
+    {
+        return QString::fromStdString(
+            outputSnapshot_.error);
+    }
+
+    int cursorX() const
+    {
+        return cursorX_;
+    }
+
+    int cursorY() const
+    {
+        return cursorY_;
+    }
+
+    int cursorScreenWidth() const
+    {
+        return cursorScreenWidth_;
+    }
+
+    int cursorScreenHeight() const
+    {
+        return cursorScreenHeight_;
+    }
+
+    int sensitivity() const
+    {
+        return sensitivity_;
+    }
+
+    bool smoothing() const
+    {
+        return smoothing_;
+    }
+
+    int cursorSpeedPercent() const
+    {
+        return cursorSpeedPercent_;
+    }
+
+    bool invertX() const
+    {
+        return invertX_;
+    }
+
+    bool invertY() const
+    {
+        return invertY_;
+    }
+
+    int deadzone() const
+    {
+        return deadzone_;
+    }
+
     void setDetectionConfidence(int value);
     void setTrackingConfidence(int value);
     void setSwapHandedness(bool value);
+    void setOutputArmed(bool value);
+    void setSensitivity(int value);
+    void setSmoothing(bool value);
+    void setCursorSpeedPercent(int value);
+    void setInvertX(bool value);
+    void setInvertY(bool value);
+    void setDeadzone(int value);
 
     Q_INVOKABLE void attachVideoOutput(QObject *output);
     Q_INVOKABLE void selectCamera(int index);
@@ -482,6 +640,11 @@ private:
     QString handLandmarkerModelPath() const;
 
     void clearTracking();
+    void resetContinuousControl();
+    void updateContinuousControl(
+        const TrackingFrame &frame);
+    void refreshOutputStatus();
+    void updateCursorGeometry();
 
     void applyTrackingFrame(
         const TrackingFrame &frame,
@@ -522,6 +685,26 @@ private:
     RuntimeMetricsSnapshot metricsSnapshot_;
 
     std::atomic_bool swapHandedness_{};
+
+    ContinuousControlInterpreter continuousControl_;
+    OutputService outputService_;
+    OutputStatus outputSnapshot_{};
+    ControllerState controllerState_{};
+
+    int sensitivity_{70};
+    int cursorSpeedPercent_{250};
+    int deadzone_{12};
+    bool smoothing_{true};
+    bool invertX_{false};
+    bool invertY_{false};
+
+    int cursorX_{};
+    int cursorY_{};
+    double cursorAccumulatorX_{};
+    double cursorAccumulatorY_{};
+    int cursorScreenWidth_{1920};
+    int cursorScreenHeight_{1080};
+    bool cursorPreviewInitialized_{};
 
     std::uint64_t generation_{};
 

@@ -19,7 +19,7 @@ Item {
             icon: "hand"
         },
         {
-            title: "Control (M2)",
+            title: "Control",
             icon: "target"
         },
         {
@@ -384,13 +384,13 @@ Item {
                                 Layout.fillWidth: true
                                 theme: root.theme
                                 title: "Sensitivity"
-                                description: "Overall cursor gain applied to hand movement."
+                                description: "Fine cursor gain for normal hand movement."
                                 VcSlider {
                                     id: settingsSensitivitySlider
                                     theme: root.theme
                                     value: root.uiState.sensitivity
                                     implicitWidth: 230
-                                    onMoved: root.uiState.sensitivity = Math.round(value)
+                                    onMoved: root.uiState.setSensitivity(value)
                                 }
                                 Text {
                                     text: Math.round(settingsSensitivitySlider.value) + "%"
@@ -407,13 +407,74 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
+                                title: "Cursor speed"
+                                description: "DPI-like multiplier. Higher values move across the monitor with less hand travel."
+                                VcSlider {
+                                    id: cursorSpeedSlider
+                                    theme: root.theme
+                                    from: 50
+                                    to: 400
+                                    stepSize: 10
+                                    value: root.uiState.cursorSpeedPercent
+                                    implicitWidth: 230
+                                    onMoved: root.uiState.setCursorSpeedPercent(value)
+                                }
+                                Text {
+                                    text: (cursorSpeedSlider.value / 100.0).toFixed(1) + "x"
+                                    color: root.theme.textPrimary
+                                    font.family: root.theme.fontFamily
+                                    font.pixelSize: 11
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: root.theme.borderSubtle
+                            }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                title: "Invert X axis"
+                                description: "Reverse horizontal cursor direction."
+                                VcSwitch {
+                                    id: invertXSwitch
+                                    theme: root.theme
+                                    checked: root.uiState.invertX
+                                    onToggled: root.uiState.setInvertX(checked)
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: root.theme.borderSubtle
+                            }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                title: "Invert Y axis"
+                                description: "Reverse vertical cursor direction."
+                                VcSwitch {
+                                    id: invertYSwitch
+                                    theme: root.theme
+                                    checked: root.uiState.invertY
+                                    onToggled: root.uiState.setInvertY(checked)
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: root.theme.borderSubtle
+                            }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
                                 title: "Smoothing"
                                 description: "Apply the One Euro filter to reduce cursor jitter."
                                 VcSwitch {
                                     id: smoothingSwitch
                                     theme: root.theme
                                     checked: root.uiState.smoothing
-                                    onToggled: root.uiState.smoothing = checked
+                                    onToggled: root.uiState.setSmoothing(checked)
                                 }
                             }
                             Rectangle {
@@ -425,13 +486,13 @@ Item {
                                 Layout.fillWidth: true
                                 theme: root.theme
                                 title: "Deadzone"
-                                description: "Ignore small movements around the current cursor position."
+                                description: "Suppress very small per-frame hand movement before it reaches the cursor."
                                 VcSlider {
                                     id: deadzoneSlider
                                     theme: root.theme
                                     value: root.uiState.deadzone
                                     implicitWidth: 230
-                                    onMoved: root.uiState.deadzone = Math.round(value)
+                                    onMoved: root.uiState.setDeadzone(value)
                                 }
                                 Text {
                                     text: Math.round(deadzoneSlider.value) + "%"
@@ -665,6 +726,21 @@ Item {
         function onSensitivityChanged() {
             if (!settingsSensitivitySlider.pressed)
                 settingsSensitivitySlider.value = root.uiState.sensitivity
+        }
+
+        function onCursorSpeedPercentChanged() {
+            if (!cursorSpeedSlider.pressed)
+                cursorSpeedSlider.value = root.uiState.cursorSpeedPercent
+        }
+
+        function onInvertXChanged() {
+            if (invertXSwitch.checked !== root.uiState.invertX)
+                invertXSwitch.checked = root.uiState.invertX
+        }
+
+        function onInvertYChanged() {
+            if (invertYSwitch.checked !== root.uiState.invertY)
+                invertYSwitch.checked = root.uiState.invertY
         }
 
         function onDeadzoneChanged() {

@@ -87,14 +87,14 @@ VcCard {
                             8,
                             Math.min(
                                 screen.width - width - 8,
-                                screen.width * root.uiState.cursorX / 1920
+                                screen.width * root.uiState.cursorX / Math.max(root.uiState.cursorScreenWidth, 1)
                             )
                         )
                         y: Math.max(
                             18,
                             Math.min(
                                 screen.height - height - 8,
-                                screen.height * root.uiState.cursorY / 1080
+                                screen.height * root.uiState.cursorY / Math.max(root.uiState.cursorScreenHeight, 1)
                             )
                         )
                         text: "➤"
@@ -123,7 +123,7 @@ VcCard {
                 spacing: 7
 
                 Text {
-                    text: "Cursor Position"
+                    text: "Cursor Position · Right hand"
                     color: root.theme.textMuted
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10
@@ -131,7 +131,7 @@ VcCard {
 
                 Text {
                     text: !root.uiState.cursorControlAvailable
-                        ? "Not enabled in M1"
+                        ? "Not available"
                         : (root.uiState.pipelineRunning && root.uiState.rightTracked
                             ? "X: " + root.uiState.cursorX + "    Y: " + root.uiState.cursorY
                             : "X: --    Y: --")

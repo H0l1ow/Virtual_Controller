@@ -20,11 +20,16 @@ QtObject {
     readonly property bool pipelineRunning:
         runtimeBackend.pipelineRunning
 
-    readonly property bool outputAvailable: false
+    readonly property bool outputAvailable:
+        runtimeBackend.outputAvailable
     readonly property bool gestureRecognitionAvailable: false
-    readonly property bool cursorControlAvailable: false
+    readonly property bool cursorControlAvailable:
+        runtimeBackend.cursorControlAvailable
 
-    property bool outputArmed: false
+    readonly property bool outputArmed:
+        runtimeBackend.outputArmed
+    readonly property string outputError:
+        runtimeBackend.outputError
 
     readonly property var cameraNames:
         runtimeBackend.cameraNames
@@ -42,10 +47,20 @@ QtObject {
         catalog.profileNames
     property string outputMode: "Mouse / Keyboard"
 
-    // Future control settings retained for the UI only.
-    property int sensitivity: 70
-    property bool smoothing: true
-    property int deadzone: 12
+    // M2 continuous-control settings are owned by the C++ runtime so the UI
+    // cannot drift away from the values actually used by cursor processing.
+    readonly property int sensitivity:
+        runtimeBackend.sensitivity
+    readonly property bool smoothing:
+        runtimeBackend.smoothing
+    readonly property int cursorSpeedPercent:
+        runtimeBackend.cursorSpeedPercent
+    readonly property bool invertX:
+        runtimeBackend.invertX
+    readonly property bool invertY:
+        runtimeBackend.invertY
+    readonly property int deadzone:
+        runtimeBackend.deadzone
 
     // Backend is the single source of truth for live tracking settings.
     readonly property int detectionConfidence:
@@ -61,7 +76,7 @@ QtObject {
     property bool requireRelease: true
 
     property bool showLandmarks: true
-    property bool mirrorPreview: false
+    property bool mirrorPreview: true
 
     readonly property bool leftTracked:
         runtimeBackend.leftTracked
@@ -117,8 +132,14 @@ QtObject {
 
     readonly property string leftGesture: "NONE"
     readonly property string rightGesture: "NONE"
-    readonly property int cursorX: 0
-    readonly property int cursorY: 0
+    readonly property int cursorX:
+        runtimeBackend.cursorX
+    readonly property int cursorY:
+        runtimeBackend.cursorY
+    readonly property int cursorScreenWidth:
+        runtimeBackend.cursorScreenWidth
+    readonly property int cursorScreenHeight:
+        runtimeBackend.cursorScreenHeight
 
     readonly property var gestureHints:
         catalog.gestureHints
@@ -163,6 +184,34 @@ QtObject {
         runtimeBackend.swapHandedness = value
     }
 
+    function setOutputArmed(value) {
+        runtimeBackend.outputArmed = value
+    }
+
+    function setSensitivity(value) {
+        runtimeBackend.sensitivity = Math.round(value)
+    }
+
+    function setSmoothing(value) {
+        runtimeBackend.smoothing = value
+    }
+
+    function setCursorSpeedPercent(value) {
+        runtimeBackend.cursorSpeedPercent = Math.round(value)
+    }
+
+    function setInvertX(value) {
+        runtimeBackend.invertX = value
+    }
+
+    function setInvertY(value) {
+        runtimeBackend.invertY = value
+    }
+
+    function setDeadzone(value) {
+        runtimeBackend.deadzone = Math.round(value)
+    }
+
     function setPipelineRunning(enabled) {
         if (enabled && canStart)
             runtimeBackend.start()
@@ -178,9 +227,12 @@ QtObject {
         if (pipelineRunning)
             return
 
-        sensitivity = 70
-        smoothing = true
-        deadzone = 12
+        setSensitivity(70)
+        setCursorSpeedPercent(100)
+        setSmoothing(true)
+        setInvertX(false)
+        setInvertY(false)
+        setDeadzone(12)
 
         setDetectionConfidence(60)
         setTrackingConfidence(55)
@@ -191,10 +243,10 @@ QtObject {
         requireRelease = true
 
         showLandmarks = true
-        mirrorPreview = false
+        mirrorPreview = true
         setSwapHandedness(false)
 
         activeProfile = "Default"
-        outputArmed = false
+        setOutputArmed(false)
     }
 }
