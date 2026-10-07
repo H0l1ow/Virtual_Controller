@@ -45,6 +45,9 @@ QtObject {
 
     property int sensitivity: 70
     property bool smoothing: true
+    property int cursorSpeedPercent: 250
+    property bool invertX: false
+    property bool invertY: false
     property int deadzone: 12
 
     property int detectionConfidence: 60
@@ -54,7 +57,7 @@ QtObject {
     property int cooldownMs: 250
     property bool requireRelease: true
     property bool showLandmarks: true
-    property bool mirrorPreview: false
+    property bool mirrorPreview: true
     property bool swapHandedness: false
 
     // Mock availability can be toggled independently to exercise one-hand-loss
@@ -109,6 +112,11 @@ QtObject {
     readonly property real rightConfidence: !rightTracked
         ? 0.0
         : swapHandedness ? 0.96 : 0.93
+    readonly property real leftGestureConfidence: leftTracked ? 0.91 : 0.0
+    readonly property real rightGestureConfidence: rightTracked ? 0.94 : 0.0
+    readonly property string gestureBackendName: "Rules"
+    readonly property string gestureModelStatus: "Mock rule fallback"
+    readonly property bool gestureModelActive: false
     readonly property string leftReportedSide: leftTracked ? "L" : "-"
     readonly property string rightReportedSide: rightTracked ? "R" : "-"
 
@@ -376,8 +384,24 @@ QtObject {
         smoothing = value
     }
 
+    function setCursorSpeedPercent(value) {
+        cursorSpeedPercent = Math.round(value)
+    }
+
+    function setInvertX(value) {
+        invertX = value
+    }
+
+    function setInvertY(value) {
+        invertY = value
+    }
+
     function setDeadzone(value) {
         deadzone = Math.round(value)
+    }
+
+    function setRecognitionThreshold(value) {
+        recognitionThreshold = Math.round(value)
     }
 
     function setPipelineRunning(enabled) {
@@ -393,7 +417,10 @@ QtObject {
 
     function resetSettingsDefaults() {
         sensitivity = 70
+        cursorSpeedPercent = 250
         smoothing = true
+        invertX = false
+        invertY = false
         deadzone = 12
         detectionConfidence = 60
         trackingConfidence = 55
@@ -402,7 +429,7 @@ QtObject {
         cooldownMs = 250
         requireRelease = true
         showLandmarks = true
-        mirrorPreview = false
+        mirrorPreview = true
         swapHandedness = false
         activeProfile = "Default"
         outputArmed = false

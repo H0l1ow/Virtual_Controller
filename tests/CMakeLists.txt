@@ -110,3 +110,26 @@ add_test(
     NAME vc_output_service_tests
     COMMAND vc_output_service_tests
 )
+
+add_executable(
+    vc_gesture_recognition_tests
+    GestureRecognitionTests.cpp
+    ../app/src/gestures/HandFeatures.cpp
+    ../app/src/gestures/GestureEngine.cpp
+)
+
+target_include_directories(
+    vc_gesture_recognition_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/app/src
+)
+
+target_compile_features(
+    vc_gesture_recognition_tests
+    PRIVATE cxx_std_20
+)
+
+add_test(
+    NAME vc_gesture_recognition_tests
+    COMMAND vc_gesture_recognition_tests
+)

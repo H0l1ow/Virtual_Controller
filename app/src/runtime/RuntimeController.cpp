@@ -1,5 +1,7 @@
 #include "runtime/RuntimeController.hpp"
 
+#include "gestures/GestureEngine.hpp"
+#include "gestures/OnnxGestureRecognizer.hpp"
 #include "tracking/HandIdentityStabilizer.hpp"
 #include "tracking/MediaPipeTracker.hpp"
 
@@ -24,6 +26,27 @@
 #include <vector>
 
 namespace vc {
+
+namespace {
+
+QString gestureDisplayName(GestureClass gesture)
+{
+    switch (gesture) {
+    case GestureClass::Fist:
+        return QStringLiteral("FIST");
+    case GestureClass::OpenHand:
+        return QStringLiteral("OPEN HAND");
+    case GestureClass::Point:
+        return QStringLiteral("POINT");
+    case GestureClass::Pinch:
+        return QStringLiteral("PINCH");
+    case GestureClass::None:
+    default:
+        return QStringLiteral("NONE");
+    }
+}
+
+} // namespace
 
 RuntimeController::RuntimeController(
     QObject *parent)
@@ -438,6 +461,18 @@ void RuntimeController::setDeadzone(
     emit settingsChanged();
 }
 
+void RuntimeController::setRecognitionThreshold(
+    int value)
+{
+    value = std::clamp(value, 0, 100);
+
+    if (recognitionThreshold_.exchange(value) == value) {
+        return;
+    }
+
+    emit settingsChanged();
+}
+
 void RuntimeController::refreshDevices()
 {
     cameras_ = QMediaDevices::videoInputs();
@@ -659,6 +694,32 @@ QString RuntimeController::handLandmarkerModelPath() const
             "/models/hand_landmarker.task");
 }
 
+QString RuntimeController::gestureModelPath() const
+{
+    const QString besideExecutable =
+        QCoreApplication::applicationDirPath()
+        + QStringLiteral(
+            "/models/gesture_model.onnx");
+
+    if (QFileInfo::exists(besideExecutable)) {
+        return besideExecutable;
+    }
+
+#ifdef VC_GESTURE_MODEL_PATH
+    const QString configured =
+        QString::fromUtf8(
+            VC_GESTURE_MODEL_PATH);
+
+    if (QFileInfo::exists(configured)) {
+        return configured;
+    }
+#endif
+
+    return QString::fromUtf8(VC_SOURCE_ROOT)
+        + QStringLiteral(
+            "/models/gesture_model.onnx");
+}
+
 void RuntimeController::start()
 {
     if (!canStart()) {
@@ -849,6 +910,7 @@ void RuntimeController::start()
     session.metrics = metrics_;
     session.libraryPath = libraryPath;
     session.modelPath = modelPath;
+    session.gestureModelPath = gestureModelPath();
     session.detectionConfidence =
         static_cast<float>(
             detectionConfidence_)
@@ -1152,6 +1214,83 @@ void RuntimeController::workerLoop(
                 bool previousSwap =
                     swapHandedness_.load();
 
+                std::unique_ptr<OnnxGestureRecognizer> gestureModel;
+                GestureEngine::ModelInference modelInference;
+                QString gestureBackend = QStringLiteral("Rules");
+                QString gestureModelStatus =
+                    QStringLiteral("Rule fallback active");
+                bool gestureModelActive = false;
+
+#ifdef VC_WITH_ONNX
+                if (QFileInfo::exists(session->gestureModelPath)) {
+                    try {
+                        gestureModel =
+                            std::make_unique<OnnxGestureRecognizer>(
+                                session->gestureModelPath);
+
+                        if (gestureModel->windowSize() != 16) {
+                            throw std::runtime_error(
+                                "M3 runtime currently expects a 16-frame gesture window");
+                        }
+
+                        auto *model = gestureModel.get();
+                        modelInference =
+                            [model](const std::vector<float> &tensor) {
+                                return model->infer(tensor);
+                            };
+
+                        gestureBackend = QStringLiteral("ONNX TCN");
+                        gestureModelStatus =
+                            QStringLiteral("gesture_model.onnx loaded");
+                        gestureModelActive = true;
+                    }
+                    catch (const std::exception &error) {
+                        qWarning()
+                            << "[gesture] model rejected; using rules:"
+                            << error.what();
+
+                        gestureModel.reset();
+                        modelInference = {};
+                        gestureBackend = QStringLiteral("Rules");
+                        gestureModelStatus =
+                            QStringLiteral("Model rejected - rule fallback");
+                        gestureModelActive = false;
+                    }
+                }
+                else {
+                    gestureModelStatus =
+                        QStringLiteral("No gesture_model.onnx - rule fallback");
+                }
+#else
+                if (QFileInfo::exists(session->gestureModelPath)) {
+                    gestureModelStatus =
+                        QStringLiteral("Model present, but this build has ONNX disabled");
+                }
+                else {
+                    gestureModelStatus =
+                        QStringLiteral("Rule fallback active (ONNX disabled)");
+                }
+#endif
+
+                GestureEngine gestureEngine(
+                    std::move(modelInference),
+                    gestureBackend.toStdString());
+
+                QMetaObject::invokeMethod(
+                    this,
+                    [this,
+                     generation,
+                     gestureBackend,
+                     gestureModelStatus,
+                     gestureModelActive] {
+                        updateGestureBackendStatus(
+                            gestureBackend,
+                            gestureModelStatus,
+                            gestureModelActive,
+                            generation);
+                    },
+                    Qt::QueuedConnection);
+
                 QMetaObject::invokeMethod(
                     this,
                     [this, generation] {
@@ -1245,6 +1384,7 @@ void RuntimeController::workerLoop(
 
                     if (currentSwap != previousSwap) {
                         stabilizer.reset();
+                        gestureEngine.reset();
                         previousSwap = currentSwap;
                     }
 
@@ -1252,6 +1392,11 @@ void RuntimeController::workerLoop(
                         stabilizer.update(
                             raw,
                             currentSwap);
+
+                    const GestureFrame gestures =
+                        gestureEngine.update(
+                            tracking,
+                            recognitionThreshold_.load());
 
                     const auto processingEndUs =
                         nowUs();
@@ -1269,9 +1414,10 @@ void RuntimeController::workerLoop(
 
                     QMetaObject::invokeMethod(
                         this,
-                        [this, tracking, generation] {
+                        [this, tracking, gestures, generation] {
                             applyTrackingFrame(
                                 tracking,
+                                gestures,
                                 generation);
                         },
                         Qt::QueuedConnection);
@@ -1342,6 +1488,7 @@ QVariantList RuntimeController::toVariantLandmarks(
 
 void RuntimeController::applyTrackingFrame(
     const TrackingFrame &frame,
+    const GestureFrame &gestures,
     std::uint64_t generation)
 {
     if (generation != generation_
@@ -1398,7 +1545,41 @@ void RuntimeController::applyTrackingFrame(
             .arg(frame.width)
             .arg(frame.height);
 
+    const auto &leftGesture =
+        gestures.hands[handIndex(HandSide::Left)];
+    const auto &rightGesture =
+        gestures.hands[handIndex(HandSide::Right)];
+
+    leftGesture_ = leftGesture.ready
+        ? gestureDisplayName(leftGesture.gesture)
+        : QStringLiteral("NONE");
+    rightGesture_ = rightGesture.ready
+        ? gestureDisplayName(rightGesture.gesture)
+        : QStringLiteral("NONE");
+    leftGestureConfidence_ = leftGesture.ready
+        ? leftGesture.confidence
+        : 0.0;
+    rightGestureConfidence_ = rightGesture.ready
+        ? rightGesture.confidence
+        : 0.0;
+
     updateContinuousControl(frame);
+    emit stateChanged();
+}
+
+void RuntimeController::updateGestureBackendStatus(
+    const QString &backendName,
+    const QString &modelStatus,
+    bool modelActive,
+    std::uint64_t generation)
+{
+    if (generation != generation_) {
+        return;
+    }
+
+    gestureBackendName_ = backendName;
+    gestureModelStatus_ = modelStatus;
+    gestureModelActive_ = modelActive;
     emit stateChanged();
 }
 
@@ -1412,6 +1593,10 @@ void RuntimeController::clearTracking()
     rightReportedSide_ = QStringLiteral("-");
     leftLandmarks_.clear();
     rightLandmarks_.clear();
+    leftGesture_ = QStringLiteral("NONE");
+    rightGesture_ = QStringLiteral("NONE");
+    leftGestureConfidence_ = 0.0;
+    rightGestureConfidence_ = 0.0;
     resetContinuousControl();
 }
 

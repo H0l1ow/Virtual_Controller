@@ -34,6 +34,14 @@ qt_add_executable(
     src/control/ContinuousControlInterpreter.hpp
     src/control/ContinuousControlInterpreter.cpp
 
+    src/gestures/GestureTypes.hpp
+    src/gestures/HandFeatures.hpp
+    src/gestures/HandFeatures.cpp
+    src/gestures/GestureEngine.hpp
+    src/gestures/GestureEngine.cpp
+    src/gestures/OnnxGestureRecognizer.hpp
+    src/gestures/OnnxGestureRecognizer.cpp
+
     src/input/InputBackend.hpp
     src/input/InputBackend.cpp
     src/input/OutputGuard.hpp
@@ -74,7 +82,25 @@ target_compile_definitions(
         VC_SOURCE_ROOT="${CMAKE_SOURCE_DIR}"
         VC_MEDIAPIPE_ROOT_PATH="${VC_MEDIAPIPE_ROOT}"
         VC_HAND_LANDMARKER_MODEL_PATH="${VC_HAND_LANDMARKER_MODEL}"
+        VC_GESTURE_MODEL_PATH="${VC_GESTURE_MODEL}"
 )
+
+if(VC_WITH_ONNX)
+    target_compile_definitions(
+        VirtualController
+        PRIVATE VC_WITH_ONNX=1
+    )
+
+    target_include_directories(
+        VirtualController
+        PRIVATE "${VC_ONNXRUNTIME_INCLUDE_DIR}"
+    )
+
+    target_link_libraries(
+        VirtualController
+        PRIVATE "${VC_ONNXRUNTIME_LIBRARY}"
+    )
+endif()
 
 if(MSVC)
     target_compile_options(
@@ -159,6 +185,48 @@ if(EXISTS "${VC_HAND_LANDMARKER_MODEL}")
     )
 endif()
 
+if(EXISTS "${VC_GESTURE_MODEL}")
+    add_custom_command(
+        TARGET VirtualController
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:VirtualController>/models"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${VC_GESTURE_MODEL}"
+            "$<TARGET_FILE_DIR:VirtualController>/models/gesture_model.onnx"
+        VERBATIM
+    )
+
+    get_filename_component(_vc_gesture_model_dir "${VC_GESTURE_MODEL}" DIRECTORY)
+    if(EXISTS "${_vc_gesture_model_dir}/model_metadata.json")
+        add_custom_command(
+            TARGET VirtualController
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${_vc_gesture_model_dir}/model_metadata.json"
+                "$<TARGET_FILE_DIR:VirtualController>/models/model_metadata.json"
+            VERBATIM
+        )
+    endif()
+endif()
+
+if(WIN32 AND VC_WITH_ONNX)
+    set(_vc_ort_dll "${VC_ONNXRUNTIME_ROOT}/lib/onnxruntime.dll")
+    if(NOT EXISTS "${_vc_ort_dll}")
+        set(_vc_ort_dll "${VC_ONNXRUNTIME_ROOT}/bin/onnxruntime.dll")
+    endif()
+
+    if(EXISTS "${_vc_ort_dll}")
+        add_custom_command(
+            TARGET VirtualController
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${_vc_ort_dll}"
+                "$<TARGET_FILE_DIR:VirtualController>/onnxruntime.dll"
+            VERBATIM
+        )
+    endif()
+endif()
+
 set_target_properties(
     VirtualController
     PROPERTIES
@@ -183,4 +251,19 @@ if(EXISTS "${VC_HAND_LANDMARKER_MODEL}")
         FILES "${VC_HAND_LANDMARKER_MODEL}"
         DESTINATION models
     )
+endif()
+
+if(EXISTS "${VC_GESTURE_MODEL}")
+    install(
+        FILES "${VC_GESTURE_MODEL}"
+        DESTINATION models
+    )
+
+    get_filename_component(_vc_gesture_model_dir "${VC_GESTURE_MODEL}" DIRECTORY)
+    if(EXISTS "${_vc_gesture_model_dir}/model_metadata.json")
+        install(
+            FILES "${_vc_gesture_model_dir}/model_metadata.json"
+            DESTINATION models
+        )
+    endif()
 endif()

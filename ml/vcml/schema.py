@@ -1,0 +1,8 @@
+from __future__ import annotations
+
+FEATURE_SCHEMA = "vc.hand134.v2"
+FEATURE_COUNT = 134
+WINDOW_SIZE = 16
+SAMPLE_RATE = 30
+MAX_GAP_US = 150_000
+LABELS = ["NONE", "FIST", "OPEN_HAND", "POINT", "PINCH"]

@@ -22,7 +22,8 @@ QtObject {
 
     readonly property bool outputAvailable:
         runtimeBackend.outputAvailable
-    readonly property bool gestureRecognitionAvailable: false
+    readonly property bool gestureRecognitionAvailable:
+        runtimeBackend.gestureRecognitionAvailable
     readonly property bool cursorControlAvailable:
         runtimeBackend.cursorControlAvailable
 
@@ -70,7 +71,8 @@ QtObject {
     readonly property bool swapHandedness:
         runtimeBackend.swapHandedness
 
-    property int recognitionThreshold: 80
+    readonly property int recognitionThreshold:
+        runtimeBackend.recognitionThreshold
     property int debounceMs: 120
     property int cooldownMs: 250
     property bool requireRelease: true
@@ -130,8 +132,20 @@ QtObject {
     readonly property string trackingStatus:
         runtimeBackend.trackingStatus
 
-    readonly property string leftGesture: "NONE"
-    readonly property string rightGesture: "NONE"
+    readonly property string leftGesture:
+        runtimeBackend.leftGesture
+    readonly property string rightGesture:
+        runtimeBackend.rightGesture
+    readonly property real leftGestureConfidence:
+        runtimeBackend.leftGestureConfidence
+    readonly property real rightGestureConfidence:
+        runtimeBackend.rightGestureConfidence
+    readonly property string gestureBackendName:
+        runtimeBackend.gestureBackendName
+    readonly property string gestureModelStatus:
+        runtimeBackend.gestureModelStatus
+    readonly property bool gestureModelActive:
+        runtimeBackend.gestureModelActive
     readonly property int cursorX:
         runtimeBackend.cursorX
     readonly property int cursorY:
@@ -212,6 +226,10 @@ QtObject {
         runtimeBackend.deadzone = Math.round(value)
     }
 
+    function setRecognitionThreshold(value) {
+        runtimeBackend.recognitionThreshold = Math.round(value)
+    }
+
     function setPipelineRunning(enabled) {
         if (enabled && canStart)
             runtimeBackend.start()
@@ -228,7 +246,7 @@ QtObject {
             return
 
         setSensitivity(70)
-        setCursorSpeedPercent(100)
+        setCursorSpeedPercent(250)
         setSmoothing(true)
         setInvertX(false)
         setInvertY(false)
@@ -237,7 +255,7 @@ QtObject {
         setDetectionConfidence(60)
         setTrackingConfidence(55)
 
-        recognitionThreshold = 80
+        setRecognitionThreshold(80)
         debounceMs = 120
         cooldownMs = 250
         requireRelease = true

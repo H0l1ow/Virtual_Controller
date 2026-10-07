@@ -10,7 +10,7 @@ namespace vc {
 
 struct ContinuousControlConfig {
     int sensitivity{70};
-    int cursorSpeedPercent{100};
+    int cursorSpeedPercent{250};
     int deadzone{12};
     bool smoothing{true};
     bool invertX{false};

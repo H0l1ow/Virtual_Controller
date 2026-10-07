@@ -9,11 +9,11 @@ QtObject {
 
     readonly property var gestureHints: [
         { id: "right_hand_motion", gesture: "open", title: "Right Hand", action: "Move Cursor", active: true },
-        { id: "pinch", gesture: "pinch", title: "Pinch", action: "Left Click · M3", active: false },
-        { id: "point", gesture: "point", title: "Point", action: "Right Click · M3", active: false },
-        { id: "thumb_up", gesture: "up", title: "Thumbs Up", action: "Scroll Up · M3", active: false },
-        { id: "thumb_down", gesture: "down", title: "Thumbs Down", action: "Scroll Down · M3", active: false },
-        { id: "fist", gesture: "fist", title: "Fist", action: "Pause / Resume · M3", active: false }
+        { id: "pinch", gesture: "pinch", title: "Pinch", action: "Recognized · action in M4", active: true },
+        { id: "point", gesture: "point", title: "Point", action: "Recognized · action in M4", active: true },
+        { id: "open_hand", gesture: "open", title: "Open Hand", action: "Recognized · action in M4", active: true },
+        { id: "thumb_up", gesture: "up", title: "Thumbs Up", action: "Planned", active: false },
+        { id: "fist", gesture: "fist", title: "Fist", action: "Recognized · action in M4", active: true }
     ]
 
     // Demo/catalog rows only. Real mapping storage is a later milestone.
@@ -57,10 +57,10 @@ QtObject {
     ]
 
     readonly property var gestureLibrary: [
-        { id: "open_hand", gesture: "open", title: "Open Hand", category: "Static", description: "Open hand with fingers extended", enabled: false },
-        { id: "pinch", gesture: "pinch", title: "Pinch", category: "Static", description: "Thumb and index finger pinch", enabled: false },
-        { id: "point", gesture: "point", title: "Point", category: "Static", description: "Index finger extended for pointing", enabled: false },
-        { id: "fist", gesture: "fist", title: "Fist", category: "Static", description: "Closed hand", enabled: false },
+        { id: "open_hand", gesture: "open", title: "Open Hand", category: "Static", description: "Open hand with fingers extended", enabled: true },
+        { id: "pinch", gesture: "pinch", title: "Pinch", category: "Static", description: "Thumb and index finger pinch", enabled: true },
+        { id: "point", gesture: "point", title: "Point", category: "Static", description: "Index finger extended for pointing", enabled: true },
+        { id: "fist", gesture: "fist", title: "Fist", category: "Static", description: "Closed hand", enabled: true },
         { id: "thumb_up", gesture: "up", title: "Thumbs Up", category: "Static", description: "Thumb pointing upward", enabled: false },
         { id: "thumb_down", gesture: "down", title: "Thumbs Down", category: "Static", description: "Thumb pointing downward", enabled: false },
         { id: "swipe_horizontal", gesture: "swipe", title: "Swipe Left / Right", category: "Dynamic", description: "Horizontal hand motion", enabled: false },

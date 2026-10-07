@@ -148,7 +148,11 @@ ContinuousControlResult ContinuousControlInterpreter::update(
     const float gain =
         cursorGain(config.sensitivity) * speedScale;
 
+    // The default horizontal mapping is reversed so hand motion feels natural
+    // with the mirrored camera preview. The Invert X switch applies one more
+    // reversal and therefore remains OFF in the default configuration.
     dx = -dx;
+
     if (config.invertX) {
         dx = -dx;
     }

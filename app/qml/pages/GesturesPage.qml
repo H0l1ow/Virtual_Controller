@@ -18,8 +18,8 @@ Item {
         ? uiState.leftGesture
         : uiState.rightGesture
     readonly property real liveConfidence: liveHandIsLeft
-        ? uiState.leftConfidence
-        : uiState.rightConfidence
+        ? uiState.leftGestureConfidence
+        : uiState.rightGestureConfidence
 
     function glyphForGesture(gestureName) {
         switch (gestureName) {
@@ -49,7 +49,7 @@ Item {
             Layout.fillWidth: true
             theme: root.theme
             title: "Gestures"
-            subtitle: "Available gestures, recognition preview and future custom gesture training."
+            subtitle: "Live static gesture recognition for both hands; event mapping remains a later stage."
 
             VcTextField {
                 theme: root.theme
@@ -274,7 +274,7 @@ Item {
                         iconName: "camera"
                         title: "Live Recognition"
                         statusText: !root.uiState.gestureRecognitionAvailable
-                            ? "M3: disabled"
+                            ? "Unavailable"
                             : (!root.uiState.pipelineRunning
                                 ? "Off"
                                 : root.liveHandTracked ? "Live" : "Hand lost")
@@ -317,7 +317,7 @@ Item {
                             visible: !root.liveHandTracked
                                 || !root.uiState.gestureRecognitionAvailable
                             text: !root.uiState.gestureRecognitionAvailable
-                                ? "GESTURE RECOGNITION STARTS IN M3"
+                                ? "GESTURE RECOGNITION UNAVAILABLE"
                                 : (root.uiState.pipelineRunning
                                     ? "HAND NOT TRACKED"
                                     : "PIPELINE STOPPED")
@@ -373,7 +373,7 @@ Item {
                         Text {
                             text: root.uiState.gestureRecognitionAvailable
                                 ? root.liveGesture
-                                : "Not implemented yet (M3)"
+                                : "Unavailable"
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 20
@@ -385,7 +385,7 @@ Item {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: "Handedness score"
+                                text: "Gesture confidence"
                                 color: root.theme.textSecondary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
@@ -430,8 +430,9 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            text: "Custom gesture recording and training is intentionally "
-                                + "reserved for a later project stage."
+                            text: "Backend: " + root.uiState.gestureBackendName
+                                + "\n" + root.uiState.gestureModelStatus
+                                + "\nCustom gesture recording remains a later project stage."
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10

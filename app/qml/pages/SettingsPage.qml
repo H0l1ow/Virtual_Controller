@@ -23,11 +23,11 @@ Item {
             icon: "target"
         },
         {
-            title: "Gestures (M3)",
+            title: "Gestures",
             icon: "mapping"
         },
         {
-            title: "Model (M3)",
+            title: "Model",
             icon: "settings"
         }
     ]
@@ -551,13 +551,13 @@ Item {
                                 Layout.fillWidth: true
                                 theme: root.theme
                                 title: "Recognition threshold"
-                                description: "Minimum model confidence before a gesture can become active."
+                                description: "Minimum recognition confidence before a gesture is reported as active."
                                 VcSlider {
                                     id: recognitionThresholdSlider
                                     theme: root.theme
                                     value: root.uiState.recognitionThreshold
                                     implicitWidth: 230
-                                    onMoved: root.uiState.recognitionThreshold = Math.round(value)
+                                    onMoved: root.uiState.setRecognitionThreshold(value)
                                 }
                                 Text {
                                     text: Math.round(recognitionThresholdSlider.value) + "%"
@@ -574,11 +574,12 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Debounce"
-                                description: "Time a gesture must remain stable before PRESS is generated."
+                                title: "Debounce (M4)"
+                                description: "Reserved for PRESS/HOLD/RELEASE event generation in M4."
                                 VcComboBox {
                                     id: debounceCombo
                                     theme: root.theme
+                                    enabled: false
                                     model: ["80 ms", "120 ms", "160 ms", "200 ms"]
                                     currentIndex: Math.max(0, [80, 120, 160, 200].indexOf(root.uiState.debounceMs))
                                     implicitWidth: 180
@@ -593,11 +594,12 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Cooldown"
-                                description: "Minimum delay before the same discrete gesture can fire again."
+                                title: "Cooldown (M4)"
+                                description: "Reserved for discrete gesture actions in M4."
                                 VcComboBox {
                                     id: cooldownCombo
                                     theme: root.theme
+                                    enabled: false
                                     model: ["150 ms", "250 ms", "400 ms", "600 ms"]
                                     currentIndex: Math.max(0, [150, 250, 400, 600].indexOf(root.uiState.cooldownMs))
                                     implicitWidth: 180
@@ -612,11 +614,12 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Require release"
-                                description: "Require a gesture to return to NONE before it may trigger again."
+                                title: "Require release (M4)"
+                                description: "Reserved for the gesture event state machine in M4."
                                 VcSwitch {
                                     id: requireReleaseSwitch
                                     theme: root.theme
+                                    enabled: false
                                     checked: root.uiState.requireRelease
                                     onToggled: root.uiState.requireRelease = checked
                                 }
@@ -642,7 +645,7 @@ Item {
                                 font.weight: Font.DemiBold
                             }
                             Text {
-                                text: "Runtime model configuration. Values are mock UI in this iteration."
+                                text: "Gesture recognition backend and optional causal TCN runtime."
                                 color: root.theme.textMuted
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
@@ -672,7 +675,7 @@ Item {
                                 description: "Causal TCN exported to ONNX and executed by ONNX Runtime C++."
                                 VcTextField {
                                     theme: root.theme
-                                    text: "models/gesture_tcn.onnx"
+                                    text: "models/gesture_model.onnx"
                                     implicitWidth: 300
                                     readOnly: true
                                 }
@@ -685,12 +688,12 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Runtime status"
-                                description: "The ML runtime is not connected in the UI-only prototype."
+                                title: "Recognition backend"
+                                description: root.uiState.gestureModelStatus
                                 StatusBadge {
                                     theme: root.theme
-                                    text: "Not connected"
-                                    kind: "warning"
+                                    text: root.uiState.gestureBackendName
+                                    kind: root.uiState.gestureModelActive ? "success" : "neutral"
                                 }
                             }
                             Rectangle {
@@ -701,8 +704,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Reload model"
-                                description: "Reload model files without changing the UI configuration."
+                                title: "Reload model (later)"
+                                description: "Restart tracking after replacing the model. Hot reload is not enabled yet."
                                 VcButton {
                                     theme: root.theme
                                     text: "Reload"

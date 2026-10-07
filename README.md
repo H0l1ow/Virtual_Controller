@@ -1,128 +1,145 @@
-# Virtual Controller - M2 cursor tuning (0.7.1)
+# Virtual Controller - M3 gesture recognition (0.8.0)
 
-Native Qt/QML application for two-hand camera tracking and low-latency desktop
-control. M2 keeps the stable M1 hardening + immersive Controller UI and adds the
-first real output path: right-hand continuous movement -> logical ControllerState
--> optional Windows mouse output.
+Qt/QML + C++20 desktop application for two-hand camera tracking and low-latency
+continuous control. M3 keeps the M1 hardening, immersive UI and M2 Windows cursor
+output, then adds a separate gesture-recognition layer for both hands.
 
 ## Current scope
 
 Implemented:
 
 - Qt 6.11.2 / QML / C++20 project opened directly from the root `CMakeLists.txt`.
-- Qt Multimedia camera preview and capture formats.
-- MediaPipe 0.10.32 Hand Landmarker in a persistent worker thread.
-- simultaneous tracking of up to two hands and 21 landmarks per hand.
-- explicit runtime lifecycle: `Stopped / Starting / Running / Stopping / Faulted`.
-- latest-frame mailbox (capacity 1), temporal Left/Right stabilization and runtime metrics.
-- fullscreen Controller presentation with configurable translucent overlays.
-- **M2 continuous cursor interpreter** using the stable right-hand palm position.
-- **One Euro smoothing**, sensitivity/gain and radial movement deadband.
-- no-jump behavior on first frame, hand reacquisition, changed track ID and long frame gaps.
-- backend-neutral `ControllerState` contract prepared for later keyboard/gamepad mapping.
-- opt-in Windows `SendInput` mouse backend; output is never armed automatically.
-- independent output watchdog: stale tracking data disarms output and neutralizes state.
-- F8 emergency output stop on Windows.
-- immediate neutralization on pipeline STOP/fault and when the right hand is lost.
-- mock input backend and pure C++ tests for control/output safety.
+- MediaPipe 0.10.32 Hand Landmarker, two-hand tracking and stable Left/Right identity.
+- explicit runtime lifecycle, latest-frame mailbox and runtime latency/drop metrics.
+- M2 relative cursor control with One Euro smoothing, deadzone, sensitivity and
+  DPI-like cursor speed.
+- opt-in Windows `SendInput` mouse output with watchdog and F8 emergency disarm.
+- **M3 static gesture recognition for both hands:** `NONE`, `FIST`, `OPEN HAND`,
+  `POINT`, `PINCH`.
+- causal `vc.hand134.v2` feature extractor and 16-frame / 30 Hz temporal buffer.
+- deterministic geometric rule recognizer used as a safe bootstrap/fallback.
+- optional native ONNX Runtime backend for a compatible causal TCN model.
+- live gesture names/confidences on the Controller overlay and Gestures page.
+- active recognition threshold in Settings.
+- Python causal TCN training/export scaffold matching the C++ feature contract.
+- pure C++ tests for gesture geometry/features/temporal recognition.
 
-Not implemented yet:
+Still intentionally not implemented:
 
-- gesture TCN / ONNX Runtime,
-- clicks/scroll/keyboard mappings driven by gestures,
-- PRESS / HOLD / RELEASE semantics,
-- profile persistence / real mapping storage,
-- calibrated absolute workspace or configurable cursor hand,
+- gesture -> mouse click/scroll/keyboard actions,
+- PRESS / HOLD / RELEASE event state machine, debounce/cooldown semantics,
+- profile persistence / editable ActionMapper,
+- dataset recording from the GUI and custom gesture creation,
+- dynamic swipe gestures and two-hand gestures,
 - Xbox / PlayStation output.
 
-## M2 behavior
+Those remain separate milestones so gesture classification cannot accidentally
+start generating operating-system actions before its event semantics are tested.
 
-M2 deliberately does **not** require a gesture to move the cursor. The stabilized
-**right hand** is the continuous control source. The pipeline is:
+## M3 pipeline
 
 ```text
+Camera frame
+    |
+    v
 MediaPipeTracker
-      |
-      v
+    |
+    v
 HandIdentityStabilizer
-      |
-      v
-TrackingFrame (stable RightHand)
-      |
-      v
-ContinuousControlInterpreter
-  - One Euro filter
-  - per-frame deadband
-  - sensitivity/gain
-  - no-jump reset rules
-      |
-      v
-ControllerState { mouseX, mouseY }
-      |                 |
-      |                 +--> UI cursor preview (always safe)
-      v
-OutputService / OutputGuard
-      |
-      +--> disarmed: no OS input
-      |
-      +--> armed: Windows SendInput mouse backend
+    |
+    +-------------------------------> M2 ContinuousControlInterpreter -> cursor
+    |
+    v
+TrackingFrame (Left + Right)
+    |
+    v
+Gesture feature pipeline
+  - wrist-relative / scale-normalized landmarks
+  - left-hand canonicalization
+  - landmark velocity
+  - finger curl
+  - pinch distances
+  - 30 Hz causal temporal stream
+    |
+    +--> rule recognizer (always available)
+    |
+    +--> optional causal TCN / ONNX Runtime
+    |
+    v
+GesturePrediction { class, confidence }
+    |
+    v
+UI only in M3
 ```
 
-`System output` remains OFF by default. Tracking and the logical cursor preview
-can therefore be tested without moving the real Windows cursor. Turning output
-ON is an explicit user action.
+The gesture layer does not alter the continuous cursor path. Losing one hand
+resets only that hand's gesture history. A changed `trackId` also starts a fresh
+temporal window.
 
-Safety rules:
+## Rule fallback vs TCN
 
-- STOP/fault -> output is disarmed immediately.
-- right hand lost -> current logical output becomes neutral.
-- right hand reacquired -> first frame is baseline only; no cursor jump.
-- stale producer data (>250 ms) -> watchdog disarms output.
-- F8 -> emergency disarm.
-- a transient `SendInput` failure disarms output and reports the reason; the
-  backend remains available for an explicit re-arm after the condition is gone.
+A real trained TCN is **not fabricated or bundled** with this package. Without a
+model, the application recognizes the initial static gestures using geometric
+rules. This makes the UI/pipeline testable now while keeping the final ML
+contract in place.
 
-## Cursor tuning
+A compatible ONNX model uses:
 
-Control settings are now live C++ runtime settings rather than UI placeholders:
+```text
+schema:       vc.hand134.v2
+input:        float32 [batch,16,134]
+sample rate:  30 Hz
+output:       logits [batch,5]
+labels:       NONE,FIST,OPEN_HAND,POINT,PINCH
+```
 
-- **Sensitivity** - overall movement gain.
-- **Smoothing** - One Euro filter on/off.
-- **Deadzone** - suppresses tiny per-frame movement/jitter.
+Put `gesture_model.onnx` and `model_metadata.json` together in `models/`, install
+ONNX Runtime 1.26.x-compatible SDK and configure:
 
-Default values remain `70 / ON / 12%`.
+```text
+VC_WITH_ONNX=ON
+VC_ONNXRUNTIME_ROOT=C:/SDK/onnxruntime-win-x64-1.26.0
+```
 
-M2 uses relative hand movement and intentionally does not add a calibration
-wizard yet. The existing disabled Calibrate button is reserved for a later
-workspace/analog-control refinement.
+If the model is absent or rejected, the application stays on the Rules backend
+instead of breaking camera tracking.
+
+## Current control defaults
+
+The user-tuned M2 defaults are retained in 0.8.0:
+
+- Mirror preview: **ON**
+- Cursor speed: **2.5x**
+- Invert X switch: **OFF**, while the default horizontal mapping is already
+  reversed to match the mirrored interaction
+- Invert Y: OFF
+- Sensitivity: 70%
+- Smoothing: ON
+- Deadzone: 12%
+- Gesture recognition threshold: 80%
+- System output: OFF
 
 ## Qt Creator
 
-1. **File -> Open File or Project...** and select the root `CMakeLists.txt`.
-2. Choose **Qt 6.11.2 MSVC 2022 64-bit** (compatible newer MSVC is also accepted).
-3. Let Qt Creator configure CMake.
-4. Build and run target `VirtualController`.
-5. Press **Start tracking**.
-6. Move the right hand and verify the logical cursor in `Cursor Tracking`.
-7. Only after that, enable **System output** to move the real Windows cursor.
+1. Open the root `CMakeLists.txt` in Qt Creator.
+2. Select Qt 6.11.2 MSVC 2022 64-bit (compatible newer MSVC is accepted).
+3. Configure, Build and Run normally from Qt Creator.
+4. Press **Start tracking**.
+5. Verify cursor tracking first with `System output` OFF.
+6. Open **Gestures** and verify both hands report sensible static gestures.
+7. Enable `System output` only when cursor motion is already stable.
 
-No terminal is required for normal Build / Run / Debug.
+ONNX is optional. The default `VC_WITH_ONNX=OFF` build needs no ONNX SDK and uses
+the rule recognizer.
 
-## Runtime files
+## Python ML
 
-The development package contains:
-
-- `deps/mediapipe/libmediapipe.dll`
-- `models/hand_landmarker.task`
-
-CMake copies these beside the executable for Qt Creator Run/Debug and installs
-them with `cmake --install` when present.
-
-See `THIRD_PARTY_NOTICES.md` before redistribution.
+See `ml/README.md`. The repository contains the causal TCN and ONNX export path,
+but the application does not yet contain the later dataset-recording UI.
 
 ## Tests
 
-Core tests do not require Qt:
+Core C++ tests do not require Qt:
 
 ```text
 cmake -S . -B build-core -DVC_BUILD_GUI=OFF -DBUILD_TESTING=ON
@@ -130,32 +147,13 @@ cmake --build build-core
 ctest --test-dir build-core --output-on-failure
 ```
 
-Current test targets cover:
+M3 adds `vc_gesture_recognition_tests` to the existing M1/M2 test set.
 
-- hand identity stabilization,
-- runtime metrics,
-- continuous cursor/no-jump/deadzone behavior,
-- output guard stale-result/one-shot semantics,
-- threaded mock output STOP/watchdog behavior.
+Python model contract tests:
 
-See `docs/M1_HARDENING.md`, `docs/M1_1_IMMERSIVE_UI.md` and
-`docs/M2_CONTINUOUS_CONTROL.md`.
+```text
+python -m pytest -q ml/tests/test_model.py
+```
 
-## Next milestone
-
-M3 should introduce the gesture feature pipeline and causal TCN/ONNX inference
-without changing the continuous cursor path. Gesture classification remains a
-separate layer from tracking and continuous control.
-
-## M2.1 pointer tuning
-
-Version 0.7.1 adds live pointer tuning without changing the tracking pipeline:
-
-- `Invert X axis` and `Invert Y axis` independently reverse cursor direction.
-- `Cursor speed` is a DPI-like 0.5x-4.0x multiplier applied after smoothing and deadzone.
-- `Sensitivity` remains the fine gain control; cursor speed is the coarse reach multiplier.
-- The Controller quick settings expose sensitivity, cursor speed and both axis switches.
-- The full Settings > Control page exposes the same controls together with smoothing and deadzone.
-
-At 2.0x, the same physical hand displacement produces approximately twice the
-cursor displacement of 1.0x, subject to the existing safety clamp.
+See `docs/M1_HARDENING.md`, `docs/M1_1_IMMERSIVE_UI.md`,
+`docs/M2_CONTINUOUS_CONTROL.md` and `docs/M3_GESTURE_RECOGNITION.md`.

@@ -70,8 +70,8 @@ int main()
         1'233'333,
         config);
 
-    assert(doubleSpeed.controller.mouseX
-        > normalSpeed.controller.mouseX * 1.9F);
+    assert(std::abs(doubleSpeed.controller.mouseX)
+        > std::abs(normalSpeed.controller.mouseX) * 1.9F);
 
     // Each axis can be inverted independently.
     interpreter.reset();

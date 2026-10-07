@@ -2,6 +2,7 @@
 
 #include "control/ContinuousControlInterpreter.hpp"
 #include "control/ControllerState.hpp"
+#include "gestures/GestureTypes.hpp"
 #include "input/OutputService.hpp"
 #include "runtime/LatestFrameSlot.hpp"
 #include "runtime/RuntimeMetrics.hpp"
@@ -312,6 +313,52 @@ public:
                 WRITE setDeadzone
                     NOTIFY settingsChanged)
 
+    Q_PROPERTY(
+        bool gestureRecognitionAvailable
+            READ gestureRecognitionAvailable
+                CONSTANT)
+
+    Q_PROPERTY(
+        QString leftGesture
+            READ leftGesture
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        QString rightGesture
+            READ rightGesture
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        double leftGestureConfidence
+            READ leftGestureConfidence
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        double rightGestureConfidence
+            READ rightGestureConfidence
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        int recognitionThreshold
+            READ recognitionThreshold
+                WRITE setRecognitionThreshold
+                    NOTIFY settingsChanged)
+
+    Q_PROPERTY(
+        QString gestureBackendName
+            READ gestureBackendName
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        QString gestureModelStatus
+            READ gestureModelStatus
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        bool gestureModelActive
+            READ gestureModelActive
+                NOTIFY stateChanged)
+
 public:
     explicit RuntimeController(
         QObject *parent = nullptr);
@@ -566,6 +613,51 @@ public:
         return deadzone_;
     }
 
+    bool gestureRecognitionAvailable() const
+    {
+        return true;
+    }
+
+    QString leftGesture() const
+    {
+        return leftGesture_;
+    }
+
+    QString rightGesture() const
+    {
+        return rightGesture_;
+    }
+
+    double leftGestureConfidence() const
+    {
+        return leftGestureConfidence_;
+    }
+
+    double rightGestureConfidence() const
+    {
+        return rightGestureConfidence_;
+    }
+
+    int recognitionThreshold() const
+    {
+        return recognitionThreshold_.load();
+    }
+
+    QString gestureBackendName() const
+    {
+        return gestureBackendName_;
+    }
+
+    QString gestureModelStatus() const
+    {
+        return gestureModelStatus_;
+    }
+
+    bool gestureModelActive() const
+    {
+        return gestureModelActive_;
+    }
+
     void setDetectionConfidence(int value);
     void setTrackingConfidence(int value);
     void setSwapHandedness(bool value);
@@ -576,6 +668,7 @@ public:
     void setInvertX(bool value);
     void setInvertY(bool value);
     void setDeadzone(int value);
+    void setRecognitionThreshold(int value);
 
     Q_INVOKABLE void attachVideoOutput(QObject *output);
     Q_INVOKABLE void selectCamera(int index);
@@ -605,6 +698,7 @@ private:
 
         QString libraryPath;
         QString modelPath;
+        QString gestureModelPath;
 
         float detectionConfidence{};
         float trackingConfidence{};
@@ -638,6 +732,7 @@ private:
 
     QString mediaPipeLibraryPath() const;
     QString handLandmarkerModelPath() const;
+    QString gestureModelPath() const;
 
     void clearTracking();
     void resetContinuousControl();
@@ -648,6 +743,13 @@ private:
 
     void applyTrackingFrame(
         const TrackingFrame &frame,
+        const GestureFrame &gestures,
+        std::uint64_t generation);
+
+    void updateGestureBackendStatus(
+        const QString &backendName,
+        const QString &modelStatus,
+        bool modelActive,
         std::uint64_t generation);
 
     void workerLoop(
@@ -685,6 +787,7 @@ private:
     RuntimeMetricsSnapshot metricsSnapshot_;
 
     std::atomic_bool swapHandedness_{};
+    std::atomic_int recognitionThreshold_{80};
 
     ContinuousControlInterpreter continuousControl_;
     OutputService outputService_;
@@ -734,6 +837,14 @@ private:
 
     QVariantList leftLandmarks_;
     QVariantList rightLandmarks_;
+
+    QString leftGesture_{QStringLiteral("NONE")};
+    QString rightGesture_{QStringLiteral("NONE")};
+    double leftGestureConfidence_{};
+    double rightGestureConfidence_{};
+    QString gestureBackendName_{QStringLiteral("Rules")};
+    QString gestureModelStatus_{QStringLiteral("Rule fallback active")};
+    bool gestureModelActive_{};
 };
 
 } // namespace vc

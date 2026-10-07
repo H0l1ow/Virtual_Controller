@@ -449,7 +449,7 @@ VcCard {
                 text: root.uiState.leftTracked
                     ? (root.uiState.gestureRecognitionAvailable
                         ? "L  " + root.uiState.leftGesture + "  "
-                            + Math.round(root.uiState.leftConfidence * 100) + "%"
+                            + Math.round(root.uiState.leftGestureConfidence * 100) + "%"
                         : "L  TRACKED  MP " + root.uiState.leftReportedSide + " "
                             + Math.round(root.uiState.leftConfidence * 100) + "%")
                     : "L  NOT TRACKED"
@@ -482,7 +482,7 @@ VcCard {
                 text: root.uiState.rightTracked
                     ? (root.uiState.gestureRecognitionAvailable
                         ? "R  " + root.uiState.rightGesture + "  "
-                            + Math.round(root.uiState.rightConfidence * 100) + "%"
+                            + Math.round(root.uiState.rightGestureConfidence * 100) + "%"
                         : "R  TRACKED  MP " + root.uiState.rightReportedSide + " "
                             + Math.round(root.uiState.rightConfidence * 100) + "%")
                     : "R  NOT TRACKED"

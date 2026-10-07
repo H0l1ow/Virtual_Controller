@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(VirtualController VERSION 0.7.1 LANGUAGES CXX)
+project(VirtualController VERSION 0.8.0 LANGUAGES CXX)
 
 include(CTest)
 
@@ -12,8 +12,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(VC_QT_MIN_VERSION "6.11.2" CACHE STRING "Minimum supported Qt 6 version")
 option(VC_BUILD_GUI "Build the Qt Quick desktop application" ON)
 
-# These switches now describe implemented functionality. Future integrations
-# stay OFF until their code is actually present in the runtime.
+# Static gesture recognition always has a deterministic rules fallback. ONNX
+# enables the optional causal TCN backend when a compatible SDK/model exists.
 option(VC_WITH_ONNX "Enable native ONNX gesture inference" OFF)
 option(VC_WITH_GAMEPAD "Enable virtual gamepad backend" OFF)
 
@@ -24,7 +24,7 @@ elseif(WIN32)
 else()
     set(_vc_ort_default "${CMAKE_SOURCE_DIR}/deps/onnxruntime")
 endif()
-set(VC_ONNXRUNTIME_ROOT "${_vc_ort_default}" CACHE PATH "ONNX Runtime SDK root (future milestone)")
+set(VC_ONNXRUNTIME_ROOT "${_vc_ort_default}" CACHE PATH "ONNX Runtime SDK root")
 
 set(
     VC_DEPS_DIR
@@ -46,6 +46,36 @@ set(
     CACHE FILEPATH
     "MediaPipe hand landmarker model"
 )
+
+set(
+    VC_GESTURE_MODEL
+    "${CMAKE_SOURCE_DIR}/models/gesture_model.onnx"
+    CACHE FILEPATH
+    "Optional M3 gesture TCN model"
+)
+
+if(VC_WITH_ONNX)
+    find_path(
+        VC_ONNXRUNTIME_INCLUDE_DIR
+        onnxruntime_cxx_api.h
+        PATHS "${VC_ONNXRUNTIME_ROOT}/include"
+        NO_DEFAULT_PATH
+    )
+
+    find_library(
+        VC_ONNXRUNTIME_LIBRARY
+        NAMES onnxruntime
+        PATHS "${VC_ONNXRUNTIME_ROOT}/lib"
+        NO_DEFAULT_PATH
+    )
+
+    if(NOT VC_ONNXRUNTIME_INCLUDE_DIR OR NOT VC_ONNXRUNTIME_LIBRARY)
+        message(FATAL_ERROR
+            "VC_WITH_ONNX=ON but ONNX Runtime was not found under "
+            "${VC_ONNXRUNTIME_ROOT}. Expected include/onnxruntime_cxx_api.h "
+            "and lib/onnxruntime(.lib).")
+    endif()
+endif()
 
 if(WIN32)
     if(NOT MSVC)
@@ -77,4 +107,5 @@ message(STATUS "  Qt minimum:        ${VC_QT_MIN_VERSION}")
 message(STATUS "  MediaPipe runtime: ${VC_MEDIAPIPE_ROOT}")
 message(STATUS "  Hand model:        ${VC_HAND_LANDMARKER_MODEL}")
 message(STATUS "  ONNX enabled:      ${VC_WITH_ONNX}")
+message(STATUS "  Gesture model:     ${VC_GESTURE_MODEL}")
 message(STATUS "  Gamepad enabled:   ${VC_WITH_GAMEPAD}")
