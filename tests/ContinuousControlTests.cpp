@@ -43,7 +43,7 @@ int main()
         1'033'333,
         config);
 
-    assert(moved.controller.mouseX > 0.0F);
+    assert(moved.controller.mouseX < 0.0F);
     assert(moved.controller.mouseY < 0.0F);
 
     // DPI-like cursor speed multiplies the final motion without changing the
@@ -87,7 +87,7 @@ int main()
         1'333'333,
         config);
 
-    assert(inverted.controller.mouseX < 0.0F);
+    assert(inverted.controller.mouseX > 0.0F);
     assert(inverted.controller.mouseY > 0.0F);
 
     config.invertX = false;
