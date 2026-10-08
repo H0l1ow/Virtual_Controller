@@ -16,13 +16,11 @@ Item {
             : ({})
 
     readonly property var handOptions: ["Left", "Right"]
-    readonly property var gestureOptions: uiState.mappingGestureOptions
-    readonly property bool selectedGestureAvailable:
-        gestureCombo.currentText.length > 0
-            && uiState.gestureRuntimeAvailable(gestureCombo.currentText)
+    readonly property var gestureOptions: ["PINCH", "FIST", "POINT", "OPEN HAND"]
     readonly property var behaviorOptions: ["Press", "Hold", "Toggle"]
     readonly property var actionOptions: [
         "Left click", "Right click", "Scroll up", "Scroll down", "Freeze cursor",
+        "Enable cursor movement",
         "Key Space", "Key Enter", "Key Escape", "Key Tab",
         "Key Left", "Key Right", "Key Up", "Key Down",
         "Key Ctrl", "Key Shift", "Key Alt"
@@ -424,21 +422,6 @@ Item {
                             Layout.fillWidth: true
                             theme: root.theme
                             model: root.gestureOptions
-                            onActivated: {
-                                if (!root.selectedGestureAvailable)
-                                    enabledSwitch.checked = false
-                            }
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            visible: gestureCombo.currentText.length > 0
-                                && !root.selectedGestureAvailable
-                            text: "Temporal gesture reserved for the next recognition stage. It can be stored disabled, but cannot emit actions yet."
-                            color: root.theme.warning
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 9
-                            wrapMode: Text.WordWrap
                         }
 
                         Text { text: "Action"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
@@ -448,7 +431,8 @@ Item {
                             theme: root.theme
                             model: root.actionOptions
                             onActivated: {
-                                if (currentText === "Freeze cursor"
+                                if ((currentText === "Freeze cursor"
+                                        || currentText === "Enable cursor movement")
                                         && behaviorCombo.currentText === "Press") {
                                     behaviorCombo.currentIndex = root.behaviorOptions.indexOf("Hold")
                                 }
@@ -461,6 +445,12 @@ Item {
                             Layout.fillWidth: true
                             theme: root.theme
                             model: root.behaviorOptions
+                            onActivated: {
+                                if (actionCombo.currentText === "Enable cursor movement"
+                                        && currentText === "Press") {
+                                    currentIndex = root.behaviorOptions.indexOf("Hold")
+                                }
+                            }
                         }
 
                         Rectangle {
@@ -484,7 +474,6 @@ Item {
                                 id: enabledSwitch
                                 theme: root.theme
                                 checked: false
-                                enabled: root.selectedGestureAvailable
                             }
                         }
 
@@ -496,11 +485,15 @@ Item {
                                     : behaviorCombo.currentText === "Hold"
                                         ? "Hold freezes cursor movement until RELEASE. You can reposition your hand without a cursor jump."
                                         : "Press freezes cursor movement for the PRESS frame only; Hold is recommended.")
-                                : behaviorCombo.currentText === "Hold"
-                                    ? "Hold keeps the button/key down until RELEASE. Useful for pinch-drag."
-                                    : behaviorCombo.currentText === "Toggle"
-                                        ? "Toggle flips the target state on every PRESS. F8 or disarm always releases it."
-                                        : "Press generates a short one-shot action when PRESS is emitted."
+                                : actionCombo.currentText === "Enable cursor movement"
+                                    ? (behaviorCombo.currentText === "Toggle"
+                                        ? "Toggle: first PRESS enables cursor movement, the next PRESS disables it. Cursor movement is locked by default and only an active Enable cursor movement mapping can unlock it."
+                                        : "Hold: cursor movement is enabled only while this gesture is held. Tracking continues while locked, so activating the gesture does not cause a cursor jump.")
+                                    : behaviorCombo.currentText === "Hold"
+                                        ? "Hold keeps the button/key down until RELEASE. Useful for pinch-drag."
+                                        : behaviorCombo.currentText === "Toggle"
+                                            ? "Toggle flips the target state on every PRESS. F8 or disarm always releases it."
+                                            : "Press generates a short one-shot action when PRESS is emitted."
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 9

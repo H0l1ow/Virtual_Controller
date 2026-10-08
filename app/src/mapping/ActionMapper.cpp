@@ -26,6 +26,7 @@ KeyCode logicalActionKey(LogicalAction action)
     case LogicalAction::ScrollUp:
     case LogicalAction::ScrollDown:
     case LogicalAction::CursorFreeze:
+    case LogicalAction::CursorMoveEnable:
         break;
     }
     return KeyCode::Space;
@@ -94,11 +95,19 @@ ControllerState ActionMapper::apply(
 
     applyPersistentStates(baseState);
 
-    // Freeze is deliberately applied after ContinuousControlInterpreter has
-    // processed the current hand position. The interpreter therefore keeps
-    // advancing its reference position while the visible/system cursor stays
-    // still, preventing a jump when the freeze gesture is released.
-    if (baseState.cursorFrozen) {
+    // Cursor movement is fail-closed: Hold and Toggle mappings are OR-ed and
+    // any active CursorMoveEnable mapping is enough to unlock movement.
+    // Strict movement gate: arming system output alone never allows cursor
+    // movement. A mapped Enable cursor movement action must be active.
+    baseState.cursorMovementLocked =
+        !cursorMoveGateActive();
+
+    // Freeze and movement-gating are deliberately applied after
+    // ContinuousControlInterpreter has processed the current hand position.
+    // The interpreter therefore keeps advancing its reference position while
+    // the visible/system cursor stays still, preventing a catch-up jump when
+    // freeze is released or a movement gate becomes active.
+    if (baseState.cursorFrozen || baseState.cursorMovementLocked) {
         baseState.mouseX = 0.0F;
         baseState.mouseY = 0.0F;
     }
@@ -142,6 +151,10 @@ void ActionMapper::applyAction(
     case LogicalAction::CursorFreeze:
         state.cursorFrozen = true;
         return;
+    case LogicalAction::CursorMoveEnable:
+        // Gate activation is derived from held_/toggled_ mapping state after
+        // all events are processed. It intentionally emits no OS action.
+        return;
     default:
         if (isKeyboardAction(action)) {
             state.keys |= keyMask(logicalActionKey(action));
@@ -163,6 +176,23 @@ void ActionMapper::applyPersistentStates(
             applyAction(state, rule.action);
         }
     }
+}
+
+
+bool ActionMapper::cursorMoveGateActive() const
+{
+    return std::any_of(
+        mappings_.begin(),
+        mappings_.end(),
+        [this](const MappingRule &rule) {
+            if (!rule.enabled
+                || rule.action != LogicalAction::CursorMoveEnable) {
+                return false;
+            }
+
+            return held_.contains(rule.id)
+                || toggled_.contains(rule.id);
+        });
 }
 
 } // namespace vc

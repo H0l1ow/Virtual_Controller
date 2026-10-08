@@ -255,6 +255,15 @@ bool ProfileStore::parseProfile(
 
         rule.enabled = object.value(QStringLiteral("enabled")).toBool(true);
 
+        // Cursor movement activation is stateful. A one-frame Press gate is
+        // not useful and could make hand movement appear broken, so hand-edited
+        // legacy/custom JSON is normalized to Hold. The editor itself only
+        // allows Hold or Toggle for this action.
+        if (rule.action == LogicalAction::CursorMoveEnable
+            && rule.behavior == ActionBehavior::Press) {
+            rule.behavior = ActionBehavior::Hold;
+        }
+
         // 0.9.1 accidentally seeded this mapping in the bundled Default
         // profile. Treat only that exact legacy seed ID as obsolete so users
         // upgrading from 0.9.1 do not keep a permanent FIST -> Freeze row.

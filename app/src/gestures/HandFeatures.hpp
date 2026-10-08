@@ -23,24 +23,10 @@ struct GestureGeometry {
     float scale{};
 
     // Index, middle, ring and little finger curl in [0,1].
-    // Kept as the original 4-value feature contract used by vc.hand134.v2.
     std::array<float, 4> curl{};
 
-    // Thumb geometry is used by the rule recognizer only and therefore does
-    // not change the existing 134-feature ONNX contract.
-    float thumbCurl{};
-    float thumbExtension{};
-    float thumbDirectionX{};
-    float thumbDirectionY{};
-
-    // Legacy 3D thumb-to-index and thumb-to-middle distances stored in the
-    // feature vector for ONNX parity.
+    // Thumb-to-index and thumb-to-middle distances in normalized local space.
     std::array<float, 2> pinch{};
-
-    // Rule-only distances reduce the influence of noisy landmark Z while
-    // retaining a small depth component.
-    float thumbIndexRuleDistance{};
-    float thumbMiddleRuleDistance{};
 
     bool valid{};
 };
@@ -118,7 +104,6 @@ private:
 };
 
 GestureScores ruleGestureScores(
-    const GestureGeometry &geometry,
-    bool pinchLatched = false);
+    const GestureGeometry &geometry);
 
 } // namespace vc

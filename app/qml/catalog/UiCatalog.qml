@@ -8,11 +8,11 @@ QtObject {
     ]
 
     readonly property var gestureHints: [
-        { id: "right_hand_motion", gesture: "open", title: "Right Hand", action: "Move Cursor", active: true },
+        { id: "right_hand_motion", gesture: "open", title: "Cursor Movement", action: "Requires mapped enable gesture", active: true },
         { id: "pinch", gesture: "pinch", title: "Pinch", action: "Mapped action · see Mapping", active: true },
         { id: "point", gesture: "point", title: "Point", action: "Mapped action · see Mapping", active: true },
         { id: "open_hand", gesture: "open", title: "Open Hand", action: "Mapped action · see Mapping", active: true },
-        { id: "thumb_up", gesture: "up", title: "Thumbs Up", action: "Mapped action · see Mapping", active: true },
+        { id: "thumb_up", gesture: "up", title: "Thumbs Up", action: "Planned", active: false },
         { id: "fist", gesture: "fist", title: "Fist", action: "Mapped action · see Mapping", active: true }
     ]
 

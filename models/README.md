@@ -9,13 +9,9 @@ M3 also supports an optional project-specific gesture model:
 - `model_metadata.json`
 
 No fake pretrained gesture model is bundled. If these files are missing, the
-application uses the geometric Rules recognizer. M4.6 recognizes 13 static
-gestures with Rules and keeps the expanded catalog available independently of
-ONNX.
+application uses the static geometric Rules recognizer and remains fully usable
+for M3 testing.
 
-The current ONNX contract deliberately remains `vc.hand134.v2`, float32
-`[batch,16,134]` -> logits `[batch,5]`, labels
-`NONE,FIST,OPEN_HAND,POINT,PINCH`. M4.6 does not fake a 22-class model: when a
-legacy five-class ONNX model is active, its probabilities are merged with the
-extended static Rules scores. Normalization must remain embedded in the graph.
-See `ml/README.md` and `docs/M4_6_GESTURE_REFINEMENT.md`.
+The ONNX contract is `vc.hand134.v2`, float32 `[batch,16,134]` -> logits
+`[batch,5]`, labels `NONE,FIST,OPEN_HAND,POINT,PINCH`. Normalization must be
+embedded in the graph. See `ml/README.md` and `docs/M3_GESTURE_RECOGNITION.md`.

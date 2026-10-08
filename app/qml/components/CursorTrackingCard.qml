@@ -148,6 +148,13 @@ VcCard {
                     kind: "warning"
                 }
 
+                StatusBadge {
+                    visible: !root.uiState.cursorFrozen && root.uiState.cursorMovementLocked
+                    theme: root.theme
+                    text: "WAITING FOR MOVE GESTURE"
+                    kind: "neutral"
+                }
+
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 1

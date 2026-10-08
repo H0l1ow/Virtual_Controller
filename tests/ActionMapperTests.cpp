@@ -74,7 +74,8 @@ int main()
         eventFrame(vc::HandSide::Right, vc::GestureClass::Fist, vc::GestureEventPhase::Release),
         moving);
     assert(!state.cursorFrozen);
-    assert(state.mouseX == 12.0F);
+    assert(state.cursorMovementLocked);
+    assert(state.mouseX == 0.0F);
 
     state = mapper.apply(
         eventFrame(vc::HandSide::Left, vc::GestureClass::Point, vc::GestureEventPhase::Press),
@@ -95,5 +96,107 @@ int main()
 
     mapper.reset();
     assert(mapper.apply({}, {}).neutral());
+
+    // Cursor movement is denied by default. Arming output alone does not
+    // permit movement; an Enable cursor movement mapping must be active.
+    vc::ActionMapper unrestricted;
+    vc::ControllerState unrestrictedMove;
+    unrestrictedMove.mouseX = 15.0F;
+    unrestrictedMove.mouseY = -7.0F;
+    state = unrestricted.apply({}, unrestrictedMove);
+    assert(state.cursorMovementLocked);
+    assert(state.mouseX == 0.0F);
+    assert(state.mouseY == 0.0F);
+
+    // Hold gate: movement is suppressed until the mapped gesture is active,
+    // allowed for the duration of the gesture, then suppressed again.
+    vc::ActionMapper holdGate;
+    holdGate.setMappings({
+        {"point_move_gate", vc::HandSide::Right, vc::GestureClass::Point,
+            vc::LogicalAction::CursorMoveEnable, vc::ActionBehavior::Hold, true}
+    });
+
+    vc::ControllerState gatedMove;
+    gatedMove.mouseX = 21.0F;
+    gatedMove.mouseY = 9.0F;
+    state = holdGate.apply({}, gatedMove);
+    assert(state.cursorMovementLocked);
+    assert(state.mouseX == 0.0F);
+    assert(state.mouseY == 0.0F);
+
+    state = holdGate.apply(
+        eventFrame(vc::HandSide::Right, vc::GestureClass::Point, vc::GestureEventPhase::Press),
+        gatedMove);
+    assert(!state.cursorMovementLocked);
+    assert(state.mouseX == 21.0F);
+    assert(state.mouseY == 9.0F);
+
+    state = holdGate.apply(
+        eventFrame(vc::HandSide::Right, vc::GestureClass::Point, vc::GestureEventPhase::Hold),
+        gatedMove);
+    assert(!state.cursorMovementLocked);
+    assert(state.mouseX == 21.0F);
+
+    state = holdGate.apply(
+        eventFrame(vc::HandSide::Right, vc::GestureClass::Point, vc::GestureEventPhase::Release),
+        gatedMove);
+    assert(state.cursorMovementLocked);
+    assert(state.mouseX == 0.0F);
+    assert(state.mouseY == 0.0F);
+
+    // Toggle gate remains active between frames until the next PRESS.
+    vc::ActionMapper toggleGate;
+    toggleGate.setMappings({
+        {"fist_move_toggle", vc::HandSide::Left, vc::GestureClass::Fist,
+            vc::LogicalAction::CursorMoveEnable, vc::ActionBehavior::Toggle, true}
+    });
+    state = toggleGate.apply({}, gatedMove);
+    assert(state.cursorMovementLocked);
+
+    state = toggleGate.apply(
+        eventFrame(vc::HandSide::Left, vc::GestureClass::Fist, vc::GestureEventPhase::Press),
+        gatedMove);
+    assert(!state.cursorMovementLocked);
+    state = toggleGate.apply({}, gatedMove);
+    assert(!state.cursorMovementLocked);
+
+    state = toggleGate.apply(
+        eventFrame(vc::HandSide::Left, vc::GestureClass::Fist, vc::GestureEventPhase::Press),
+        gatedMove);
+    assert(state.cursorMovementLocked);
+    assert(state.mouseX == 0.0F);
+
+    // Freeze always wins even while a movement gate is active.
+    vc::ActionMapper freezeAndGate;
+    freezeAndGate.setMappings({
+        {"point_move_gate", vc::HandSide::Right, vc::GestureClass::Point,
+            vc::LogicalAction::CursorMoveEnable, vc::ActionBehavior::Hold, true},
+        {"fist_freeze_again", vc::HandSide::Left, vc::GestureClass::Fist,
+            vc::LogicalAction::CursorFreeze, vc::ActionBehavior::Hold, true}
+    });
+    state = freezeAndGate.apply(
+        eventFrame(vc::HandSide::Right, vc::GestureClass::Point, vc::GestureEventPhase::Press),
+        gatedMove);
+    assert(!state.cursorMovementLocked);
+    assert(state.mouseX == 21.0F);
+
+    state = freezeAndGate.apply(
+        eventFrame(vc::HandSide::Left, vc::GestureClass::Fist, vc::GestureEventPhase::Press),
+        gatedMove);
+    assert(!state.cursorMovementLocked);
+    assert(state.cursorFrozen);
+    assert(state.mouseX == 0.0F);
+    assert(state.mouseY == 0.0F);
+
+    // A disabled movement-gate mapping does not unlock movement.
+    vc::ActionMapper disabledGate;
+    disabledGate.setMappings({
+        {"disabled_move_gate", vc::HandSide::Right, vc::GestureClass::Point,
+            vc::LogicalAction::CursorMoveEnable, vc::ActionBehavior::Hold, false}
+    });
+    state = disabledGate.apply({}, gatedMove);
+    assert(state.cursorMovementLocked);
+    assert(state.mouseX == 0.0F);
+
     return 0;
 }

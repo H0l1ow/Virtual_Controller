@@ -21,6 +21,10 @@ Item {
 
     property bool dragActive: false
     property bool freezeActive: false
+    property bool movementGateActive: false
+    property real movementGateStartX: 0
+    property real movementGateStartY: 0
+    property real movementGateMaxMove: 0
     property real freezeStartX: 0
     property real freezeStartY: 0
     property real freezeLastX: 0
@@ -31,6 +35,7 @@ Item {
     property bool previousLeftPressed: false
     property bool previousRightPressed: false
     property bool previousFrozen: false
+    property bool previousMovementLocked: false
     property bool previousKeyPressed: false
     property real previousWheel: 0
     property double lastScrollAcceptedMs: 0
@@ -63,6 +68,8 @@ Item {
             return ["Right-click targets"]
         if (row.action === "Freeze cursor")
             return ["Freeze / reposition"]
+        if (row.action === "Enable cursor movement")
+            return ["Cursor movement gate"]
         if (row.action === "Scroll up" || row.action === "Scroll down")
             return ["Scroll steps"]
         if (row.action && row.action.indexOf("Key ") === 0)
@@ -187,11 +194,14 @@ Item {
         root.targetIndex = 0
         root.dragActive = false
         root.freezeActive = false
+        root.movementGateActive = false
+        root.movementGateMaxMove = 0
         root.freezeMaxMove = 0
         root.freezeReleaseJump = 0
         root.previousLeftPressed = root.uiState.logicalMouseLeft
         root.previousRightPressed = root.uiState.logicalMouseRight
         root.previousFrozen = root.uiState.cursorFrozen
+        root.previousMovementLocked = root.uiState.cursorMovementLocked
         root.previousKeyPressed = root.logicalKeyPressed(root.selectedMapping())
         root.previousWheel = root.uiState.logicalWheel
         root.lastScrollAcceptedMs = 0
@@ -318,6 +328,7 @@ Item {
         const leftPressed = root.uiState.logicalMouseLeft
         const rightPressed = root.uiState.logicalMouseRight
         const frozen = root.uiState.cursorFrozen
+        const movementLocked = root.uiState.cursorMovementLocked
         const keyPressed = root.logicalKeyPressed(row)
         const wheel = root.uiState.logicalWheel
         const matches = root.gestureMatches(row)
@@ -327,6 +338,8 @@ Item {
         const rightPressEdge = rightPressed && !root.previousRightPressed
         const frozenEdge = frozen && !root.previousFrozen
         const unfrozenEdge = !frozen && root.previousFrozen
+        const movementUnlockedEdge = !movementLocked && root.previousMovementLocked
+        const movementLockedEdge = movementLocked && !root.previousMovementLocked
         const keyPressEdge = keyPressed && !root.previousKeyPressed
 
         if (exercise === "Click targets") {
@@ -410,6 +423,37 @@ Item {
                         + " px; release jump " + Math.round(root.freezeReleaseJump) + " px — try again"
                 }
             }
+        } else if (exercise === "Cursor movement gate") {
+            if (!root.movementGateActive && movementUnlockedEdge && matches) {
+                root.movementGateActive = true
+                root.movementGateStartX = root.uiState.cursorX
+                root.movementGateStartY = root.uiState.cursorY
+                root.movementGateMaxMove = 0
+                root.lastResult = row.behavior === "Toggle"
+                    ? "Movement enabled — move the hand, then perform the gesture again to lock"
+                    : "Movement enabled — move the hand, then release the gesture"
+            }
+
+            if (root.movementGateActive && !movementLocked) {
+                const moved = root.distance(
+                    root.movementGateStartX, root.movementGateStartY,
+                    root.uiState.cursorX, root.uiState.cursorY)
+                root.movementGateMaxMove = Math.max(root.movementGateMaxMove, moved)
+            }
+
+            if (root.movementGateActive && movementLockedEdge) {
+                const requiredMove = 45
+                root.movementGateActive = false
+                if (root.movementGateMaxMove >= requiredMove) {
+                    root.completeCurrentTest(
+                        "Movement gate opened, cursor moved "
+                        + Math.round(root.movementGateMaxMove)
+                        + " px, then locked again")
+                } else {
+                    root.lastResult = "Gate toggled correctly, but move the cursor farther before locking ("
+                        + Math.round(root.movementGateMaxMove) + " / " + requiredMove + " px)"
+                }
+            }
         } else if (exercise === "Scroll steps") {
             const expectedDirection = row.action === "Scroll up" ? 1 : -1
             const now = Date.now()
@@ -430,6 +474,7 @@ Item {
         root.previousLeftPressed = leftPressed
         root.previousRightPressed = rightPressed
         root.previousFrozen = frozen
+        root.previousMovementLocked = movementLocked
         root.previousKeyPressed = keyPressed
         root.previousWheel = wheel
     }
@@ -726,6 +771,12 @@ Item {
                                     return root.dragActive ? "Keep holding and move to DROP" : "Grab the object with the mapped Hold action"
                                 if (root.currentExercise() === "Freeze / reposition")
                                     return root.freezeActive ? "Reposition your hand, then release the freeze gesture" : "Activate the mapped Freeze cursor gesture"
+                                if (root.currentExercise() === "Cursor movement gate")
+                                    return root.uiState.cursorMovementLocked
+                                        ? "Perform the mapped gesture to enable cursor movement"
+                                        : (root.selectedMapping() && root.selectedMapping().behavior === "Toggle"
+                                            ? "Move the cursor, then perform the gesture again to lock movement"
+                                            : "Move the cursor while holding the gesture, then release it")
                                 if (root.currentExercise() === "Scroll steps")
                                     return "Perform five mapped scroll steps in the requested direction"
                                 if (root.currentExercise() === "Key action")
@@ -836,6 +887,43 @@ Item {
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "Max movement: " + Math.round(root.freezeMaxMove) + " px   •   Release jump: " + Math.round(root.freezeReleaseJump) + " px"
+                            color: root.theme.textMuted
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 10
+                        }
+                    }
+
+                    Column {
+                        visible: root.testStarted && root.currentExercise() === "Cursor movement gate"
+                        anchors.centerIn: parent
+                        spacing: 12
+
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 176
+                            height: 96
+                            radius: 14
+                            color: root.uiState.cursorMovementLocked
+                                ? root.theme.surfaceRaised
+                                : Qt.rgba(root.theme.accent.r, root.theme.accent.g, root.theme.accent.b, 0.16)
+                            border.width: 2
+                            border.color: root.uiState.cursorMovementLocked
+                                ? root.theme.borderStrong
+                                : root.theme.accent
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.uiState.cursorMovementLocked ? "MOVEMENT LOCKED" : "MOVEMENT ENABLED"
+                                color: root.uiState.cursorMovementLocked ? root.theme.textSecondary : root.theme.accent
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 14
+                                font.weight: Font.Bold
+                            }
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Cursor movement: " + Math.round(root.movementGateMaxMove) + " px"
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10
@@ -1047,6 +1135,7 @@ Item {
                         StatusBadge { theme: root.theme; text: "LMB"; kind: root.uiState.logicalMouseLeft ? "success" : "neutral" }
                         StatusBadge { theme: root.theme; text: "RMB"; kind: root.uiState.logicalMouseRight ? "success" : "neutral" }
                         StatusBadge { theme: root.theme; text: "FREEZE"; kind: root.uiState.cursorFrozen ? "warning" : "neutral" }
+                        StatusBadge { theme: root.theme; text: root.uiState.cursorMovementLocked ? "MOVE LOCKED" : "MOVE ON"; kind: root.uiState.cursorMovementLocked ? "neutral" : "success" }
                         Item { Layout.fillWidth: true }
                     }
 

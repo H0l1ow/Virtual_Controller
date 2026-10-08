@@ -91,6 +91,7 @@ QtObject {
     property int cursorX: pipelineRunning ? 1280 : 0
     property int cursorY: pipelineRunning ? 720 : 0
     property bool cursorFrozen: false
+    property bool cursorMovementLocked: false
     property bool logicalMouseLeft: false
     property bool logicalMouseRight: false
     property real logicalWheel: 0.0

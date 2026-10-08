@@ -21,6 +21,7 @@ enum class LogicalAction : std::uint8_t {
     ScrollUp,
     ScrollDown,
     CursorFreeze,
+    CursorMoveEnable,
     KeySpace,
     KeyEnter,
     KeyEscape,
@@ -69,6 +70,7 @@ inline const char *logicalActionId(LogicalAction action)
     case LogicalAction::ScrollUp: return "mouse.scroll_up";
     case LogicalAction::ScrollDown: return "mouse.scroll_down";
     case LogicalAction::CursorFreeze: return "control.cursor.freeze";
+    case LogicalAction::CursorMoveEnable: return "control.cursor.move_enable";
     case LogicalAction::KeySpace: return "key.space";
     case LogicalAction::KeyEnter: return "key.enter";
     case LogicalAction::KeyEscape: return "key.escape";

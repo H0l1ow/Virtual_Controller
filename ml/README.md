@@ -2,10 +2,8 @@
 
 M3 defines the gesture model contract but deliberately does **not** ship a fake
 or synthetic pretrained model. Until a real `gesture_model.onnx` is available,
-the C++ application uses the deterministic M4.6 Rules recognizer. Rules now
-cover 13 static mapping gestures, while the optional ONNX contract remains the
-original five classes `NONE`, `FIST`, `OPEN_HAND`, `POINT`, `PINCH` until a real
-expanded dataset is collected.
+the C++ application uses a deterministic geometric recognizer for the static
+classes `NONE`, `FIST`, `OPEN_HAND`, `POINT` and `PINCH`.
 
 The future model consumes the same causal features as the C++ runtime:
 
@@ -44,11 +42,3 @@ Copy `gesture_model.onnx` and `model_metadata.json` together. Configure the Qt
 project with `VC_WITH_ONNX=ON` and point `VC_ONNXRUNTIME_ROOT` to the ONNX Runtime
 SDK. If the model is missing/incompatible, the application stays usable and
 falls back to the rule recognizer.
-
-## M4.6 compatibility note
-
-The 21-entry application gesture catalog is intentionally larger than the
-current ONNX label set. Do not change `LABELS` to 22 and export an untrained
-model merely to match the UI. The eight dynamic gesture IDs require temporal
-data and the expanded static classes require real labelled samples before the
-TCN output contract is widened.

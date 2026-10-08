@@ -54,6 +54,11 @@ struct ControllerState {
     // ActionMapper uses it to suppress relative cursor motion while tracking
     // continues to update the hand-motion baseline.
     bool cursorFrozen{};
+    // Set by ActionMapper whenever no CursorMoveEnable mapping is currently
+    // active. Cursor movement is denied by default even when system output is
+    // armed. ContinuousControlInterpreter still advances its hand baseline so
+    // opening the gate cannot cause a catch-up jump.
+    bool cursorMovementLocked{};
 
     [[nodiscard]] bool neutral(float epsilon = 0.0001F) const
     {

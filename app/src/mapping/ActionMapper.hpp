@@ -33,6 +33,7 @@ private:
         LogicalAction action);
 
     void applyPersistentStates(ControllerState &state) const;
+    bool cursorMoveGateActive() const;
 
     std::vector<MappingRule> mappings_;
     std::set<std::string> held_;

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(VirtualController VERSION 0.9.6 LANGUAGES CXX)
+project(VirtualController VERSION 0.9.9 LANGUAGES CXX)
 
 include(CTest)
 

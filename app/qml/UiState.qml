@@ -164,6 +164,8 @@ QtObject {
         runtimeBackend.cursorY
     readonly property bool cursorFrozen:
         runtimeBackend.cursorFrozen
+    readonly property bool cursorMovementLocked:
+        runtimeBackend.cursorMovementLocked
 
     // Backend-neutral logical action state used by the M4.5 Test page. These
     // values update even when Windows System output is disarmed.
@@ -185,10 +187,8 @@ QtObject {
         catalog.gestureHints
     readonly property var mappingRows:
         runtimeBackend.mappingRows
-    readonly property var mappingGestureOptions:
-        runtimeBackend.mappingGestureOptions
     readonly property var gestureLibrary:
-        runtimeBackend.gestureCatalog
+        catalog.gestureLibrary
 
     readonly property string leftStickValue: "0.00 / 0.00"
     readonly property string rightStickValue: "0.00 / 0.00"
@@ -272,10 +272,6 @@ QtObject {
 
     function setActiveProfile(name) {
         runtimeBackend.activeProfile = name
-    }
-
-    function gestureRuntimeAvailable(gesture) {
-        return runtimeBackend.gestureRuntimeAvailable(gesture)
     }
 
     function addMapping() {
