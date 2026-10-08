@@ -153,6 +153,14 @@ Item {
             } else if (root.name === "plus") {
                 line(w*0.50,h*0.20,w*0.50,h*0.80)
                 line(w*0.20,h*0.50,w*0.80,h*0.50)
+            } else if (root.name === "trash") {
+                line(w*0.28,h*0.30,w*0.34,h*0.82)
+                line(w*0.72,h*0.30,w*0.66,h*0.82)
+                line(w*0.34,h*0.82,w*0.66,h*0.82)
+                line(w*0.24,h*0.28,w*0.76,h*0.28)
+                line(w*0.39,h*0.20,w*0.61,h*0.20)
+                line(w*0.43,h*0.40,w*0.43,h*0.70)
+                line(w*0.57,h*0.40,w*0.57,h*0.70)
             } else if (root.name === "search") {
                 circle(w*0.43,h*0.43,w*0.24)
                 line(w*0.60,h*0.60,w*0.82,h*0.82)

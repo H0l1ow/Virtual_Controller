@@ -41,6 +41,8 @@ QtObject {
 
     property string activeProfile: "Default"
     property var profileNames: ["Default", "Desktop", "Presentation", "Game"]
+    readonly property string mappingError: ""
+    readonly property string mappingProfileDirectory: "<mock>/profiles"
     property string outputMode: "Mouse / Keyboard"
 
     property int sensitivity: 70
@@ -88,6 +90,11 @@ QtObject {
     property int latencyMs: pipelineRunning ? 20 : 0
     property int cursorX: pipelineRunning ? 1280 : 0
     property int cursorY: pipelineRunning ? 720 : 0
+    property bool cursorFrozen: false
+    property bool logicalMouseLeft: false
+    property bool logicalMouseRight: false
+    property real logicalWheel: 0.0
+    property var logicalKeys: []
     readonly property int cursorScreenWidth: 1920
     readonly property int cursorScreenHeight: 1080
     readonly property string trackingStatus: {
@@ -114,6 +121,8 @@ QtObject {
         : swapHandedness ? 0.96 : 0.93
     readonly property real leftGestureConfidence: leftTracked ? 0.91 : 0.0
     readonly property real rightGestureConfidence: rightTracked ? 0.94 : 0.0
+    readonly property string leftGestureEvent: leftTracked ? "HOLD" : "IDLE"
+    readonly property string rightGestureEvent: rightTracked ? "PRESS" : "IDLE"
     readonly property string gestureBackendName: "Rules"
     readonly property string gestureModelStatus: "Mock rule fallback"
     readonly property bool gestureModelActive: false
@@ -165,93 +174,11 @@ QtObject {
         }
     ]
 
-    // Display labels stay human-readable, while stable IDs are already present
-    // for future profile JSON and C++ enums.
+    // Mock M4 mapping rows.
     property var mappingRows: [
-        {
-            id: "right_move_cursor",
-            handId: "right",
-            hand: "Right",
-            sourceId: "open_hand",
-            source: "Open Hand",
-            typeId: "continuous",
-            type: "Continuous",
-            actionId: "mouse.move",
-            action: "Move cursor",
-            outputId: "mouse",
-            output: "Mouse",
-            state: "Enabled"
-        },
-        {
-            id: "right_left_click",
-            handId: "right",
-            hand: "Right",
-            sourceId: "pinch",
-            source: "Pinch",
-            typeId: "gesture",
-            type: "Gesture",
-            actionId: "mouse.left_click",
-            action: "Left click",
-            outputId: "mouse",
-            output: "Mouse",
-            state: "Enabled"
-        },
-        {
-            id: "right_right_click",
-            handId: "right",
-            hand: "Right",
-            sourceId: "point",
-            source: "Point",
-            typeId: "gesture",
-            type: "Gesture",
-            actionId: "mouse.right_click",
-            action: "Right click",
-            outputId: "mouse",
-            output: "Mouse",
-            state: "Enabled"
-        },
-        {
-            id: "left_scroll_up",
-            handId: "left",
-            hand: "Left",
-            sourceId: "thumb_up",
-            source: "Thumbs Up",
-            typeId: "gesture",
-            type: "Gesture",
-            actionId: "mouse.scroll_up",
-            action: "Scroll up",
-            outputId: "mouse",
-            output: "Mouse",
-            state: "Enabled"
-        },
-        {
-            id: "left_scroll_down",
-            handId: "left",
-            hand: "Left",
-            sourceId: "thumb_down",
-            source: "Thumbs Down",
-            typeId: "gesture",
-            type: "Gesture",
-            actionId: "mouse.scroll_down",
-            action: "Scroll down",
-            outputId: "mouse",
-            output: "Mouse",
-            state: "Enabled"
-        },
-        {
-            id: "either_pause_resume",
-            handId: "either",
-            hand: "Either",
-            sourceId: "fist",
-            source: "Fist",
-            typeId: "gesture",
-            type: "Gesture",
-            actionId: "controller.pause_resume",
-            action: "Pause / resume",
-            outputId: "controller",
-            output: "Controller",
-            state: "Enabled"
-        }
+        { id: "right_pinch_left_mouse", hand: "Right", source: "PINCH", type: "Gesture", action: "Left click", output: "Mouse", behavior: "Hold", state: "Enabled", enabled: true },
+        { id: "right_fist_right_mouse", hand: "Right", source: "FIST", type: "Gesture", action: "Right click", output: "Mouse", behavior: "Press", state: "Disabled", enabled: false },
+        { id: "left_pinch_space", hand: "Left", source: "PINCH", type: "Gesture", action: "Key Space", output: "Keyboard", behavior: "Press", state: "Disabled", enabled: false }
     ]
 
     property var gestureLibrary: [
@@ -403,6 +330,40 @@ QtObject {
     function setRecognitionThreshold(value) {
         recognitionThreshold = Math.round(value)
     }
+
+    function setDebounceMs(value) { debounceMs = Math.round(value) }
+    function setCooldownMs(value) { cooldownMs = Math.round(value) }
+    function setRequireRelease(value) { requireRelease = value }
+    function setActiveProfile(name) { activeProfile = name }
+
+    function addMapping() {
+        const copy = mappingRows.slice(0)
+        copy.push({ id: "custom_" + copy.length, hand: "Right", source: "PINCH", type: "Gesture", action: "Left click", output: "Mouse", behavior: "Hold", state: "Disabled", enabled: false })
+        mappingRows = copy
+        return copy.length - 1
+    }
+
+    function removeMapping(index) {
+        if (index < 0 || index >= mappingRows.length) return
+        const copy = mappingRows.slice(0)
+        copy.splice(index, 1)
+        mappingRows = copy
+    }
+
+    function updateMapping(index, hand, gesture, action, behavior, enabled) {
+        if (index < 0 || index >= mappingRows.length) return false
+        const copy = mappingRows.slice(0)
+        copy[index] = {
+            id: copy[index].id, hand: hand, source: gesture, type: "Gesture",
+            action: action, output: action.indexOf("Key ") === 0 ? "Keyboard" : "Mouse",
+            behavior: behavior, state: enabled ? "Enabled" : "Disabled", enabled: enabled
+        }
+        mappingRows = copy
+        return true
+    }
+
+    function saveActiveProfile() { return true }
+    function reloadActiveProfile() { return true }
 
     function setPipelineRunning(enabled) {
         cameraRunning = enabled

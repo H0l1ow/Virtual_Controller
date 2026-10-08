@@ -43,9 +43,14 @@ QtObject {
     readonly property string errorMessage:
         runtimeBackend.errorMessage
 
-    property string activeProfile: "Default"
+    readonly property string activeProfile:
+        runtimeBackend.activeProfile
     readonly property var profileNames:
-        catalog.profileNames
+        runtimeBackend.mappingProfileNames
+    readonly property string mappingError:
+        runtimeBackend.mappingError
+    readonly property string mappingProfileDirectory:
+        runtimeBackend.mappingProfileDirectory
     property string outputMode: "Mouse / Keyboard"
 
     // M2 continuous-control settings are owned by the C++ runtime so the UI
@@ -73,9 +78,12 @@ QtObject {
 
     readonly property int recognitionThreshold:
         runtimeBackend.recognitionThreshold
-    property int debounceMs: 120
-    property int cooldownMs: 250
-    property bool requireRelease: true
+    readonly property int debounceMs:
+        runtimeBackend.debounceMs
+    readonly property int cooldownMs:
+        runtimeBackend.cooldownMs
+    readonly property bool requireRelease:
+        runtimeBackend.requireRelease
 
     property bool showLandmarks: true
     property bool mirrorPreview: true
@@ -140,6 +148,10 @@ QtObject {
         runtimeBackend.leftGestureConfidence
     readonly property real rightGestureConfidence:
         runtimeBackend.rightGestureConfidence
+    readonly property string leftGestureEvent:
+        runtimeBackend.leftGestureEvent
+    readonly property string rightGestureEvent:
+        runtimeBackend.rightGestureEvent
     readonly property string gestureBackendName:
         runtimeBackend.gestureBackendName
     readonly property string gestureModelStatus:
@@ -150,6 +162,20 @@ QtObject {
         runtimeBackend.cursorX
     readonly property int cursorY:
         runtimeBackend.cursorY
+    readonly property bool cursorFrozen:
+        runtimeBackend.cursorFrozen
+
+    // Backend-neutral logical action state used by the M4.5 Test page. These
+    // values update even when Windows System output is disarmed.
+    readonly property bool logicalMouseLeft:
+        runtimeBackend.logicalMouseLeft
+    readonly property bool logicalMouseRight:
+        runtimeBackend.logicalMouseRight
+    readonly property real logicalWheel:
+        runtimeBackend.logicalWheel
+    readonly property var logicalKeys:
+        runtimeBackend.logicalKeys
+
     readonly property int cursorScreenWidth:
         runtimeBackend.cursorScreenWidth
     readonly property int cursorScreenHeight:
@@ -158,7 +184,7 @@ QtObject {
     readonly property var gestureHints:
         catalog.gestureHints
     readonly property var mappingRows:
-        catalog.mappingRows
+        runtimeBackend.mappingRows
     readonly property var gestureLibrary:
         catalog.gestureLibrary
 
@@ -230,6 +256,42 @@ QtObject {
         runtimeBackend.recognitionThreshold = Math.round(value)
     }
 
+    function setDebounceMs(value) {
+        runtimeBackend.debounceMs = Math.round(value)
+    }
+
+    function setCooldownMs(value) {
+        runtimeBackend.cooldownMs = Math.round(value)
+    }
+
+    function setRequireRelease(value) {
+        runtimeBackend.requireRelease = value
+    }
+
+    function setActiveProfile(name) {
+        runtimeBackend.activeProfile = name
+    }
+
+    function addMapping() {
+        return runtimeBackend.addMapping()
+    }
+
+    function removeMapping(index) {
+        runtimeBackend.removeMapping(index)
+    }
+
+    function updateMapping(index, hand, gesture, action, behavior, enabled) {
+        return runtimeBackend.updateMapping(index, hand, gesture, action, behavior, enabled)
+    }
+
+    function saveActiveProfile() {
+        return runtimeBackend.saveActiveProfile()
+    }
+
+    function reloadActiveProfile() {
+        return runtimeBackend.reloadActiveProfile()
+    }
+
     function setPipelineRunning(enabled) {
         if (enabled && canStart)
             runtimeBackend.start()
@@ -256,15 +318,15 @@ QtObject {
         setTrackingConfidence(55)
 
         setRecognitionThreshold(80)
-        debounceMs = 120
-        cooldownMs = 250
-        requireRelease = true
+        setDebounceMs(120)
+        setCooldownMs(250)
+        setRequireRelease(true)
 
         showLandmarks = true
         mirrorPreview = true
         setSwapHandedness(false)
 
-        activeProfile = "Default"
+        setActiveProfile("Default")
         setOutputArmed(false)
     }
 }

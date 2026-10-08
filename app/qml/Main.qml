@@ -122,6 +122,10 @@ ApplicationWindow {
                 theme: theme
                 uiState: window.uiState
             }
+            TestPage {
+                theme: theme
+                uiState: window.uiState
+            }
             GamepadPage {
                 theme: theme
                 uiState: window.uiState

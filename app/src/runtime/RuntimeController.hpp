@@ -3,6 +3,9 @@
 #include "control/ContinuousControlInterpreter.hpp"
 #include "control/ControllerState.hpp"
 #include "gestures/GestureTypes.hpp"
+#include "gestures/GestureStateManager.hpp"
+#include "mapping/ActionMapper.hpp"
+#include "mapping/ProfileStore.hpp"
 #include "input/OutputService.hpp"
 #include "runtime/LatestFrameSlot.hpp"
 #include "runtime/RuntimeMetrics.hpp"
@@ -268,6 +271,35 @@ public:
                 NOTIFY stateChanged)
 
     Q_PROPERTY(
+        bool cursorFrozen
+            READ cursorFrozen
+                NOTIFY stateChanged)
+
+    // M4.5 Gesture Playground observes the backend-neutral logical state even
+    // while System output is disarmed. This lets the in-app exercises test the
+    // complete GestureStateManager -> ActionMapper path without sending input
+    // to Windows.
+    Q_PROPERTY(
+        bool logicalMouseLeft
+            READ logicalMouseLeft
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        bool logicalMouseRight
+            READ logicalMouseRight
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        double logicalWheel
+            READ logicalWheel
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        QStringList logicalKeys
+            READ logicalKeys
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
         int cursorScreenWidth
             READ cursorScreenWidth
                 NOTIFY stateChanged)
@@ -343,6 +375,60 @@ public:
             READ recognitionThreshold
                 WRITE setRecognitionThreshold
                     NOTIFY settingsChanged)
+
+    Q_PROPERTY(
+        int debounceMs
+            READ debounceMs
+                WRITE setDebounceMs
+                    NOTIFY settingsChanged)
+
+    Q_PROPERTY(
+        int cooldownMs
+            READ cooldownMs
+                WRITE setCooldownMs
+                    NOTIFY settingsChanged)
+
+    Q_PROPERTY(
+        bool requireRelease
+            READ requireRelease
+                WRITE setRequireRelease
+                    NOTIFY settingsChanged)
+
+    Q_PROPERTY(
+        QString leftGestureEvent
+            READ leftGestureEvent
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        QString rightGestureEvent
+            READ rightGestureEvent
+                NOTIFY stateChanged)
+
+    Q_PROPERTY(
+        QStringList mappingProfileNames
+            READ mappingProfileNames
+                NOTIFY mappingChanged)
+
+    Q_PROPERTY(
+        QString activeProfile
+            READ activeProfile
+                WRITE setActiveProfile
+                    NOTIFY mappingChanged)
+
+    Q_PROPERTY(
+        QVariantList mappingRows
+            READ mappingRows
+                NOTIFY mappingChanged)
+
+    Q_PROPERTY(
+        QString mappingError
+            READ mappingError
+                NOTIFY mappingChanged)
+
+    Q_PROPERTY(
+        QString mappingProfileDirectory
+            READ mappingProfileDirectory
+                NOTIFY mappingChanged)
 
     Q_PROPERTY(
         QString gestureBackendName
@@ -573,6 +659,28 @@ public:
         return cursorY_;
     }
 
+    bool cursorFrozen() const
+    {
+        return controllerState_.cursorFrozen;
+    }
+
+    bool logicalMouseLeft() const
+    {
+        return controllerState_.mouseLeft;
+    }
+
+    bool logicalMouseRight() const
+    {
+        return controllerState_.mouseRight;
+    }
+
+    double logicalWheel() const
+    {
+        return static_cast<double>(controllerState_.wheel);
+    }
+
+    QStringList logicalKeys() const;
+
     int cursorScreenWidth() const
     {
         return cursorScreenWidth_;
@@ -643,6 +751,50 @@ public:
         return recognitionThreshold_.load();
     }
 
+    int debounceMs() const
+    {
+        return debounceMs_;
+    }
+
+    int cooldownMs() const
+    {
+        return cooldownMs_;
+    }
+
+    bool requireRelease() const
+    {
+        return requireRelease_;
+    }
+
+    QString leftGestureEvent() const
+    {
+        return leftGestureEvent_;
+    }
+
+    QString rightGestureEvent() const
+    {
+        return rightGestureEvent_;
+    }
+
+    QStringList mappingProfileNames() const
+    {
+        return mappingProfileNames_;
+    }
+
+    QString activeProfile() const
+    {
+        return activeProfile_;
+    }
+
+    QVariantList mappingRows() const;
+
+    QString mappingError() const
+    {
+        return mappingError_;
+    }
+
+    QString mappingProfileDirectory() const;
+
     QString gestureBackendName() const
     {
         return gestureBackendName_;
@@ -669,6 +821,10 @@ public:
     void setInvertY(bool value);
     void setDeadzone(int value);
     void setRecognitionThreshold(int value);
+    void setDebounceMs(int value);
+    void setCooldownMs(int value);
+    void setRequireRelease(bool value);
+    void setActiveProfile(const QString &name);
 
     Q_INVOKABLE void attachVideoOutput(QObject *output);
     Q_INVOKABLE void selectCamera(int index);
@@ -679,10 +835,23 @@ public:
     Q_INVOKABLE void togglePipeline();
     Q_INVOKABLE void requestApplicationExit();
 
+    Q_INVOKABLE int addMapping();
+    Q_INVOKABLE void removeMapping(int index);
+    Q_INVOKABLE bool updateMapping(
+        int index,
+        const QString &hand,
+        const QString &gesture,
+        const QString &action,
+        const QString &behavior,
+        bool enabled);
+    Q_INVOKABLE bool saveActiveProfile();
+    Q_INVOKABLE bool reloadActiveProfile();
+
 signals:
     void stateChanged();
     void devicesChanged();
     void settingsChanged();
+    void mappingChanged();
 
     // First signal lets main.cpp arm its process-level watchdog. The second is
     // emitted only after the current tracking session reached a safe terminal
@@ -736,8 +905,14 @@ private:
 
     void clearTracking();
     void resetContinuousControl();
+    void resetGestureActions();
     void updateContinuousControl(
-        const TrackingFrame &frame);
+        const TrackingFrame &frame,
+        const GestureEventFrame &events);
+
+    void initializeProfiles();
+    bool loadProfile(const QString &name);
+    void applyActiveMappings();
     void refreshOutputStatus();
     void updateCursorGeometry();
 
@@ -789,6 +964,14 @@ private:
     std::atomic_bool swapHandedness_{};
     std::atomic_int recognitionThreshold_{80};
 
+    GestureStateManager gestureStateManager_;
+    ActionMapper actionMapper_;
+    std::unique_ptr<ProfileStore> profileStore_;
+    MappingProfile activeMappingProfile_;
+    QStringList mappingProfileNames_;
+    QString activeProfile_{QStringLiteral("Default")};
+    QString mappingError_;
+
     ContinuousControlInterpreter continuousControl_;
     OutputService outputService_;
     OutputStatus outputSnapshot_{};
@@ -800,6 +983,10 @@ private:
     bool smoothing_{true};
     bool invertX_{false};
     bool invertY_{false};
+
+    int debounceMs_{120};
+    int cooldownMs_{250};
+    bool requireRelease_{true};
 
     int cursorX_{};
     int cursorY_{};
@@ -842,6 +1029,8 @@ private:
     QString rightGesture_{QStringLiteral("NONE")};
     double leftGestureConfidence_{};
     double rightGestureConfidence_{};
+    QString leftGestureEvent_{QStringLiteral("IDLE")};
+    QString rightGestureEvent_{QStringLiteral("IDLE")};
     QString gestureBackendName_{QStringLiteral("Rules")};
     QString gestureModelStatus_{QStringLiteral("Rule fallback active")};
     bool gestureModelActive_{};

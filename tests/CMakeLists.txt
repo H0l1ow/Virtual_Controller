@@ -133,3 +133,47 @@ add_test(
     NAME vc_gesture_recognition_tests
     COMMAND vc_gesture_recognition_tests
 )
+
+add_executable(
+    vc_gesture_state_tests
+    GestureStateManagerTests.cpp
+    ../app/src/gestures/GestureStateManager.cpp
+)
+
+target_include_directories(
+    vc_gesture_state_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/app/src
+)
+
+target_compile_features(
+    vc_gesture_state_tests
+    PRIVATE cxx_std_20
+)
+
+add_test(
+    NAME vc_gesture_state_tests
+    COMMAND vc_gesture_state_tests
+)
+
+add_executable(
+    vc_action_mapper_tests
+    ActionMapperTests.cpp
+    ../app/src/mapping/ActionMapper.cpp
+)
+
+target_include_directories(
+    vc_action_mapper_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/app/src
+)
+
+target_compile_features(
+    vc_action_mapper_tests
+    PRIVATE cxx_std_20
+)
+
+add_test(
+    NAME vc_action_mapper_tests
+    COMMAND vc_action_mapper_tests
+)

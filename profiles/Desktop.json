@@ -1,0 +1,30 @@
+{
+  "schema": "vc.mapping.profile.v1",
+  "name": "Desktop",
+  "mappings": [
+    {
+      "id": "right_pinch_left_mouse",
+      "hand": "Right",
+      "gesture": "PINCH",
+      "action": "mouse.left",
+      "behavior": "Hold",
+      "enabled": true
+    },
+    {
+      "id": "right_fist_right_mouse",
+      "hand": "Right",
+      "gesture": "FIST",
+      "action": "mouse.right",
+      "behavior": "Press",
+      "enabled": true
+    },
+    {
+      "id": "left_point_scroll_up",
+      "hand": "Left",
+      "gesture": "POINT",
+      "action": "mouse.scroll_up",
+      "behavior": "Press",
+      "enabled": false
+    }
+  ]
+}

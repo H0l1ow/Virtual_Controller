@@ -125,9 +125,9 @@ VcCard {
                     text: root.uiState.outputError.length > 0
                         ? root.uiState.outputError
                         : (root.uiState.outputAvailable
-                            ? "M2: the right hand drives continuous cursor movement. "
-                                + "System output is opt-in; STOP, stale frames and F8 neutralize it."
-                            : "Windows mouse output is not available in this build.")
+                            ? "M4: cursor movement and mapped mouse/keyboard actions share the protected output path. "
+                                + "System output is opt-in; STOP, stale frames and F8 release everything."
+                            : "Windows mouse/keyboard output is not available in this build.")
                     color: root.theme.textSecondary
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10

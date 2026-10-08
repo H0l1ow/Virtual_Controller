@@ -1,0 +1,22 @@
+{
+  "schema": "vc.mapping.profile.v1",
+  "name": "Game",
+  "mappings": [
+    {
+      "id": "right_pinch_space",
+      "hand": "Right",
+      "gesture": "PINCH",
+      "action": "key.space",
+      "behavior": "Press",
+      "enabled": false
+    },
+    {
+      "id": "left_fist_escape",
+      "hand": "Left",
+      "gesture": "FIST",
+      "action": "key.escape",
+      "behavior": "Press",
+      "enabled": false
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "vc.mapping.profile.v1",
+  "name": "Default",
+  "mappings": [
+    {
+      "id": "right_pinch_left_mouse",
+      "hand": "Right",
+      "gesture": "PINCH",
+      "action": "mouse.left",
+      "behavior": "Hold",
+      "enabled": true
+    },
+    {
+      "id": "left_pinch_space",
+      "hand": "Left",
+      "gesture": "PINCH",
+      "action": "key.space",
+      "behavior": "Press",
+      "enabled": false
+    }
+  ]
+}

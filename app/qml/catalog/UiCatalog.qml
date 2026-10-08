@@ -9,51 +9,11 @@ QtObject {
 
     readonly property var gestureHints: [
         { id: "right_hand_motion", gesture: "open", title: "Right Hand", action: "Move Cursor", active: true },
-        { id: "pinch", gesture: "pinch", title: "Pinch", action: "Recognized · action in M4", active: true },
-        { id: "point", gesture: "point", title: "Point", action: "Recognized · action in M4", active: true },
-        { id: "open_hand", gesture: "open", title: "Open Hand", action: "Recognized · action in M4", active: true },
+        { id: "pinch", gesture: "pinch", title: "Pinch", action: "Mapped action · see Mapping", active: true },
+        { id: "point", gesture: "point", title: "Point", action: "Mapped action · see Mapping", active: true },
+        { id: "open_hand", gesture: "open", title: "Open Hand", action: "Mapped action · see Mapping", active: true },
         { id: "thumb_up", gesture: "up", title: "Thumbs Up", action: "Planned", active: false },
-        { id: "fist", gesture: "fist", title: "Fist", action: "Recognized · action in M4", active: true }
-    ]
-
-    // Demo/catalog rows only. Real mapping storage is a later milestone.
-    readonly property var mappingRows: [
-        {
-            id: "right_move_cursor", handId: "right", hand: "Right",
-            sourceId: "right_hand_motion", source: "Hand movement", typeId: "continuous",
-            type: "Continuous", actionId: "mouse.move", action: "Move cursor",
-            outputId: "mouse", output: "Mouse", state: "Enabled"
-        },
-        {
-            id: "right_left_click", handId: "right", hand: "Right",
-            sourceId: "pinch", source: "Pinch", typeId: "gesture",
-            type: "Gesture", actionId: "mouse.left_click", action: "Left click",
-            outputId: "mouse", output: "Mouse", state: "Planned"
-        },
-        {
-            id: "right_right_click", handId: "right", hand: "Right",
-            sourceId: "point", source: "Point", typeId: "gesture",
-            type: "Gesture", actionId: "mouse.right_click", action: "Right click",
-            outputId: "mouse", output: "Mouse", state: "Planned"
-        },
-        {
-            id: "left_scroll_up", handId: "left", hand: "Left",
-            sourceId: "thumb_up", source: "Thumbs Up", typeId: "gesture",
-            type: "Gesture", actionId: "mouse.scroll_up", action: "Scroll up",
-            outputId: "mouse", output: "Mouse", state: "Planned"
-        },
-        {
-            id: "left_scroll_down", handId: "left", hand: "Left",
-            sourceId: "thumb_down", source: "Thumbs Down", typeId: "gesture",
-            type: "Gesture", actionId: "mouse.scroll_down", action: "Scroll down",
-            outputId: "mouse", output: "Mouse", state: "Planned"
-        },
-        {
-            id: "either_pause_resume", handId: "either", hand: "Either",
-            sourceId: "fist", source: "Fist", typeId: "gesture",
-            type: "Gesture", actionId: "controller.pause_resume", action: "Pause / resume",
-            outputId: "controller", output: "Controller", state: "Planned"
-        }
+        { id: "fist", gesture: "fist", title: "Fist", action: "Mapped action · see Mapping", active: true }
     ]
 
     readonly property var gestureLibrary: [

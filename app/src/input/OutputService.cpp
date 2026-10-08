@@ -39,7 +39,7 @@ std::unique_ptr<IInputBackend> OutputService::createBackend() const
         return std::make_unique<MockInputBackend>();
     }
 
-    return makeSystemMouseBackend();
+    return makeSystemInputBackend();
 }
 
 bool OutputService::arm()

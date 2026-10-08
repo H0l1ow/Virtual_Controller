@@ -20,6 +20,9 @@ Item {
     readonly property real liveConfidence: liveHandIsLeft
         ? uiState.leftGestureConfidence
         : uiState.rightGestureConfidence
+    readonly property string liveEvent: liveHandIsLeft
+        ? uiState.leftGestureEvent
+        : uiState.rightGestureEvent
 
     function glyphForGesture(gestureName) {
         switch (gestureName) {
@@ -49,7 +52,7 @@ Item {
             Layout.fillWidth: true
             theme: root.theme
             title: "Gestures"
-            subtitle: "Live static gesture recognition for both hands; event mapping remains a later stage."
+            subtitle: "Live gesture recognition with M4 PRESS / HOLD / RELEASE event semantics."
 
             VcTextField {
                 theme: root.theme
@@ -428,11 +431,31 @@ Item {
                             color: root.theme.borderSubtle
                         }
 
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Event state"
+                                color: root.theme.textSecondary
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 10
+                            }
+                            StatusBadge {
+                                theme: root.theme
+                                text: root.liveEvent
+                                kind: root.liveEvent === "PRESS"
+                                    ? "success"
+                                    : root.liveEvent === "RELEASE"
+                                        ? "warning"
+                                        : "neutral"
+                            }
+                        }
+
                         Text {
                             Layout.fillWidth: true
                             text: "Backend: " + root.uiState.gestureBackendName
                                 + "\n" + root.uiState.gestureModelStatus
-                                + "\nCustom gesture recording remains a later project stage."
+                                + "\nMappings and event actions are active in M4; custom gesture recording remains later."
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10

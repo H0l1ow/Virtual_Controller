@@ -52,7 +52,7 @@ private:
     std::uint64_t releaseCount_{};
 };
 
-std::unique_ptr<IInputBackend> makeSystemMouseBackend();
+std::unique_ptr<IInputBackend> makeSystemInputBackend();
 bool emergencyStopPressed();
 
 } // namespace vc

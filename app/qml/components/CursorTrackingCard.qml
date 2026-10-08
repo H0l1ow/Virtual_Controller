@@ -141,6 +141,13 @@ VcCard {
                     font.weight: Font.DemiBold
                 }
 
+                StatusBadge {
+                    visible: root.uiState.cursorFrozen
+                    theme: root.theme
+                    text: "CURSOR FROZEN"
+                    kind: "warning"
+                }
+
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 1

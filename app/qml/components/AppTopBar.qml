@@ -40,6 +40,10 @@ Rectangle {
             icon: "hand"
         },
         {
+            title: "Test",
+            icon: "target"
+        },
+        {
             title: "Gamepad",
             icon: "gamepad"
         },
@@ -72,14 +76,14 @@ Rectangle {
                 Row {
                     spacing: 0
                     Text {
-                        text: "Hollow's"
+                        text: "Virtual"
                         color: root.theme.textPrimary
                         font.family: root.theme.fontFamily
                         font.pixelSize: 25
                         font.weight: Font.Bold
                     }
                     Text {
-                        text: " Sheeeeeet"
+                        text: "Controller"
                         color: root.theme.textSecondary
                         font.family: root.theme.fontFamily
                         font.pixelSize: 25
@@ -105,7 +109,7 @@ Rectangle {
                 required property var modelData
                 required property int index
                 Layout.fillHeight: true
-                Layout.preferredWidth: 132
+                Layout.preferredWidth: 118
                 theme: root.theme
                 text: modelData.title
                 iconName: modelData.icon

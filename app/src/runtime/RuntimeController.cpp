@@ -6,13 +6,16 @@
 #include "tracking/MediaPipeTracker.hpp"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QDebug>
 #include <QGuiApplication>
 #include <QFileInfo>
 #include <QImage>
 #include <QMetaObject>
 #include <QScreen>
+#include <QStandardPaths>
 #include <QVariantMap>
+#include <QFileInfo>
 #include <QVideoFrameFormat>
 #include <QVideoSink>
 #include <QtGlobal>
@@ -22,8 +25,10 @@
 #include <cstring>
 #include <exception>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
+#include <optional>
 
 namespace vc {
 
@@ -46,6 +51,95 @@ QString gestureDisplayName(GestureClass gesture)
     }
 }
 
+QString gestureEventDisplayName(GestureEventPhase phase)
+{
+    return QString::fromLatin1(gestureEventPhaseName(phase));
+}
+
+QString actionDisplayName(LogicalAction action)
+{
+    switch (action) {
+    case LogicalAction::MouseLeft: return QStringLiteral("Left click");
+    case LogicalAction::MouseRight: return QStringLiteral("Right click");
+    case LogicalAction::ScrollUp: return QStringLiteral("Scroll up");
+    case LogicalAction::ScrollDown: return QStringLiteral("Scroll down");
+    case LogicalAction::CursorFreeze: return QStringLiteral("Freeze cursor");
+    case LogicalAction::KeySpace: return QStringLiteral("Key Space");
+    case LogicalAction::KeyEnter: return QStringLiteral("Key Enter");
+    case LogicalAction::KeyEscape: return QStringLiteral("Key Escape");
+    case LogicalAction::KeyTab: return QStringLiteral("Key Tab");
+    case LogicalAction::KeyLeft: return QStringLiteral("Key Left");
+    case LogicalAction::KeyRight: return QStringLiteral("Key Right");
+    case LogicalAction::KeyUp: return QStringLiteral("Key Up");
+    case LogicalAction::KeyDown: return QStringLiteral("Key Down");
+    case LogicalAction::KeyCtrl: return QStringLiteral("Key Ctrl");
+    case LogicalAction::KeyShift: return QStringLiteral("Key Shift");
+    case LogicalAction::KeyAlt: return QStringLiteral("Key Alt");
+    default:
+        break;
+    }
+
+
+    return QStringLiteral("Unknown");
+}
+
+QString actionOutputName(LogicalAction action)
+{
+    if (action == LogicalAction::CursorFreeze) {
+        return QStringLiteral("Control");
+    }
+
+    return action >= LogicalAction::KeySpace
+        ? QStringLiteral("Keyboard")
+        : QStringLiteral("Mouse");
+}
+
+std::optional<HandSide> parseHandName(const QString &value)
+{
+    if (value.compare(QStringLiteral("Left"), Qt::CaseInsensitive) == 0)
+        return HandSide::Left;
+    if (value.compare(QStringLiteral("Right"), Qt::CaseInsensitive) == 0)
+        return HandSide::Right;
+    return std::nullopt;
+}
+
+std::optional<GestureClass> parseGestureName(const QString &value)
+{
+    QString normalized = value.trimmed().toUpper();
+    normalized.replace(' ', '_');
+    for (std::size_t index = 0; index < kGestureCanonicalNames.size(); ++index) {
+        if (normalized == QString::fromLatin1(kGestureCanonicalNames[index]))
+            return static_cast<GestureClass>(index);
+    }
+    return std::nullopt;
+}
+
+std::optional<ActionBehavior> parseBehaviorName(const QString &value)
+{
+    if (value.compare(QStringLiteral("Press"), Qt::CaseInsensitive) == 0)
+        return ActionBehavior::Press;
+    if (value.compare(QStringLiteral("Hold"), Qt::CaseInsensitive) == 0)
+        return ActionBehavior::Hold;
+    if (value.compare(QStringLiteral("Toggle"), Qt::CaseInsensitive) == 0)
+        return ActionBehavior::Toggle;
+    return std::nullopt;
+}
+
+std::optional<LogicalAction> parseActionName(const QString &value)
+{
+    const QString normalized = value.trimmed();
+    for (int index = static_cast<int>(LogicalAction::MouseLeft);
+         index <= static_cast<int>(LogicalAction::KeyAlt);
+         ++index) {
+        const auto action = static_cast<LogicalAction>(index);
+        if (normalized.compare(actionDisplayName(action), Qt::CaseInsensitive) == 0
+            || normalized.compare(QString::fromLatin1(logicalActionId(action)), Qt::CaseInsensitive) == 0) {
+            return action;
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 RuntimeController::RuntimeController(
@@ -61,6 +155,8 @@ RuntimeController::RuntimeController(
     cursorY_ = cursorScreenHeight_ / 2;
     cursorAccumulatorX_ = static_cast<double>(cursorX_);
     cursorAccumulatorY_ = static_cast<double>(cursorY_);
+
+    initializeProfiles();
 
     connect(
         &mediaDevices_,
@@ -225,6 +321,291 @@ QStringList RuntimeController::formatNames() const
     return names;
 }
 
+QStringList RuntimeController::logicalKeys() const
+{
+    QStringList keys;
+
+    const auto appendIfPressed = [this, &keys](KeyCode key, const char *name) {
+        if ((controllerState_.keys & keyMask(key)) != 0U) {
+            keys.append(QString::fromLatin1(name));
+        }
+    };
+
+    appendIfPressed(KeyCode::Space, "Space");
+    appendIfPressed(KeyCode::Enter, "Enter");
+    appendIfPressed(KeyCode::Escape, "Escape");
+    appendIfPressed(KeyCode::Tab, "Tab");
+    appendIfPressed(KeyCode::Left, "Left");
+    appendIfPressed(KeyCode::Right, "Right");
+    appendIfPressed(KeyCode::Up, "Up");
+    appendIfPressed(KeyCode::Down, "Down");
+    appendIfPressed(KeyCode::Ctrl, "Ctrl");
+    appendIfPressed(KeyCode::Shift, "Shift");
+    appendIfPressed(KeyCode::Alt, "Alt");
+
+    return keys;
+}
+
+QVariantList RuntimeController::mappingRows() const
+{
+    QVariantList rows;
+    rows.reserve(static_cast<qsizetype>(activeMappingProfile_.mappings.size()));
+
+    for (const auto &rule : activeMappingProfile_.mappings) {
+        QVariantMap row;
+        row.insert(QStringLiteral("id"), QString::fromStdString(rule.id));
+        row.insert(QStringLiteral("hand"), rule.hand == HandSide::Left
+            ? QStringLiteral("Left")
+            : QStringLiteral("Right"));
+        row.insert(QStringLiteral("source"), gestureDisplayName(rule.gesture));
+        row.insert(QStringLiteral("type"), QStringLiteral("Gesture"));
+        row.insert(QStringLiteral("action"), actionDisplayName(rule.action));
+        row.insert(QStringLiteral("output"), actionOutputName(rule.action));
+        row.insert(QStringLiteral("behavior"), QString::fromLatin1(actionBehaviorName(rule.behavior)));
+        row.insert(QStringLiteral("state"), rule.enabled
+            ? QStringLiteral("Enabled")
+            : QStringLiteral("Disabled"));
+        row.insert(QStringLiteral("enabled"), rule.enabled);
+        rows.append(row);
+    }
+
+    return rows;
+}
+
+QString RuntimeController::mappingProfileDirectory() const
+{
+    return profileStore_
+        ? profileStore_->writableDirectory()
+        : QString{};
+}
+
+void RuntimeController::initializeProfiles()
+{
+    QString bundledDirectory =
+        QDir(QCoreApplication::applicationDirPath())
+            .filePath(QStringLiteral("profiles"));
+
+    if (!QDir(bundledDirectory).exists()) {
+        bundledDirectory = QDir(QStringLiteral(VC_SOURCE_ROOT))
+            .filePath(QStringLiteral("profiles"));
+    }
+
+    QString writableRoot =
+        QStandardPaths::writableLocation(
+            QStandardPaths::AppConfigLocation);
+
+    if (writableRoot.isEmpty()) {
+        writableRoot = QCoreApplication::applicationDirPath();
+    }
+
+    const QString writableDirectory =
+        QDir(writableRoot).filePath(QStringLiteral("profiles"));
+
+    profileStore_ = std::make_unique<ProfileStore>(
+        bundledDirectory,
+        writableDirectory);
+
+    QString error;
+    if (!profileStore_->initialize(&error)) {
+        mappingError_ = error;
+        return;
+    }
+
+    mappingProfileNames_ = profileStore_->profileNames();
+    if (mappingProfileNames_.removeAll(QStringLiteral("Default")) > 0) {
+        mappingProfileNames_.prepend(QStringLiteral("Default"));
+    }
+
+    if (!loadProfile(QStringLiteral("Default"))
+        && !mappingProfileNames_.isEmpty()) {
+        loadProfile(mappingProfileNames_.constFirst());
+    }
+}
+
+bool RuntimeController::loadProfile(const QString &name)
+{
+    if (!profileStore_) {
+        mappingError_ = QStringLiteral("Profile store is unavailable.");
+        emit mappingChanged();
+        return false;
+    }
+
+    MappingProfile profile;
+    QString error;
+    if (!profileStore_->load(name, &profile, &error)) {
+        mappingError_ = error;
+        emit mappingChanged();
+        return false;
+    }
+
+    if (outputSnapshot_.armed) {
+        outputService_.stop();
+        refreshOutputStatus();
+    }
+
+    activeMappingProfile_ = std::move(profile);
+    activeProfile_ = name;
+    mappingError_.clear();
+    applyActiveMappings();
+    gestureStateManager_.reset();
+    leftGestureEvent_ = QStringLiteral("IDLE");
+    rightGestureEvent_ = QStringLiteral("IDLE");
+    emit mappingChanged();
+    emit stateChanged();
+    return true;
+}
+
+void RuntimeController::applyActiveMappings()
+{
+    actionMapper_.setMappings(activeMappingProfile_.mappings);
+}
+
+void RuntimeController::setActiveProfile(const QString &name)
+{
+    if (name.isEmpty() || name == activeProfile_) {
+        return;
+    }
+    loadProfile(name);
+}
+
+int RuntimeController::addMapping()
+{
+    // Mapping edits are a safety boundary. Disarm before changing the
+    // ActionMapper so no held/toggled OS input survives an editor operation.
+    if (outputSnapshot_.armed) {
+        outputService_.stop();
+        refreshOutputStatus();
+    }
+
+    int suffix = 1;
+    std::string id;
+    for (;;) {
+        id = "custom_" + std::to_string(suffix++);
+        const bool exists = std::any_of(
+            activeMappingProfile_.mappings.begin(),
+            activeMappingProfile_.mappings.end(),
+            [&id](const MappingRule &rule) { return rule.id == id; });
+        if (!exists) break;
+    }
+
+    MappingRule rule;
+    rule.id = std::move(id);
+    rule.hand = HandSide::Right;
+    rule.gesture = GestureClass::Pinch;
+    rule.action = LogicalAction::MouseLeft;
+    rule.behavior = ActionBehavior::Hold;
+    rule.enabled = false;
+    activeMappingProfile_.mappings.push_back(rule);
+    applyActiveMappings();
+    mappingError_.clear();
+    emit mappingChanged();
+    emit stateChanged();
+    return static_cast<int>(activeMappingProfile_.mappings.size()) - 1;
+}
+
+void RuntimeController::removeMapping(int index)
+{
+    if (index < 0
+        || index >= static_cast<int>(activeMappingProfile_.mappings.size())) {
+        return;
+    }
+
+    if (outputSnapshot_.armed) {
+        outputService_.stop();
+        refreshOutputStatus();
+    }
+
+    activeMappingProfile_.mappings.erase(
+        activeMappingProfile_.mappings.begin() + index);
+    applyActiveMappings();
+    saveActiveProfile();
+    emit stateChanged();
+}
+
+bool RuntimeController::updateMapping(
+    int index,
+    const QString &hand,
+    const QString &gesture,
+    const QString &action,
+    const QString &behavior,
+    bool enabled)
+{
+    if (index < 0
+        || index >= static_cast<int>(activeMappingProfile_.mappings.size())) {
+        mappingError_ = QStringLiteral("Invalid mapping row.");
+        emit mappingChanged();
+        return false;
+    }
+
+    const auto parsedHand = parseHandName(hand);
+    const auto parsedGesture = parseGestureName(gesture);
+    const auto parsedAction = parseActionName(action);
+    const auto parsedBehavior = parseBehaviorName(behavior);
+
+    if (!parsedHand || !parsedGesture || !parsedAction || !parsedBehavior
+        || *parsedGesture == GestureClass::None) {
+        mappingError_ = QStringLiteral("Invalid mapping values.");
+        emit mappingChanged();
+        return false;
+    }
+
+    if (*parsedBehavior == ActionBehavior::Toggle
+        && (*parsedAction == LogicalAction::ScrollUp
+            || *parsedAction == LogicalAction::ScrollDown)) {
+        mappingError_ = QStringLiteral(
+            "Toggle is not allowed for mouse wheel actions. Use Press or Hold.");
+        emit mappingChanged();
+        return false;
+    }
+
+    if (outputSnapshot_.armed) {
+        outputService_.stop();
+        refreshOutputStatus();
+    }
+
+    auto &rule = activeMappingProfile_.mappings[static_cast<std::size_t>(index)];
+    rule.hand = *parsedHand;
+    rule.gesture = *parsedGesture;
+    rule.action = *parsedAction;
+    rule.behavior = *parsedBehavior;
+    rule.enabled = enabled;
+
+    applyActiveMappings();
+    const bool saved = saveActiveProfile();
+    gestureStateManager_.reset();
+    leftGestureEvent_ = QStringLiteral("IDLE");
+    rightGestureEvent_ = QStringLiteral("IDLE");
+    emit stateChanged();
+    return saved;
+}
+
+bool RuntimeController::saveActiveProfile()
+{
+    if (!profileStore_) {
+        mappingError_ = QStringLiteral("Profile store is unavailable.");
+        emit mappingChanged();
+        return false;
+    }
+
+    activeMappingProfile_.name = activeProfile_.toStdString();
+    QString error;
+    const bool ok = profileStore_->save(activeMappingProfile_, &error);
+    mappingError_ = ok ? QString{} : error;
+
+    mappingProfileNames_ = profileStore_->profileNames();
+    if (mappingProfileNames_.removeAll(QStringLiteral("Default")) > 0) {
+        mappingProfileNames_.prepend(QStringLiteral("Default"));
+    }
+
+    emit mappingChanged();
+    return ok;
+}
+
+bool RuntimeController::reloadActiveProfile()
+{
+    return loadProfile(activeProfile_);
+}
+
 QString RuntimeController::runtimeStateName() const
 {
     switch (runtimeState_) {
@@ -378,10 +759,12 @@ void RuntimeController::setOutputArmed(
         // Re-prime continuous control when output becomes live. The next hand
         // frame therefore establishes a baseline instead of moving the mouse.
         resetContinuousControl();
+        actionMapper_.reset();
         outputService_.arm();
     }
     else {
         outputService_.stop();
+        actionMapper_.reset();
     }
 
     refreshOutputStatus();
@@ -470,6 +853,32 @@ void RuntimeController::setRecognitionThreshold(
         return;
     }
 
+    emit settingsChanged();
+}
+
+void RuntimeController::setDebounceMs(int value)
+{
+    value = std::clamp(value, 0, 1000);
+    if (debounceMs_ == value) return;
+    debounceMs_ = value;
+    resetGestureActions();
+    emit settingsChanged();
+}
+
+void RuntimeController::setCooldownMs(int value)
+{
+    value = std::clamp(value, 0, 2000);
+    if (cooldownMs_ == value) return;
+    cooldownMs_ = value;
+    resetGestureActions();
+    emit settingsChanged();
+}
+
+void RuntimeController::setRequireRelease(bool value)
+{
+    if (requireRelease_ == value) return;
+    requireRelease_ = value;
+    resetGestureActions();
     emit settingsChanged();
 }
 
@@ -1563,7 +1972,20 @@ void RuntimeController::applyTrackingFrame(
         ? rightGesture.confidence
         : 0.0;
 
-    updateContinuousControl(frame);
+    GestureStateConfig eventConfig;
+    eventConfig.debounceMs = debounceMs_;
+    eventConfig.cooldownMs = cooldownMs_;
+    eventConfig.requireRelease = requireRelease_;
+
+    const GestureEventFrame events =
+        gestureStateManager_.update(gestures, eventConfig);
+
+    leftGestureEvent_ = gestureEventDisplayName(
+        events.hands[handIndex(HandSide::Left)].phase);
+    rightGestureEvent_ = gestureEventDisplayName(
+        events.hands[handIndex(HandSide::Right)].phase);
+
+    updateContinuousControl(frame, events);
     emit stateChanged();
 }
 
@@ -1597,6 +2019,9 @@ void RuntimeController::clearTracking()
     rightGesture_ = QStringLiteral("NONE");
     leftGestureConfidence_ = 0.0;
     rightGestureConfidence_ = 0.0;
+    leftGestureEvent_ = QStringLiteral("IDLE");
+    rightGestureEvent_ = QStringLiteral("IDLE");
+    resetGestureActions();
     resetContinuousControl();
 }
 
@@ -1604,6 +2029,22 @@ void RuntimeController::resetContinuousControl()
 {
     continuousControl_.reset();
     controllerState_ = {};
+}
+
+void RuntimeController::resetGestureActions()
+{
+    gestureStateManager_.reset();
+    actionMapper_.reset();
+    leftGestureEvent_ = QStringLiteral("IDLE");
+    rightGestureEvent_ = QStringLiteral("IDLE");
+
+    // Changing event semantics while a key/button is held must never leave the
+    // OS state latched. Disarm the output path; the user explicitly re-arms it.
+    refreshOutputStatus();
+    if (outputSnapshot_.armed) {
+        outputService_.stop();
+        refreshOutputStatus();
+    }
 }
 
 void RuntimeController::updateCursorGeometry()
@@ -1627,7 +2068,8 @@ void RuntimeController::updateCursorGeometry()
 }
 
 void RuntimeController::updateContinuousControl(
-    const TrackingFrame &frame)
+    const TrackingFrame &frame,
+    const GestureEventFrame &events)
 {
     ContinuousControlConfig config;
     config.sensitivity = sensitivity_;
@@ -1646,7 +2088,9 @@ void RuntimeController::updateContinuousControl(
             frame.captureUs,
             config);
 
-    controllerState_ = result.controller;
+    controllerState_ = actionMapper_.apply(
+        events,
+        result.controller);
 
     if (result.cursorTracked) {
         if (!cursorPreviewInitialized_) {

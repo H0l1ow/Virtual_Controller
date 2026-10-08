@@ -1,145 +1,159 @@
-# Virtual Controller - M3 gesture recognition (0.8.0)
+# Virtual Controller - M4.5 Gesture Playground (0.9.5)
 
-Qt/QML + C++20 desktop application for two-hand camera tracking and low-latency
-continuous control. M3 keeps the M1 hardening, immersive UI and M2 Windows cursor
-output, then adds a separate gesture-recognition layer for both hands.
+Qt/QML + C++20 desktop application for two-hand camera tracking, continuous
+cursor control, gesture-driven mouse/keyboard input and an in-app mapping test
+environment.
+
+M4.5 keeps the complete M1-M4 pipeline and adds Gesture Playground: a dedicated
+Test page that validates enabled mapping rules against the backend-neutral
+ControllerState before the same actions are optionally sent to Windows.
 
 ## Current scope
 
 Implemented:
 
 - Qt 6.11.2 / QML / C++20 project opened directly from the root `CMakeLists.txt`.
-- MediaPipe 0.10.32 Hand Landmarker, two-hand tracking and stable Left/Right identity.
-- explicit runtime lifecycle, latest-frame mailbox and runtime latency/drop metrics.
-- M2 relative cursor control with One Euro smoothing, deadzone, sensitivity and
-  DPI-like cursor speed.
-- opt-in Windows `SendInput` mouse output with watchdog and F8 emergency disarm.
-- **M3 static gesture recognition for both hands:** `NONE`, `FIST`, `OPEN HAND`,
-  `POINT`, `PINCH`.
-- causal `vc.hand134.v2` feature extractor and 16-frame / 30 Hz temporal buffer.
-- deterministic geometric rule recognizer used as a safe bootstrap/fallback.
-- optional native ONNX Runtime backend for a compatible causal TCN model.
-- live gesture names/confidences on the Controller overlay and Gestures page.
-- active recognition threshold in Settings.
-- Python causal TCN training/export scaffold matching the C++ feature contract.
-- pure C++ tests for gesture geometry/features/temporal recognition.
+- MediaPipe two-hand tracking with stable Left/Right identity.
+- lifecycle hardening, latest-frame mailbox and latency/drop metrics.
+- M2 relative cursor control with One Euro smoothing, deadzone, sensitivity,
+  2.5x default cursor speed and user-tuned mirrored interaction defaults.
+- opt-in Windows `SendInput` output, watchdog and F8 emergency disarm.
+- M3 gesture recognition for `NONE`, `FIST`, `OPEN HAND`, `POINT`, `PINCH`.
+- optional causal TCN/ONNX backend with deterministic Rules fallback.
+- **M4 GestureStateManager:** PRESS / HOLD / RELEASE, debounce, cooldown and
+  require-release semantics.
+- **M4 ActionMapper:** gesture events can drive mouse buttons, wheel and keyboard.
+- Windows keyboard injection for the currently retained special/navigation keys.
+- editable Mapping page with `Press`, `Hold`, `Toggle` behavior.
+- JSON mapping profiles in schema `vc.mapping.profile.v1`, saved atomically.
+- Default / Desktop / Presentation / Game seed profiles.
+- live event state (`PRESS`, `HOLD`, `RELEASE`, `IDLE`) on the Gestures page.
+- **M4.5 Gesture Playground / Test tab** with mapping-aware click targets, right-click
+  targets, drag-and-drop, freeze/reposition, scroll and key-action exercises.
+- Safe Internal test mode observes ControllerState after ActionMapper while Windows
+  output remains disarmed; System output can be enabled for a full SendInput check.
+- `Run all` walks every enabled testable mapping (and both click + drag exercises for
+  left-click Hold mappings), with pass/fail counters and live diagnostics.
 
 Still intentionally not implemented:
 
-- gesture -> mouse click/scroll/keyboard actions,
-- PRESS / HOLD / RELEASE event state machine, debounce/cooldown semantics,
-- profile persistence / editable ActionMapper,
-- dataset recording from the GUI and custom gesture creation,
-- dynamic swipe gestures and two-hand gestures,
-- Xbox / PlayStation output.
+- dynamic swipe gestures,
+- two-hand relationship controls,
+- Xbox / PlayStation virtual gamepad output,
+- arbitrary key-combination/chord editor,
+- GUI dataset recording and custom gesture training.
 
-Those remain separate milestones so gesture classification cannot accidentally
-start generating operating-system actions before its event semantics are tested.
-
-## M3 pipeline
+## M4 pipeline
 
 ```text
-Camera frame
-    |
-    v
-MediaPipeTracker
-    |
-    v
-HandIdentityStabilizer
-    |
-    +-------------------------------> M2 ContinuousControlInterpreter -> cursor
-    |
-    v
-TrackingFrame (Left + Right)
-    |
-    v
-Gesture feature pipeline
-  - wrist-relative / scale-normalized landmarks
-  - left-hand canonicalization
-  - landmark velocity
-  - finger curl
-  - pinch distances
-  - 30 Hz causal temporal stream
-    |
-    +--> rule recognizer (always available)
-    |
-    +--> optional causal TCN / ONNX Runtime
-    |
-    v
-GesturePrediction { class, confidence }
-    |
-    v
-UI only in M3
+Camera
+  -> MediaPipeTracker
+  -> HandIdentityStabilizer
+  -> TrackingFrame
+       |
+       +-> ContinuousControlInterpreter -> cursor delta ---------+
+       |                                                         |
+       +-> GestureEngine -> GesturePrediction                    |
+                              |                                  |
+                              v                                  |
+                       GestureStateManager                       |
+                       PRESS/HOLD/RELEASE                        |
+                              |                                  |
+                              v                                  |
+                         ActionMapper                            |
+                       mouse / keyboard                          |
+                              |                                  |
+                              +---------------+------------------+
+                                              v
+                                      ControllerState
+                                              |
+                                      OutputGuard / F8
+                                              |
+                                      Windows SendInput
 ```
 
-The gesture layer does not alter the continuous cursor path. Losing one hand
-resets only that hand's gesture history. A changed `trackId` also starts a fresh
-temporal window.
+Gesture recognition still does not know about Windows. Mapping still does not
+know whether M3 used Rules or ONNX. Continuous cursor control still does not
+require a gesture.
 
-## Rule fallback vs TCN
+## Default desktop behavior
 
-A real trained TCN is **not fabricated or bundled** with this package. Without a
-model, the application recognizes the initial static gestures using geometric
-rules. This makes the UI/pipeline testable now while keeping the final ML
-contract in place.
+The shipped `Default` profile enables:
 
-A compatible ONNX model uses:
+- Right `PINCH` -> left mouse button, `Hold` behavior.
+
+This means pinch can be used for click-and-drag while the right hand continues
+to move the M2 cursor. Other example rows are shipped disabled or are enabled
+only in explicitly selected profiles.
+
+System output remains OFF after application start. Enable it only after cursor
+and gesture detection are behaving correctly. F8 immediately disarms output.
+
+## Gesture settings
+
+`Settings -> Gestures` is active in M4:
+
+- Recognition threshold: classification confidence threshold.
+- Debounce: how long a gesture must remain stable before PRESS.
+- Cooldown: quiet interval after RELEASE before another PRESS.
+- Require release: after RELEASE, require one complete observation away from the
+  released gesture before a fresh candidate can debounce.
+
+Changing event-state settings while output is armed disarms output for safety.
+
+## Mapping profiles
+
+The repository contains example JSON files in `profiles/`. On first run they are
+seeded into the writable Qt application config directory. The Mapping page shows
+the exact writable directory.
+
+A mapping stores:
 
 ```text
-schema:       vc.hand134.v2
-input:        float32 [batch,16,134]
-sample rate:  30 Hz
-output:       logits [batch,5]
-labels:       NONE,FIST,OPEN_HAND,POINT,PINCH
+hand + gesture + action + behavior + enabled
 ```
 
-Put `gesture_model.onnx` and `model_metadata.json` together in `models/`, install
-ONNX Runtime 1.26.x-compatible SDK and configure:
-
-```text
-VC_WITH_ONNX=ON
-VC_ONNXRUNTIME_ROOT=C:/SDK/onnxruntime-win-x64-1.26.0
-```
-
-If the model is absent or rejected, the application stays on the Rules backend
-instead of breaking camera tracking.
+Supported actions currently include mouse left/right, wheel up/down, cursor freeze,
+Space, Enter, Escape, Tab, arrow keys and Ctrl/Shift/Alt. Letter-key mapping remains
+intentionally deferred until the keyboard-control design is defined.
 
 ## Current control defaults
 
-The user-tuned M2 defaults are retained in 0.8.0:
+User-tuned M2 defaults are retained:
 
-- Mirror preview: **ON**
-- Cursor speed: **2.5x**
-- Invert X switch: **OFF**, while the default horizontal mapping is already
-  reversed to match the mirrored interaction
+- Mirror preview: ON
+- Cursor speed: 2.5x
+- Invert X switch: OFF; default horizontal mapping is already reversed for the
+  mirrored interaction
 - Invert Y: OFF
 - Sensitivity: 70%
 - Smoothing: ON
 - Deadzone: 12%
 - Gesture recognition threshold: 80%
+- Debounce: 120 ms
+- Cooldown: 250 ms
+- Require release: ON
 - System output: OFF
 
 ## Qt Creator
 
-1. Open the root `CMakeLists.txt` in Qt Creator.
-2. Select Qt 6.11.2 MSVC 2022 64-bit (compatible newer MSVC is accepted).
-3. Configure, Build and Run normally from Qt Creator.
-4. Press **Start tracking**.
-5. Verify cursor tracking first with `System output` OFF.
-6. Open **Gestures** and verify both hands report sensible static gestures.
-7. Enable `System output` only when cursor motion is already stable.
+1. Open the root `CMakeLists.txt`.
+2. Select Qt 6.11.2 MSVC 2022 x64 (compatible newer MSVC is accepted).
+3. Reconfigure CMake after updating from M4.2.
+4. Build and Run.
+5. Start tracking with System output OFF.
+6. Verify gesture event states on the Gestures page.
+7. Check/edit mappings on the Mapping page.
+8. Open **Test** and validate mappings in Safe Internal mode first.
+9. Optionally enable System output on the Test page for an end-to-end Windows check.
+10. Use F8 as emergency disarm.
 
-ONNX is optional. The default `VC_WITH_ONNX=OFF` build needs no ONNX SDK and uses
-the rule recognizer.
-
-## Python ML
-
-See `ml/README.md`. The repository contains the causal TCN and ONNX export path,
-but the application does not yet contain the later dataset-recording UI.
+The default build keeps `VC_WITH_ONNX=OFF`; Rules remains available without an
+ONNX SDK/model.
 
 ## Tests
 
-Core C++ tests do not require Qt:
+Core C++ tests:
 
 ```text
 cmake -S . -B build-core -DVC_BUILD_GUI=OFF -DBUILD_TESTING=ON
@@ -147,13 +161,46 @@ cmake --build build-core
 ctest --test-dir build-core --output-on-failure
 ```
 
-M3 adds `vc_gesture_recognition_tests` to the existing M1/M2 test set.
-
-Python model contract tests:
-
-```text
-python -m pytest -q ml/tests/test_model.py
-```
+The current core suite contains 8 tests. M4.5 does not change the event/action
+algorithms; it exposes their backend-neutral logical state to QML for playground
+verification.
 
 See `docs/M1_HARDENING.md`, `docs/M1_1_IMMERSIVE_UI.md`,
-`docs/M2_CONTINUOUS_CONTROL.md` and `docs/M3_GESTURE_RECOGNITION.md`.
+`docs/M2_CONTINUOUS_CONTROL.md`, `docs/M3_GESTURE_RECOGNITION.md` and
+`docs/M4_EVENT_MAPPING.md` and `docs/M4_5_GESTURE_PLAYGROUND.md`.
+
+
+## M4.1 mapping refinements
+
+- `Freeze cursor` is a normal mapping action (`control.cursor.freeze`) and can be assigned to any supported gesture/hand.
+- `Hold` freezes only cursor motion while hand tracking keeps updating, so releasing the gesture does not create a large catch-up jump.
+- `Toggle` can be used for a persistent freeze/unfreeze workflow.
+- Mapping rows can be removed from the always-visible `Remove` button in the Mapping toolbar as well as the details panel.
+- `Freeze cursor` is available only as a selectable Mapping action; no gesture is assigned to it by default.
+## M4.2 mapping corrections
+
+- `Freeze cursor` remains a normal Mapping action, but it is no longer pre-assigned to `FIST` in the bundled Default profile.
+- Letter-key actions (`Key A` through `Key Z`) were removed from the mapping UI and C++ logical action/backend layer. Keyboard interaction is intentionally limited to the remaining special/navigation keys until a proper keyboard-control design is defined.
+- The accidental 0.9.1 seeded `Right + FIST -> Freeze cursor` row is ignored on load by its legacy seed ID. User-created freeze mappings (`custom_*`) remain fully supported.
+
+
+
+## M4.5 Gesture Playground
+
+The new `Test` tab is intentionally mapping-driven: it never hard-codes PINCH, FIST
+or another gesture to an exercise. It reads the active enabled JSON mappings and
+builds appropriate exercises from their logical actions.
+
+Available exercise types:
+
+- left-click targets,
+- right-click targets,
+- drag-and-drop for left mouse `Hold`,
+- cursor freeze/reposition/unfreeze with release-jump observation,
+- scroll direction/step validation,
+- current special/navigation key actions.
+
+Safe Internal mode uses the same `GestureStateManager -> ActionMapper ->
+ControllerState` path as normal control, but can be tested with System output OFF.
+The logical cursor is drawn inside the exercise board using the same cursor state as
+the Controller page.

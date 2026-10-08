@@ -10,9 +10,34 @@ struct ControlVector2 {
     float y{};
 };
 
-// Backend-neutral logical output. M2 currently drives only mouseX/mouseY,
-// while the remaining fields reserve the same contract for later gamepad and
-// gesture milestones.
+enum class KeyCode : std::uint8_t {
+    Space = 0,
+    Enter,
+    Escape,
+    Tab,
+    Left,
+    Right,
+    Up,
+    Down,
+    Ctrl,
+    Shift,
+    Alt,
+    Count
+};
+
+static_assert(
+    static_cast<std::uint8_t>(KeyCode::Count) <= 64,
+    "ControllerState key mask supports at most 64 logical keys");
+
+constexpr std::uint64_t keyMask(KeyCode key)
+{
+    return std::uint64_t{1}
+        << static_cast<std::uint8_t>(key);
+}
+
+// Backend-neutral logical output. Continuous controls and discrete gesture
+// mappings both write into this state; OS/gamepad backends consume it without
+// knowing how a gesture was recognized.
 struct ControllerState {
     ControlVector2 left{};
     ControlVector2 right{};
@@ -22,8 +47,13 @@ struct ControllerState {
     float mouseY{};
     float wheel{};
     std::uint32_t buttons{};
+    std::uint64_t keys{};
     bool mouseLeft{};
     bool mouseRight{};
+    // Internal logical control directive. Input backends ignore this flag;
+    // ActionMapper uses it to suppress relative cursor motion while tracking
+    // continues to update the hand-motion baseline.
+    bool cursorFrozen{};
 
     [[nodiscard]] bool neutral(float epsilon = 0.0001F) const
     {
@@ -41,8 +71,10 @@ struct ControllerState {
             && zero(mouseY)
             && zero(wheel)
             && buttons == 0U
+            && keys == 0U
             && !mouseLeft
-            && !mouseRight;
+            && !mouseRight
+            && !cursorFrozen;
     }
 };
 

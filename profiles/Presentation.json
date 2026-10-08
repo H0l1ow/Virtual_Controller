@@ -1,0 +1,30 @@
+{
+  "schema": "vc.mapping.profile.v1",
+  "name": "Presentation",
+  "mappings": [
+    {
+      "id": "right_pinch_left_mouse",
+      "hand": "Right",
+      "gesture": "PINCH",
+      "action": "mouse.left",
+      "behavior": "Hold",
+      "enabled": true
+    },
+    {
+      "id": "right_point_next",
+      "hand": "Right",
+      "gesture": "POINT",
+      "action": "key.right",
+      "behavior": "Press",
+      "enabled": true
+    },
+    {
+      "id": "left_point_previous",
+      "hand": "Left",
+      "gesture": "POINT",
+      "action": "key.left",
+      "behavior": "Press",
+      "enabled": true
+    }
+  ]
+}

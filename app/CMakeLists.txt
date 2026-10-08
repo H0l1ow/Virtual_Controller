@@ -39,6 +39,8 @@ qt_add_executable(
     src/gestures/HandFeatures.cpp
     src/gestures/GestureEngine.hpp
     src/gestures/GestureEngine.cpp
+    src/gestures/GestureStateManager.hpp
+    src/gestures/GestureStateManager.cpp
     src/gestures/OnnxGestureRecognizer.hpp
     src/gestures/OnnxGestureRecognizer.cpp
 
@@ -48,6 +50,12 @@ qt_add_executable(
     src/input/OutputGuard.cpp
     src/input/OutputService.hpp
     src/input/OutputService.cpp
+
+    src/mapping/MappingTypes.hpp
+    src/mapping/ActionMapper.hpp
+    src/mapping/ActionMapper.cpp
+    src/mapping/ProfileStore.hpp
+    src/mapping/ProfileStore.cpp
 
     src/tracking/TrackingTypes.hpp
     src/tracking/HandIdentityStabilizer.hpp
@@ -155,6 +163,7 @@ qt_add_resources(
         qml/pages/ControllerPage.qml
         qml/pages/MappingPage.qml
         qml/pages/GesturesPage.qml
+        qml/pages/TestPage.qml
         qml/pages/GamepadPage.qml
         qml/pages/SettingsPage.qml
 )
@@ -207,6 +216,17 @@ if(EXISTS "${VC_GESTURE_MODEL}")
             VERBATIM
         )
     endif()
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/profiles")
+    add_custom_command(
+        TARGET VirtualController
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/profiles"
+            "$<TARGET_FILE_DIR:VirtualController>/profiles"
+        VERBATIM
+    )
 endif()
 
 if(WIN32 AND VC_WITH_ONNX)
@@ -266,4 +286,12 @@ if(EXISTS "${VC_GESTURE_MODEL}")
             DESTINATION models
         )
     endif()
+endif()
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/profiles")
+    install(
+        DIRECTORY "${CMAKE_SOURCE_DIR}/profiles/"
+        DESTINATION profiles
+        FILES_MATCHING PATTERN "*.json" PATTERN "README.md"
+    )
 endif()

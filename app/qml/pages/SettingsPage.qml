@@ -517,7 +517,7 @@ Item {
                                     model: root.uiState.profileNames
                                     currentIndex: Math.max(0, root.uiState.profileNames.indexOf(root.uiState.activeProfile))
                                     implicitWidth: 240
-                                    onActivated: root.uiState.activeProfile = currentText
+                                    onActivated: root.uiState.setActiveProfile(currentText)
                                 }
                             }
                             Item {
@@ -574,16 +574,15 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Debounce (M4)"
-                                description: "Reserved for PRESS/HOLD/RELEASE event generation in M4."
+                                title: "Debounce"
+                                description: "Gesture must remain stable for this long before PRESS is emitted."
                                 VcComboBox {
                                     id: debounceCombo
                                     theme: root.theme
-                                    enabled: false
                                     model: ["80 ms", "120 ms", "160 ms", "200 ms"]
                                     currentIndex: Math.max(0, [80, 120, 160, 200].indexOf(root.uiState.debounceMs))
                                     implicitWidth: 180
-                                    onActivated: root.uiState.debounceMs = parseInt(currentText)
+                                    onActivated: root.uiState.setDebounceMs(parseInt(currentText))
                                 }
                             }
                             Rectangle {
@@ -594,16 +593,15 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Cooldown (M4)"
-                                description: "Reserved for discrete gesture actions in M4."
+                                title: "Cooldown"
+                                description: "Minimum quiet time after RELEASE before another PRESS can fire."
                                 VcComboBox {
                                     id: cooldownCombo
                                     theme: root.theme
-                                    enabled: false
                                     model: ["150 ms", "250 ms", "400 ms", "600 ms"]
                                     currentIndex: Math.max(0, [150, 250, 400, 600].indexOf(root.uiState.cooldownMs))
                                     implicitWidth: 180
-                                    onActivated: root.uiState.cooldownMs = parseInt(currentText)
+                                    onActivated: root.uiState.setCooldownMs(parseInt(currentText))
                                 }
                             }
                             Rectangle {
@@ -614,14 +612,13 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Require release (M4)"
-                                description: "Reserved for the gesture event state machine in M4."
+                                title: "Require release"
+                                description: "Require one complete observation away from the released gesture before it can trigger again."
                                 VcSwitch {
                                     id: requireReleaseSwitch
                                     theme: root.theme
-                                    enabled: false
                                     checked: root.uiState.requireRelease
-                                    onToggled: root.uiState.requireRelease = checked
+                                    onToggled: root.uiState.setRequireRelease(checked)
                                 }
                             }
                             Item {
