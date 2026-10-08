@@ -12,7 +12,7 @@ QtObject {
         { id: "pinch", gesture: "pinch", title: "Pinch", action: "Mapped action · see Mapping", active: true },
         { id: "point", gesture: "point", title: "Point", action: "Mapped action · see Mapping", active: true },
         { id: "open_hand", gesture: "open", title: "Open Hand", action: "Mapped action · see Mapping", active: true },
-        { id: "thumb_up", gesture: "up", title: "Thumbs Up", action: "Planned", active: false },
+        { id: "thumb_up", gesture: "up", title: "Thumbs Up", action: "Mapped action · see Mapping", active: true },
         { id: "fist", gesture: "fist", title: "Fist", action: "Mapped action · see Mapping", active: true }
     ]
 

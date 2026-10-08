@@ -45,6 +45,7 @@ void GestureEngine::reset()
         state.smoothed = {};
         state.trackId = 0;
         state.initialized = false;
+        state.pinchLatched = false;
     }
 }
 
@@ -66,6 +67,7 @@ GesturePrediction GestureEngine::updateHand(
         state.smoothed = {};
         state.trackId = 0;
         state.initialized = false;
+        state.pinchLatched = false;
         return prediction;
     }
 
@@ -74,6 +76,7 @@ GesturePrediction GestureEngine::updateHand(
         state.smoothed = {};
         state.trackId = hand.trackId;
         state.initialized = false;
+        state.pinchLatched = false;
     }
 
     state.stream.push(
@@ -82,19 +85,55 @@ GesturePrediction GestureEngine::updateHand(
         frameHeight,
         timestampUs);
 
-    GestureScores rawScores{};
+    const auto geometry =
+        extractGestureGeometry(
+            hand,
+            frameWidth,
+            frameHeight);
 
-    if (modelInference_ && state.stream.ready()) {
-        rawScores =
-            modelInference_(state.stream.tensor());
+    if (!geometry.valid) {
+        state.pinchLatched = false;
     }
     else {
-        rawScores =
-            ruleGestureScores(
-                extractGestureGeometry(
-                    hand,
-                    frameWidth,
-                    frameHeight));
+        const bool pinchShapeValid =
+            geometry.curl[0] < 0.68F
+            && geometry.thumbCurl < 0.70F;
+        if (state.pinchLatched) {
+            if (!pinchShapeValid
+                || geometry.thumbIndexRuleDistance >= 0.46F) {
+                state.pinchLatched = false;
+            }
+        }
+        else if (pinchShapeValid
+                 && geometry.thumbIndexRuleDistance <= 0.32F) {
+            state.pinchLatched = true;
+        }
+    }
+
+    // Static rules remain active even when a legacy five-class ONNX model is
+    // present. This keeps the expanded static catalog usable without claiming
+    // that the old model was trained for the new classes.
+    GestureScores rawScores =
+        ruleGestureScores(
+            geometry,
+            state.pinchLatched);
+
+    if (modelInference_ && state.stream.ready()) {
+        const GestureScores modelScores =
+            modelInference_(state.stream.tensor());
+
+        for (const auto gesture : kLegacyOnnxGestureClasses) {
+            const auto index = gestureIndex(gesture);
+            rawScores[index] =
+                std::max(rawScores[index], modelScores[index]);
+        }
+
+        const float bestGesture =
+            *std::max_element(
+                rawScores.begin() + 1,
+                rawScores.end());
+        rawScores[gestureIndex(GestureClass::None)] =
+            std::clamp(1.0F - bestGesture, 0.0F, 1.0F);
     }
 
     for (auto &score : rawScores) {
@@ -162,7 +201,7 @@ GestureScores GestureEngine::smoothScores(
     }
 
     GestureScores result{};
-    constexpr float currentWeight = 0.45F;
+    constexpr float currentWeight = 0.70F;
     constexpr float previousWeight = 1.0F - currentWeight;
 
     for (std::size_t index = 0;

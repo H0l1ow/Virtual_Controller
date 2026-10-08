@@ -1,6 +1,7 @@
 #include "runtime/RuntimeController.hpp"
 
 #include "gestures/GestureEngine.hpp"
+#include "gestures/GestureRegistry.hpp"
 #include "gestures/OnnxGestureRecognizer.hpp"
 #include "tracking/HandIdentityStabilizer.hpp"
 #include "tracking/MediaPipeTracker.hpp"
@@ -34,22 +35,11 @@ namespace vc {
 
 namespace {
 
-QString gestureDisplayName(GestureClass gesture)
+QString gestureDisplayLabel(GestureClass gesture)
 {
-    switch (gesture) {
-    case GestureClass::Fist:
-        return QStringLiteral("FIST");
-    case GestureClass::OpenHand:
-        return QStringLiteral("OPEN HAND");
-    case GestureClass::Point:
-        return QStringLiteral("POINT");
-    case GestureClass::Pinch:
-        return QStringLiteral("PINCH");
-    case GestureClass::None:
-    default:
-        return QStringLiteral("NONE");
-    }
+    return QString::fromLatin1(vc::gestureDisplayName(gesture));
 }
+
 
 QString gestureEventDisplayName(GestureEventPhase phase)
 {
@@ -357,7 +347,7 @@ QVariantList RuntimeController::mappingRows() const
         row.insert(QStringLiteral("hand"), rule.hand == HandSide::Left
             ? QStringLiteral("Left")
             : QStringLiteral("Right"));
-        row.insert(QStringLiteral("source"), gestureDisplayName(rule.gesture));
+        row.insert(QStringLiteral("source"), gestureDisplayLabel(rule.gesture));
         row.insert(QStringLiteral("type"), QStringLiteral("Gesture"));
         row.insert(QStringLiteral("action"), actionDisplayName(rule.action));
         row.insert(QStringLiteral("output"), actionOutputName(rule.action));
@@ -370,6 +360,51 @@ QVariantList RuntimeController::mappingRows() const
     }
 
     return rows;
+}
+
+QStringList RuntimeController::mappingGestureOptions() const
+{
+    QStringList result;
+    result.reserve(static_cast<qsizetype>(kGestureDefinitions.size()));
+
+    for (const auto &definition : kGestureDefinitions) {
+        result.append(QString::fromLatin1(definition.displayName));
+    }
+
+    return result;
+}
+
+QVariantList RuntimeController::gestureCatalog() const
+{
+    QVariantList result;
+    result.reserve(static_cast<qsizetype>(kGestureDefinitions.size()));
+
+    for (const auto &definition : kGestureDefinitions) {
+        QVariantMap row;
+        row.insert(QStringLiteral("id"),
+            QString::fromLatin1(gestureCanonicalName(definition.gesture)).toLower());
+        row.insert(QStringLiteral("gesture"), QString::fromLatin1(definition.glyph));
+        row.insert(QStringLiteral("title"), QString::fromLatin1(definition.displayName));
+        row.insert(QStringLiteral("canonical"),
+            QString::fromLatin1(gestureCanonicalName(definition.gesture)));
+        row.insert(QStringLiteral("category"), QString::fromLatin1(definition.category));
+        row.insert(QStringLiteral("description"), QString::fromLatin1(definition.description));
+        row.insert(QStringLiteral("enabled"), vc::gestureRuntimeAvailable(definition.gesture));
+        row.insert(QStringLiteral("temporal"), gestureTemporalPlanned(definition.gesture));
+        row.insert(QStringLiteral("status"),
+            vc::gestureRuntimeAvailable(definition.gesture)
+                ? QStringLiteral("Available")
+                : QStringLiteral("Temporal / planned"));
+        result.append(row);
+    }
+
+    return result;
+}
+
+bool RuntimeController::gestureRuntimeAvailable(const QString &gesture) const
+{
+    const auto parsed = parseGestureName(gesture);
+    return parsed && vc::gestureRuntimeAvailable(*parsed);
 }
 
 QString RuntimeController::mappingProfileDirectory() const
@@ -545,6 +580,15 @@ bool RuntimeController::updateMapping(
     if (!parsedHand || !parsedGesture || !parsedAction || !parsedBehavior
         || *parsedGesture == GestureClass::None) {
         mappingError_ = QStringLiteral("Invalid mapping values.");
+        emit mappingChanged();
+        return false;
+    }
+
+    if (enabled && !vc::gestureRuntimeAvailable(*parsedGesture)) {
+        mappingError_ = QStringLiteral(
+            "%1 is reserved for temporal recognition and is not active yet. "
+            "Save it disabled or choose an available static gesture.")
+            .arg(gestureDisplayLabel(*parsedGesture));
         emit mappingChanged();
         return false;
     }
@@ -1648,9 +1692,9 @@ void RuntimeController::workerLoop(
                                 return model->infer(tensor);
                             };
 
-                        gestureBackend = QStringLiteral("ONNX TCN");
+                        gestureBackend = QStringLiteral("ONNX TCN + Rules");
                         gestureModelStatus =
-                            QStringLiteral("gesture_model.onnx loaded");
+                            QStringLiteral("Legacy 5-class gesture_model.onnx loaded + extended static rules");
                         gestureModelActive = true;
                     }
                     catch (const std::exception &error) {
@@ -1960,10 +2004,10 @@ void RuntimeController::applyTrackingFrame(
         gestures.hands[handIndex(HandSide::Right)];
 
     leftGesture_ = leftGesture.ready
-        ? gestureDisplayName(leftGesture.gesture)
+        ? gestureDisplayLabel(leftGesture.gesture)
         : QStringLiteral("NONE");
     rightGesture_ = rightGesture.ready
-        ? gestureDisplayName(rightGesture.gesture)
+        ? gestureDisplayLabel(rightGesture.gesture)
         : QStringLiteral("NONE");
     leftGestureConfidence_ = leftGesture.ready
         ? leftGesture.confidence

@@ -85,7 +85,7 @@ void validateMetadata(
             .toArray();
 
     if (labels.size()
-        != static_cast<int>(kGestureClassCount)) {
+        != static_cast<int>(kLegacyOnnxGestureClassCount)) {
         throw std::runtime_error(
             "Gesture model class count mismatch");
     }
@@ -95,7 +95,7 @@ void validateMetadata(
          ++index) {
         if (labels[index].toString()
             != QString::fromLatin1(
-                kGestureCanonicalNames[
+                kLegacyOnnxGestureCanonicalNames[
                     static_cast<std::size_t>(index)])) {
             throw std::runtime_error(
                 "Gesture model label order mismatch");
@@ -215,9 +215,9 @@ OnnxGestureRecognizer::OnnxGestureRecognizer(
         || outputShape.size() != 2
         || outputShape[1]
             != static_cast<std::int64_t>(
-                kGestureClassCount)) {
+                kLegacyOnnxGestureClassCount)) {
         throw std::runtime_error(
-            "Expected gesture ONNX output float32 [1,5]");
+            "Expected legacy gesture ONNX output float32 [1,5]");
     }
 
     // Warm up before the model can be reported as active. M3 does not yet
@@ -292,7 +292,7 @@ GestureScores OnnxGestureRecognizer::infer(
         || values[0]
                .GetTensorTypeAndShapeInfo()
                .GetElementCount()
-            != kGestureClassCount) {
+            != kLegacyOnnxGestureClassCount) {
         throw std::runtime_error(
             "Gesture ONNX output size mismatch");
     }
@@ -303,22 +303,24 @@ GestureScores OnnxGestureRecognizer::infer(
     const float maximum =
         *std::max_element(
             logits,
-            logits + kGestureClassCount);
+            logits + kLegacyOnnxGestureClassCount);
 
     GestureScores probabilities{};
     float sum = 0.0F;
 
     for (std::size_t index = 0;
-         index < kGestureClassCount;
+         index < kLegacyOnnxGestureClassCount;
          ++index) {
         if (!std::isfinite(logits[index])) {
             throw std::runtime_error(
                 "Gesture ONNX output contains non-finite logits");
         }
 
-        probabilities[index] =
+        const auto gesture = kLegacyOnnxGestureClasses[index];
+        const auto gestureIndexValue = gestureIndex(gesture);
+        probabilities[gestureIndexValue] =
             std::exp(logits[index] - maximum);
-        sum += probabilities[index];
+        sum += probabilities[gestureIndexValue];
     }
 
     if (!(sum > 0.0F)
@@ -327,8 +329,8 @@ GestureScores OnnxGestureRecognizer::infer(
             "Gesture ONNX softmax failed");
     }
 
-    for (auto &value : probabilities) {
-        value /= sum;
+    for (const auto gesture : kLegacyOnnxGestureClasses) {
+        probabilities[gestureIndex(gesture)] /= sum;
     }
 
     return probabilities;

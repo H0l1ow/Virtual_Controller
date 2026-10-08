@@ -32,11 +32,30 @@ Item {
             return "point"
         case "FIST":
             return "fist"
+        case "VICTORY":
+        case "ROCK":
+            return "two"
+        case "OK":
+            return "pinch"
         case "THUMB UP":
             return "up"
         case "THUMB DOWN":
             return "down"
+        case "SWIPE LEFT":
+        case "SWIPE RIGHT":
+        case "SWIPE UP":
+        case "SWIPE DOWN":
+            return "swipe"
+        case "CIRCLE CW":
+        case "CIRCLE CCW":
+            return "rotate"
         case "OPEN HAND":
+        case "I LOVE YOU":
+        case "CALL ME":
+        case "THREE FINGERS":
+        case "FOUR FINGERS":
+        case "PUSH":
+        case "PULL":
             return "open"
         default:
             return "open"
@@ -52,7 +71,7 @@ Item {
             Layout.fillWidth: true
             theme: root.theme
             title: "Gestures"
-            subtitle: "Live gesture recognition with M4 PRESS / HOLD / RELEASE event semantics."
+            subtitle: "13 static gestures are recognized now; 8 temporal gestures are reserved for the next model stage."
 
             VcTextField {
                 theme: root.theme
@@ -101,7 +120,7 @@ Item {
                         }
 
                         Repeater {
-                            model: ["All", "Static", "Dynamic", "Two-hand"]
+                            model: ["All", "Static", "Dynamic"]
 
                             delegate: Rectangle {
                                 required property string modelData
@@ -233,9 +252,7 @@ Item {
 
                                                 StatusBadge {
                                                     theme: root.theme
-                                                    text: modelData.enabled
-                                                        ? "Available"
-                                                        : "Planned"
+                                                    text: modelData.status
                                                     kind: modelData.enabled
                                                         ? "success"
                                                         : "neutral"

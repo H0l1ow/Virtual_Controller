@@ -43,6 +43,7 @@ private:
         GestureScores smoothed{};
         std::uint64_t trackId{};
         bool initialized{};
+        bool pinchLatched{};
     };
 
     GesturePrediction updateHand(

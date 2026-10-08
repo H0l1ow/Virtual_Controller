@@ -16,7 +16,10 @@ Item {
             : ({})
 
     readonly property var handOptions: ["Left", "Right"]
-    readonly property var gestureOptions: ["PINCH", "FIST", "POINT", "OPEN HAND"]
+    readonly property var gestureOptions: uiState.mappingGestureOptions
+    readonly property bool selectedGestureAvailable:
+        gestureCombo.currentText.length > 0
+            && uiState.gestureRuntimeAvailable(gestureCombo.currentText)
     readonly property var behaviorOptions: ["Press", "Hold", "Toggle"]
     readonly property var actionOptions: [
         "Left click", "Right click", "Scroll up", "Scroll down", "Freeze cursor",
@@ -421,6 +424,21 @@ Item {
                             Layout.fillWidth: true
                             theme: root.theme
                             model: root.gestureOptions
+                            onActivated: {
+                                if (!root.selectedGestureAvailable)
+                                    enabledSwitch.checked = false
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: gestureCombo.currentText.length > 0
+                                && !root.selectedGestureAvailable
+                            text: "Temporal gesture reserved for the next recognition stage. It can be stored disabled, but cannot emit actions yet."
+                            color: root.theme.warning
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 9
+                            wrapMode: Text.WordWrap
                         }
 
                         Text { text: "Action"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
@@ -466,6 +484,7 @@ Item {
                                 id: enabledSwitch
                                 theme: root.theme
                                 checked: false
+                                enabled: root.selectedGestureAvailable
                             }
                         }
 

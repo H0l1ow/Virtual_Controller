@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <initializer_list>
 #include <stdexcept>
 
 namespace vc {
@@ -45,6 +46,18 @@ float distance(
     return norm(subtract(a, b));
 }
 
+float weightedRuleDistance(
+    const Landmark &a,
+    const Landmark &b)
+{
+    const auto delta = subtract(a, b);
+    constexpr float depthWeight = 0.20F;
+    return std::sqrt(
+        delta.x * delta.x
+        + delta.y * delta.y
+        + depthWeight * delta.z * delta.z);
+}
+
 float linearScore(
     float value,
     float low,
@@ -58,6 +71,21 @@ float linearScore(
         (value - low) / (high - low),
         0.0F,
         1.0F);
+}
+
+float extensionScore(float curl)
+{
+    return 1.0F - linearScore(curl, 0.10F, 0.30F);
+}
+
+float curledScore(float curl)
+{
+    return linearScore(curl, 0.24F, 0.48F);
+}
+
+float minimumScore(std::initializer_list<float> values)
+{
+    return *std::min_element(values.begin(), values.end());
 }
 
 bool finiteLandmark(const Landmark &point)
@@ -168,10 +196,37 @@ GestureGeometry extractGestureGeometry(
                 1.0F);
     }
 
+    const float thumbChain =
+        distance(points[1], points[2])
+        + distance(points[2], points[3])
+        + distance(points[3], points[4]);
+
+    if (thumbChain < 0.003F) {
+        return {};
+    }
+
+    geometry.thumbCurl =
+        std::clamp(
+            1.0F
+            - distance(points[1], points[4]) / thumbChain,
+            0.0F,
+            1.0F);
+    geometry.thumbExtension =
+        1.0F - linearScore(geometry.thumbCurl, 0.08F, 0.38F);
+    geometry.thumbDirectionX =
+        geometry.local[4].x - geometry.local[2].x;
+    geometry.thumbDirectionY =
+        geometry.local[4].y - geometry.local[2].y;
+
     geometry.pinch[0] =
         distance(geometry.local[4], geometry.local[8]);
     geometry.pinch[1] =
         distance(geometry.local[4], geometry.local[12]);
+
+    geometry.thumbIndexRuleDistance =
+        weightedRuleDistance(geometry.local[4], geometry.local[8]);
+    geometry.thumbMiddleRuleDistance =
+        weightedRuleDistance(geometry.local[4], geometry.local[12]);
 
     geometry.valid = true;
     return geometry;
@@ -370,7 +425,8 @@ std::vector<float> HandFeatureStream::tensor() const
 }
 
 GestureScores ruleGestureScores(
-    const GestureGeometry &geometry)
+    const GestureGeometry &geometry,
+    bool pinchLatched)
 {
     GestureScores scores{};
     scores[gestureIndex(GestureClass::None)] = 1.0F;
@@ -379,76 +435,185 @@ GestureScores ruleGestureScores(
         return scores;
     }
 
-    const float indexCurl = geometry.curl[0];
-    const float otherMin = std::min({
-        geometry.curl[1],
-        geometry.curl[2],
-        geometry.curl[3]
-    });
-    const float maxCurl =
-        *std::max_element(
-            geometry.curl.begin(),
-            geometry.curl.end());
-    const float minCurl =
-        *std::min_element(
-            geometry.curl.begin(),
-            geometry.curl.end());
+    const float indexExtended = extensionScore(geometry.curl[0]);
+    const float middleExtended = extensionScore(geometry.curl[1]);
+    const float ringExtended = extensionScore(geometry.curl[2]);
+    const float littleExtended = extensionScore(geometry.curl[3]);
 
-    const float pinch =
+    const float indexCurled = curledScore(geometry.curl[0]);
+    const float middleCurled = curledScore(geometry.curl[1]);
+    const float ringCurled = curledScore(geometry.curl[2]);
+    const float littleCurled = curledScore(geometry.curl[3]);
+
+    const float thumbExtended = geometry.thumbExtension;
+    const float thumbFolded = std::clamp(1.0F - thumbExtended, 0.0F, 1.0F);
+    const float indexNotDeeplyCurled =
+        1.0F - linearScore(geometry.curl[0], 0.48F, 0.68F);
+    const float thumbNotDeeplyCurled =
+        1.0F - linearScore(geometry.thumbCurl, 0.45F, 0.70F);
+
+    // Pinch is intentionally based primarily on XY. MediaPipe landmark Z is
+    // useful for temporal models but is noisy enough to destabilize a rule
+    // classifier when fingertips visually touch. A small Z component remains.
+    float pinch =
         1.0F
         - linearScore(
-            geometry.pinch[0],
-            0.17F,
-            0.43F);
-
-    const float fist =
-        linearScore(
-            minCurl,
-            0.30F,
-            0.52F);
-
-    const float open =
-        1.0F
-        - linearScore(
-            maxCurl,
-            0.05F,
-            0.22F);
-
-    const float indexExtended =
-        1.0F
-        - linearScore(
-            indexCurl,
-            0.08F,
-            0.24F);
-
-    const float othersCurled =
-        linearScore(
-            otherMin,
+            geometry.thumbIndexRuleDistance,
             0.24F,
-            0.48F);
+            0.46F);
+    pinch *= minimumScore({
+        indexNotDeeplyCurled,
+        thumbNotDeeplyCurled
+    });
 
-    const float point =
-        indexExtended * othersCurled;
+    // The engine keeps a Schmitt-trigger latch. While latched, retain a high
+    // score until the wider release threshold is crossed so PINCH does not
+    // flicker around the contact boundary.
+    if (pinchLatched
+        && geometry.thumbIndexRuleDistance < 0.46F
+        && indexNotDeeplyCurled > 0.45F
+        && thumbNotDeeplyCurled > 0.45F) {
+        pinch = std::max(pinch, 0.92F);
+    }
+
+    const float fist = minimumScore({
+        indexCurled,
+        middleCurled,
+        ringCurled,
+        littleCurled
+    });
+
+    const float open = minimumScore({
+        indexExtended,
+        middleExtended,
+        ringExtended,
+        littleExtended,
+        thumbExtended
+    });
+
+    const float point = minimumScore({
+        indexExtended,
+        middleCurled,
+        ringCurled,
+        littleCurled
+    });
+
+    const float victory = minimumScore({
+        indexExtended,
+        middleExtended,
+        ringCurled,
+        littleCurled
+    });
+
+    const float ok = minimumScore({
+        pinch,
+        middleExtended,
+        ringExtended,
+        littleExtended
+    });
+
+    const float iLoveYou = minimumScore({
+        thumbExtended,
+        indexExtended,
+        middleCurled,
+        ringCurled,
+        littleExtended
+    });
+
+    const float rock = minimumScore({
+        thumbFolded,
+        indexExtended,
+        middleCurled,
+        ringCurled,
+        littleExtended
+    });
+
+    const float callMe = minimumScore({
+        thumbExtended,
+        indexCurled,
+        middleCurled,
+        ringCurled,
+        littleExtended
+    });
+
+    const float threeFingers = minimumScore({
+        indexExtended,
+        middleExtended,
+        ringExtended,
+        littleCurled
+    });
+
+    const float fourFingers = minimumScore({
+        thumbFolded,
+        indexExtended,
+        middleExtended,
+        ringExtended,
+        littleExtended
+    });
+
+    const float verticalDominance =
+        1.0F
+        - linearScore(
+            std::abs(geometry.thumbDirectionX),
+            0.50F,
+            1.20F);
+    const float thumbUpDirection =
+        linearScore(-geometry.thumbDirectionY, 0.18F, 0.50F)
+        * verticalDominance;
+    const float thumbDownDirection =
+        linearScore(geometry.thumbDirectionY, 0.18F, 0.50F)
+        * verticalDominance;
+    const float curledFour = minimumScore({
+        indexCurled,
+        middleCurled,
+        ringCurled,
+        littleCurled
+    });
+    const float thumbUp = minimumScore({
+        thumbExtended,
+        curledFour,
+        thumbUpDirection
+    });
+    const float thumbDown = minimumScore({
+        thumbExtended,
+        curledFour,
+        thumbDownDirection
+    });
 
     scores[gestureIndex(GestureClass::Fist)] = fist;
     scores[gestureIndex(GestureClass::OpenHand)] = open;
     scores[gestureIndex(GestureClass::Point)] = point;
     scores[gestureIndex(GestureClass::Pinch)] = pinch;
+    scores[gestureIndex(GestureClass::ThumbUp)] = thumbUp;
+    scores[gestureIndex(GestureClass::ThumbDown)] = thumbDown;
+    scores[gestureIndex(GestureClass::Victory)] = victory;
+    scores[gestureIndex(GestureClass::Ok)] = ok;
+    scores[gestureIndex(GestureClass::ILoveYou)] = iLoveYou;
+    scores[gestureIndex(GestureClass::Rock)] = rock;
+    scores[gestureIndex(GestureClass::CallMe)] = callMe;
+    scores[gestureIndex(GestureClass::ThreeFingers)] = threeFingers;
+    scores[gestureIndex(GestureClass::FourFingers)] = fourFingers;
 
-    // Resolve the two most common geometric ambiguities before temporal
-    // smoothing. A closed fist can put fingertips near the thumb; a pinch can
-    // otherwise look like a partially open hand.
-    if (fist > 0.55F) {
-        scores[gestureIndex(GestureClass::OpenHand)] = 0.0F;
-        scores[gestureIndex(GestureClass::Point)] = 0.0F;
-        scores[gestureIndex(GestureClass::Pinch)] = 0.0F;
+    // Contact gestures are the most specific. Resolve them before posture-only
+    // rules so a natural pinch with three curled fingers cannot become FIST.
+    if (ok > 0.55F) {
+        for (std::size_t index = 1; index < scores.size(); ++index) {
+            if (index != gestureIndex(GestureClass::Ok)) {
+                scores[index] *= 0.20F;
+            }
+        }
     }
     else if (pinch > 0.55F) {
-        scores[gestureIndex(GestureClass::OpenHand)] = 0.0F;
-        scores[gestureIndex(GestureClass::Point)] = 0.0F;
+        for (std::size_t index = 1; index < scores.size(); ++index) {
+            if (index != gestureIndex(GestureClass::Pinch)) {
+                scores[index] *= 0.20F;
+            }
+        }
     }
-    else if (point > 0.55F) {
-        scores[gestureIndex(GestureClass::OpenHand)] = 0.0F;
+
+    // Thumb-only gestures are more specific than a generic fist.
+    if (thumbUp > 0.60F || thumbDown > 0.60F) {
+        scores[gestureIndex(GestureClass::Fist)] *= 0.20F;
     }
 
     const float bestGesture =

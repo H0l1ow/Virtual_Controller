@@ -185,8 +185,10 @@ QtObject {
         catalog.gestureHints
     readonly property var mappingRows:
         runtimeBackend.mappingRows
+    readonly property var mappingGestureOptions:
+        runtimeBackend.mappingGestureOptions
     readonly property var gestureLibrary:
-        catalog.gestureLibrary
+        runtimeBackend.gestureCatalog
 
     readonly property string leftStickValue: "0.00 / 0.00"
     readonly property string rightStickValue: "0.00 / 0.00"
@@ -270,6 +272,10 @@ QtObject {
 
     function setActiveProfile(name) {
         runtimeBackend.activeProfile = name
+    }
+
+    function gestureRuntimeAvailable(gesture) {
+        return runtimeBackend.gestureRuntimeAvailable(gesture)
     }
 
     function addMapping() {

@@ -405,6 +405,16 @@ public:
                 NOTIFY stateChanged)
 
     Q_PROPERTY(
+        QStringList mappingGestureOptions
+            READ mappingGestureOptions
+                CONSTANT)
+
+    Q_PROPERTY(
+        QVariantList gestureCatalog
+            READ gestureCatalog
+                CONSTANT)
+
+    Q_PROPERTY(
         QStringList mappingProfileNames
             READ mappingProfileNames
                 NOTIFY mappingChanged)
@@ -787,6 +797,8 @@ public:
     }
 
     QVariantList mappingRows() const;
+    QStringList mappingGestureOptions() const;
+    QVariantList gestureCatalog() const;
 
     QString mappingError() const
     {
@@ -835,6 +847,7 @@ public:
     Q_INVOKABLE void togglePipeline();
     Q_INVOKABLE void requestApplicationExit();
 
+    Q_INVOKABLE bool gestureRuntimeAvailable(const QString &gesture) const;
     Q_INVOKABLE int addMapping();
     Q_INVOKABLE void removeMapping(int index);
     Q_INVOKABLE bool updateMapping(

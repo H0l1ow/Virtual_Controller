@@ -1,12 +1,15 @@
-# Virtual Controller - M4.5 Gesture Playground (0.9.5)
+# Virtual Controller - M4.6 Gesture Recognition Refinement (0.9.6)
 
 Qt/QML + C++20 desktop application for two-hand camera tracking, continuous
 cursor control, gesture-driven mouse/keyboard input and an in-app mapping test
 environment.
 
-M4.5 keeps the complete M1-M4 pipeline and adds Gesture Playground: a dedicated
-Test page that validates enabled mapping rules against the backend-neutral
-ControllerState before the same actions are optionally sent to Windows.
+M4.6 keeps the complete M1-M4.5 pipeline and refines gesture recognition before
+the project moves to gamepad work. It fixes the most visible PINCH weaknesses,
+adds a single backend-owned catalog of 21 mapping gestures, and enables 13
+static gestures in the deterministic Rules recognizer. The remaining 8 temporal
+gestures are visible in Mapping but intentionally remain inactive until a real
+temporal recognizer/model is implemented.
 
 ## Current scope
 
@@ -18,8 +21,11 @@ Implemented:
 - M2 relative cursor control with One Euro smoothing, deadzone, sensitivity,
   2.5x default cursor speed and user-tuned mirrored interaction defaults.
 - opt-in Windows `SendInput` output, watchdog and F8 emergency disarm.
-- M3 gesture recognition for `NONE`, `FIST`, `OPEN HAND`, `POINT`, `PINCH`.
-- optional causal TCN/ONNX backend with deterministic Rules fallback.
+- M4.6 static Rules recognition for 13 gestures: `FIST`, `OPEN HAND`, `POINT`,
+  `PINCH`, `THUMB UP`, `THUMB DOWN`, `VICTORY`, `OK`, `I LOVE YOU`, `ROCK`,
+  `CALL ME`, `THREE FINGERS`, `FOUR FINGERS` (plus technical `NONE`).
+- optional causal TCN/ONNX backend retaining the original five-class model
+  contract, merged with the extended static Rules recognizer.
 - **M4 GestureStateManager:** PRESS / HOLD / RELEASE, debounce, cooldown and
   require-release semantics.
 - **M4 ActionMapper:** gesture events can drive mouse buttons, wheel and keyboard.
@@ -37,7 +43,8 @@ Implemented:
 
 Still intentionally not implemented:
 
-- dynamic swipe gestures,
+- temporal execution for `SWIPE LEFT/RIGHT/UP/DOWN`, `CIRCLE CW/CCW`, `PUSH`,
+  `PULL` (IDs are already present in Mapping but can only be saved disabled),
 - two-hand relationship controls,
 - Xbox / PlayStation virtual gamepad output,
 - arbitrary key-combination/chord editor,
@@ -89,6 +96,35 @@ only in explicitly selected profiles.
 System output remains OFF after application start. Enable it only after cursor
 and gesture detection are behaving correctly. F8 immediately disarms output.
 
+## M4.6 gesture catalog and PINCH refinement
+
+Mapping no longer owns a hard-coded four-item gesture list. The runtime exposes
+one 21-gesture catalog used by Mapping and the Gestures library.
+
+Available now (Rules):
+
+```text
+Fist, Open Hand, Point, Pinch, Thumb Up, Thumb Down, Victory, OK,
+I Love You, Rock, Call Me, Three Fingers, Four Fingers
+```
+
+Reserved temporal IDs:
+
+```text
+Swipe Left, Swipe Right, Swipe Up, Swipe Down,
+Circle CW, Circle CCW, Push, Pull
+```
+
+Temporal gestures are shown in Mapping so profile design is stable, but they
+cannot be enabled yet. This prevents the UI from pretending an unimplemented
+gesture can emit an action.
+
+PINCH now uses a rule-specific distance that greatly reduces the contribution
+of noisy landmark Z, has priority over FIST when thumb/index contact is clear,
+and uses a Schmitt-style enter/release latch to reduce PINCH/NONE flicker while
+the fingertips remain near the contact boundary. Rule score smoothing now
+reacts faster; PRESS/HOLD/RELEASE debounce remains a separate M4 layer.
+
 ## Gesture settings
 
 `Settings -> Gestures` is active in M4:
@@ -139,7 +175,7 @@ User-tuned M2 defaults are retained:
 
 1. Open the root `CMakeLists.txt`.
 2. Select Qt 6.11.2 MSVC 2022 x64 (compatible newer MSVC is accepted).
-3. Reconfigure CMake after updating from M4.2.
+3. Reconfigure CMake after updating from M4.5 / 0.9.5.
 4. Build and Run.
 5. Start tracking with System output OFF.
 6. Verify gesture event states on the Gestures page.
@@ -161,13 +197,13 @@ cmake --build build-core
 ctest --test-dir build-core --output-on-failure
 ```
 
-The current core suite contains 8 tests. M4.5 does not change the event/action
-algorithms; it exposes their backend-neutral logical state to QML for playground
-verification.
+The current core suite contains 8 test executables. The gesture-recognition
+suite now covers all 13 active static gestures, the 21-entry registry, PINCH vs
+FIST ambiguity, depth-noise tolerance, hysteresis, temporal feature buffering,
+left/right canonicalization and engine reset behavior.
 
-See `docs/M1_HARDENING.md`, `docs/M1_1_IMMERSIVE_UI.md`,
-`docs/M2_CONTINUOUS_CONTROL.md`, `docs/M3_GESTURE_RECOGNITION.md` and
-`docs/M4_EVENT_MAPPING.md` and `docs/M4_5_GESTURE_PLAYGROUND.md`.
+See `docs/M4_6_GESTURE_REFINEMENT.md` for the exact M4.6 recognition and
+mapping-catalog contract.
 
 
 ## M4.1 mapping refinements
