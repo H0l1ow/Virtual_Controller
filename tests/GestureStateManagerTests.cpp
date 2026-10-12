@@ -18,6 +18,7 @@ vc::GestureFrame frame(
     right.gesture = gesture;
     right.confidence = ready ? 0.95F : 0.0F;
     right.trackId = ready ? trackId : 0;
+    right.tracked = ready;
     return result;
 }
 
@@ -36,6 +37,9 @@ int main()
     config.debounceMs = 100;
     config.cooldownMs = 200;
     config.requireRelease = true;
+    // Preserve the exact M4 transition tests without grace; M5 has separate
+    // tests for real temporal gaps below.
+    config.dropoutGraceMs = 0;
 
     assert(rightEvent(manager.update(frame(1'000'000, vc::GestureClass::Pinch), config)).phase
         == vc::GestureEventPhase::None);
@@ -79,6 +83,53 @@ int main()
     event = rightEvent(manager.update(frame(1'950'000, vc::GestureClass::None, false), config));
     assert(event.phase == vc::GestureEventPhase::Release);
     assert(event.gesture == vc::GestureClass::Fist);
+
+    // M5: one wrong/empty class while the physical hand is still visible is
+    // not a RELEASE, and it must not block subsequent continuous HOLDs.
+    manager.reset();
+    config.dropoutGraceMs = 100;
+    auto t = 2'000'000LL;
+    auto pressFrame = frame(t, vc::GestureClass::Pinch);
+    assert(rightEvent(manager.update(pressFrame, config)).phase == vc::GestureEventPhase::None);
+    t += 120'000;
+    assert(rightEvent(manager.update(frame(t, vc::GestureClass::Pinch), config)).phase
+        == vc::GestureEventPhase::Press);
+    t += 33'333;
+    auto noise = frame(t, vc::GestureClass::None);
+    assert(rightEvent(manager.update(noise, config)).phase == vc::GestureEventPhase::Hold);
+    t += 33'333;
+    assert(rightEvent(manager.update(frame(t, vc::GestureClass::Pinch), config)).phase
+        == vc::GestureEventPhase::Hold);
+    t += 33'333;
+    assert(rightEvent(manager.update(frame(t, vc::GestureClass::Pinch), config)).phase
+        == vc::GestureEventPhase::Hold);
+
+    // The release threshold allows a low-confidence NONE while PINCH still
+    // has a nontrivial model score, without starting a new grace interval.
+    t += 33'333;
+    auto weak = frame(t, vc::GestureClass::None);
+    weak.hands[vc::handIndex(vc::HandSide::Right)]
+        .scores[vc::gestureIndex(vc::GestureClass::Pinch)] = 0.65F;
+    assert(rightEvent(manager.update(weak, config)).phase == vc::GestureEventPhase::Hold);
+
+    // A persistent alternate gesture still releases after the grace period.
+    t += 33'333;
+    assert(rightEvent(manager.update(frame(t, vc::GestureClass::Fist), config)).phase
+        == vc::GestureEventPhase::Hold);
+    t += 120'000;
+    assert(rightEvent(manager.update(frame(t, vc::GestureClass::Fist), config)).phase
+        == vc::GestureEventPhase::Release);
+
+    // Real loss or identity switch is never delayed by the grace period.
+    manager.reset();
+    manager.update(frame(3'000'000, vc::GestureClass::Pinch), config);
+    manager.update(frame(3'120'000, vc::GestureClass::Pinch), config);
+    assert(rightEvent(manager.update(frame(3'130'000, vc::GestureClass::None, false), config)).phase
+        == vc::GestureEventPhase::Release);
+    manager.update(frame(4'000'000, vc::GestureClass::Pinch), config);
+    manager.update(frame(4'120'000, vc::GestureClass::Pinch), config);
+    assert(rightEvent(manager.update(frame(4'130'000, vc::GestureClass::Pinch, true, 999), config)).phase
+        == vc::GestureEventPhase::Release);
 
     return 0;
 }

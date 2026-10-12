@@ -127,6 +127,22 @@ QtObject {
     readonly property string gestureBackendName: "Rules"
     readonly property string gestureModelStatus: "Mock rule fallback"
     readonly property bool gestureModelActive: false
+    property int gestureGraceMs: 100
+    property int gestureReleaseThreshold: 55
+    readonly property var gestureDiagnostics: [
+        { reason: "MOCK", active: leftGesture, candidate: "NONE", inGrace: false,
+          inCooldown: false, pinch: 0.2, curl: [0.1, 0.1, 0.1, 0.1],
+          scores: [ { name: "FIST", value: 0.05 }, { name: "OPEN_HAND", value: 0.91 },
+                    { name: "POINT", value: 0.08 }, { name: "PINCH", value: 0.15 } ] },
+        { reason: "MOCK", active: rightGesture, candidate: "NONE", inGrace: false,
+          inCooldown: false, pinch: 0.1, curl: [0.2, 0.1, 0.1, 0.1],
+          scores: [ { name: "FIST", value: 0.04 }, { name: "OPEN_HAND", value: 0.13 },
+                    { name: "POINT", value: 0.1 }, { name: "PINCH", value: 0.94 } ] }
+    ]
+    property bool recordingActive: false
+    property int recordedFrames: 0
+    property string recordingPath: ""
+    property string recordingError: "Mock mode: no dataset is written"
     readonly property string leftReportedSide: leftTracked ? "L" : "-"
     readonly property string rightReportedSide: rightTracked ? "R" : "-"
 
@@ -335,6 +351,10 @@ QtObject {
     function setDebounceMs(value) { debounceMs = Math.round(value) }
     function setCooldownMs(value) { cooldownMs = Math.round(value) }
     function setRequireRelease(value) { requireRelease = value }
+    function setGestureGraceMs(value) { gestureGraceMs = value }
+    function setGestureReleaseThreshold(value) { gestureReleaseThreshold = value }
+    function startGestureRecording(leftLabel, rightLabel) { return false }
+    function stopGestureRecording() { recordingActive = false }
     function setActiveProfile(name) { activeProfile = name }
 
     function addMapping() {

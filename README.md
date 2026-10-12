@@ -1,11 +1,12 @@
-# Virtual Controller - M4.9 Strict Cursor Gate (0.9.9)
+# Virtual Controller - M5.0 Gesture Reliability & Diagnostics (0.10.0)
 
 Qt/QML + C++20 desktop application for two-hand camera tracking, gesture-driven
 mouse/keyboard input, mapping profiles and an in-app Gesture Playground.
 
-Version 0.9.9 keeps the 0.9.8 cursor-movement mapping feature, makes it
-**fail-closed by default**, and rolls the experimental gesture-recognition
-changes from 0.9.6 back to the proven 0.9.5 implementation.
+M5.0 builds on M4.9's strict cursor gate. It adds tolerant gesture HOLD
+semantics with immediate release on true tracking loss, per-hand Toggle safety,
+ONNX warm-up isolation, live classifier diagnostics and labelled landmark
+recording. See **PATCH_M5_0_README.md** for the full change log and install steps.
 
 ## Current gesture runtime
 
@@ -83,6 +84,8 @@ remains a separate mapping action and has priority over the movement gate.
 - Debounce: 120 ms
 - Cooldown: 250 ms
 - Require release: ON
+- Gesture jitter grace: 100 ms (only while tracking is valid)
+- Gesture release threshold: 55%
 - System output: OFF
 - Cursor movement gate: LOCKED until a mapped enable action is active
 
@@ -109,6 +112,8 @@ cmake --build build-core
 ctest --test-dir build-core --output-on-failure
 ```
 
-The current core suite contains 8 test executables.
+The M5 core suite contains 9 test executables. Additional stdlib-only Python
+replay checks: `python -m unittest discover -s ml/tests -p 'test_replay_session.py'`.
 
-See `docs/M4_9_STRICT_CURSOR_GATE_GESTURE_ROLLBACK.md` for this update.
+See `PATCH_M5_0_README.md` for M5 installation, new gesture diagnostics,
+recording and remaining limitations.

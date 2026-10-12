@@ -177,3 +177,12 @@ add_test(
     NAME vc_action_mapper_tests
     COMMAND vc_action_mapper_tests
 )
+
+# M5 JSONL recorder is std::filesystem-only and runs without Qt/camera.
+add_executable(vc_gesture_recorder_tests
+    GestureDataRecorderTests.cpp
+    ../app/src/gestures/GestureDataRecorder.cpp
+)
+target_include_directories(vc_gesture_recorder_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
+target_compile_features(vc_gesture_recorder_tests PRIVATE cxx_std_20)
+add_test(NAME vc_gesture_recorder_tests COMMAND vc_gesture_recorder_tests)

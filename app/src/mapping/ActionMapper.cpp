@@ -57,6 +57,15 @@ ControllerState ActionMapper::apply(
             ? HandSide::Left
             : HandSide::Right;
         const auto &event = events.hands[handIndexValue];
+        if (events.hasTrackingStatus) {
+            const auto id = events.tracked[handIndexValue]
+                ? events.trackIds[handIndexValue] : 0;
+            if (id == 0 || (trackIds_[handIndexValue] != 0
+                              && trackIds_[handIndexValue] != id)) {
+                neutralizeHand(hand);
+            }
+            trackIds_[handIndexValue] = id;
+        }
 
         for (const auto &rule : mappings_) {
             if (!rule.enabled || !matches(rule, hand, event)) {
@@ -119,6 +128,19 @@ void ActionMapper::reset()
 {
     held_.clear();
     toggled_.clear();
+    trackIds_ = {};
+}
+
+void ActionMapper::neutralizeHand(HandSide hand)
+{
+    // Toggle is persistent only while the originating hand stays tracked.
+    // A lost/changed hand must not leave Ctrl, mouse or movement gate latched.
+    for (const auto &rule : mappings_) {
+        if (rule.hand == hand) {
+            held_.erase(rule.id);
+            toggled_.erase(rule.id);
+        }
+    }
 }
 
 bool ActionMapper::matches(

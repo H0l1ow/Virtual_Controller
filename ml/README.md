@@ -22,8 +22,11 @@ y      int64   [N]         # class index in the label order above
 split  int8    [N]         # 0=train, 1=validation, 2=test
 ```
 
-The dataset recorder/preparation UI is intentionally not part of M3. It is a
-later project stage. Do not train a deployable model on synthetic landmarks and
+M5 adds **raw landmark recording** through the Gestures page. These labelled
+JSONL recordings are NOT yet the `[N,16,134]` arrays consumed by `train.py`.
+`ml/scripts/replay_session.py` validates/replays sessions offline and can export
+raw landmark CSV for preparation. Windowing, patient/subject/session-safe
+splitting and feature calculation are still required before ML training. Do not train a deployable model on synthetic landmarks and
 treat the result as real gesture quality.
 
 Training:

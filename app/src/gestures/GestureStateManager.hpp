@@ -40,12 +40,27 @@ struct GestureEventFrame {
     std::int64_t timestampUs{};
     std::uint64_t sequence{};
     std::array<GestureEvent, kHandCount> hands{};
+    // Set by GestureStateManager for live tracking. Legacy synthetic frames
+    // without tracking metadata keep their previous mapping semantics.
+    bool hasTrackingStatus{};
+    std::array<bool, kHandCount> tracked{};
+    std::array<std::uint64_t, kHandCount> trackIds{};
 };
 
 struct GestureStateConfig {
     int debounceMs{120};
     int cooldownMs{250};
     bool requireRelease{true};
+    int dropoutGraceMs{100};
+    int releaseThresholdPercent{55};
+};
+
+struct GestureHandDebugState {
+    GestureClass candidate{GestureClass::None};
+    GestureClass active{GestureClass::None};
+    bool inGracePeriod{};
+    bool waitingForRelease{};
+    bool inCooldown{};
 };
 
 class GestureStateManager final
@@ -57,11 +72,15 @@ public:
 
     void reset();
 
+    GestureHandDebugState debugState(
+        HandSide hand, std::int64_t timestampUs) const;
+
 private:
     struct HandState {
         GestureClass candidate{GestureClass::None};
         GestureClass active{GestureClass::None};
         std::int64_t candidateSinceUs{};
+        std::int64_t mismatchSinceUs{};
         std::int64_t cooldownUntilUs{};
         std::uint64_t trackId{};
         GestureClass blockedGesture{GestureClass::None};

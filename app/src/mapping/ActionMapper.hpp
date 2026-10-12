@@ -38,6 +38,8 @@ private:
     std::vector<MappingRule> mappings_;
     std::set<std::string> held_;
     std::set<std::string> toggled_;
+    std::array<std::uint64_t, kHandCount> trackIds_{};
+    void neutralizeHand(HandSide hand);
 };
 
 } // namespace vc

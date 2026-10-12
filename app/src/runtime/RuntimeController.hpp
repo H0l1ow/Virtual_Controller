@@ -3,6 +3,7 @@
 #include "control/ContinuousControlInterpreter.hpp"
 #include "control/ControllerState.hpp"
 #include "gestures/GestureTypes.hpp"
+#include "gestures/GestureDataRecorder.hpp"
 #include "gestures/GestureStateManager.hpp"
 #include "mapping/ActionMapper.hpp"
 #include "mapping/ProfileStore.hpp"
@@ -450,6 +451,14 @@ public:
             READ gestureModelActive
                 NOTIFY stateChanged)
 
+    Q_PROPERTY(QVariantList gestureDiagnostics READ gestureDiagnostics NOTIFY stateChanged)
+    Q_PROPERTY(int gestureGraceMs READ gestureGraceMs WRITE setGestureGraceMs NOTIFY settingsChanged)
+    Q_PROPERTY(int gestureReleaseThreshold READ gestureReleaseThreshold WRITE setGestureReleaseThreshold NOTIFY settingsChanged)
+    Q_PROPERTY(bool recordingActive READ recordingActive NOTIFY stateChanged)
+    Q_PROPERTY(int recordedFrames READ recordedFrames NOTIFY stateChanged)
+    Q_PROPERTY(QString recordingPath READ recordingPath NOTIFY stateChanged)
+    Q_PROPERTY(QString recordingError READ recordingError NOTIFY stateChanged)
+
 public:
     explicit RuntimeController(
         QObject *parent = nullptr);
@@ -834,6 +843,17 @@ public:
     void setDebounceMs(int value);
     void setCooldownMs(int value);
     void setRequireRelease(bool value);
+    void setGestureGraceMs(int value);
+    void setGestureReleaseThreshold(int value);
+    int gestureGraceMs() const { return gestureGraceMs_; }
+    int gestureReleaseThreshold() const { return gestureReleaseThreshold_; }
+    QVariantList gestureDiagnostics() const { return gestureDiagnostics_; }
+    bool recordingActive() const { return recorder_.active(); }
+    int recordedFrames() const { return static_cast<int>(recorder_.frameCount()); }
+    QString recordingPath() const { return recordingPath_; }
+    QString recordingError() const { return recordingError_; }
+    Q_INVOKABLE bool startGestureRecording(const QString &left, const QString &right);
+    Q_INVOKABLE void stopGestureRecording();
     void setActiveProfile(const QString &name);
 
     Q_INVOKABLE void attachVideoOutput(QObject *output);
@@ -997,6 +1017,12 @@ private:
     int debounceMs_{120};
     int cooldownMs_{250};
     bool requireRelease_{true};
+    int gestureGraceMs_{100};
+    int gestureReleaseThreshold_{55};
+    QVariantList gestureDiagnostics_;
+    GestureDataRecorder recorder_;
+    QString recordingPath_;
+    QString recordingError_;
 
     int cursorX_{};
     int cursorY_{};

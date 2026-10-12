@@ -385,14 +385,21 @@ GestureScores ruleGestureScores(
         geometry.curl[2],
         geometry.curl[3]
     });
-    const float maxCurl =
-        *std::max_element(
-            geometry.curl.begin(),
-            geometry.curl.end());
-    const float minCurl =
-        *std::min_element(
-            geometry.curl.begin(),
-            geometry.curl.end());
+    // Weighted order statistics avoid allowing one badly estimated fingertip
+    // to veto the entire pose. A POINT still cannot become FIST because its
+    // straight index contributes most to the two-smallest statistic.
+    auto orderedCurl = geometry.curl;
+    std::sort(orderedCurl.begin(), orderedCurl.end());
+    const float robustMinCurl =
+        0.75F * orderedCurl[0] + 0.25F * orderedCurl[1];
+    const float robustMaxCurl =
+        0.75F * orderedCurl[3] + 0.25F * orderedCurl[2];
+    const float robustOtherMin =
+        0.75F * otherMin + 0.25F * std::max({
+            std::min(geometry.curl[1], geometry.curl[2]),
+            std::min(geometry.curl[1], geometry.curl[3]),
+            std::min(geometry.curl[2], geometry.curl[3])
+        });
 
     const float pinch =
         1.0F
@@ -403,16 +410,16 @@ GestureScores ruleGestureScores(
 
     const float fist =
         linearScore(
-            minCurl,
-            0.30F,
-            0.52F);
+            robustMinCurl,
+            0.27F,
+            0.51F);
 
     const float open =
         1.0F
         - linearScore(
-            maxCurl,
+            robustMaxCurl,
             0.05F,
-            0.22F);
+            0.26F);
 
     const float indexExtended =
         1.0F
@@ -423,7 +430,7 @@ GestureScores ruleGestureScores(
 
     const float othersCurled =
         linearScore(
-            otherMin,
+            robustOtherMin,
             0.24F,
             0.48F);
 

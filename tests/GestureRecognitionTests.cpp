@@ -163,6 +163,35 @@ void testLeftRightCanonicalization()
     }
 }
 
+void testModelWarmupNoRuleFallback()
+{
+    int called = 0;
+    GestureEngine engine([&called](const std::vector<float> &) {
+        ++called;
+        GestureScores scores{};
+        scores[gestureIndex(GestureClass::None)] = 1.0F;
+        return scores;
+    }, "test-model");
+    TrackingFrame frame;
+    frame.width = 1000;
+    frame.height = 1000;
+    frame.hands[handIndex(HandSide::Right)] = makeHand(GestureClass::Fist);
+    for (int i = 0; i < 15; ++i) {
+        frame.sequence = static_cast<std::uint64_t>(i + 1);
+        frame.captureUs = 1'000'000 + i * 33'333;
+        const auto prediction = engine.update(frame, 70).hands[handIndex(HandSide::Right)];
+        assert(prediction.tracked);
+        assert(!prediction.ready);
+        assert(prediction.decision == GestureDecision::ModelWarmup);
+        assert(called == 0);
+    }
+    frame.captureUs += 33'333;
+    const auto result = engine.update(frame, 70).hands[handIndex(HandSide::Right)];
+    assert(result.ready);
+    assert(result.gesture == GestureClass::None);
+    assert(called == 1);
+}
+
 void testEngineThresholdAndReset()
 {
     GestureEngine engine;
@@ -207,6 +236,7 @@ int main()
     testFeatureWindow();
     testLeftRightCanonicalization();
     testEngineThresholdAndReset();
+    testModelWarmupNoRuleFallback();
 
     std::cout << "Gesture recognition tests passed\n";
     return 0;

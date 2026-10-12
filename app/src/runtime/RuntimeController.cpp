@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QDebug>
+#include <QDateTime>
 #include <QGuiApplication>
 #include <QFileInfo>
 #include <QImage>
@@ -24,6 +25,7 @@
 #include <cmath>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -54,6 +56,44 @@ QString gestureDisplayName(GestureClass gesture)
 QString gestureEventDisplayName(GestureEventPhase phase)
 {
     return QString::fromLatin1(gestureEventPhaseName(phase));
+}
+
+QString filePathDisplay(const std::filesystem::path &path)
+{
+    const auto bytes = path.u8string();
+    return QString::fromUtf8(reinterpret_cast<const char *>(bytes.data()),
+                             static_cast<qsizetype>(bytes.size()));
+}
+
+QVariantMap diagnosticMap(const GesturePrediction &prediction,
+                          const GestureHandDebugState &state)
+{
+    QVariantMap item;
+    item.insert(QStringLiteral("reason"),
+                QString::fromLatin1(gestureDecisionName(prediction.decision)));
+    item.insert(QStringLiteral("raw"), gestureDisplayName(prediction.gesture));
+    item.insert(QStringLiteral("candidate"), gestureDisplayName(state.candidate));
+    item.insert(QStringLiteral("active"), gestureDisplayName(state.active));
+    item.insert(QStringLiteral("inGrace"), state.inGracePeriod);
+    item.insert(QStringLiteral("inCooldown"), state.inCooldown);
+    item.insert(QStringLiteral("blocked"), state.waitingForRelease);
+    item.insert(QStringLiteral("geometryValid"), prediction.geometryValid);
+    item.insert(QStringLiteral("pinch"), prediction.pinchDistance);
+    QVariantList scores;
+    for (std::size_t i = 1; i < kGestureClassCount; ++i) {
+        QVariantMap score;
+        score.insert(QStringLiteral("name"),
+                     QString::fromLatin1(kGestureCanonicalNames[i]));
+        score.insert(QStringLiteral("value"), prediction.scores[i]);
+        scores.append(score);
+    }
+    QVariantList curls;
+    for (float curl : prediction.fingerCurl) {
+        curls.append(curl);
+    }
+    item.insert(QStringLiteral("scores"), scores);
+    item.insert(QStringLiteral("curl"), curls);
+    return item;
 }
 
 QString actionDisplayName(LogicalAction action)
@@ -891,6 +931,68 @@ void RuntimeController::setRequireRelease(bool value)
     requireRelease_ = value;
     resetGestureActions();
     emit settingsChanged();
+}
+
+void RuntimeController::setGestureGraceMs(int value)
+{
+    value = std::clamp(value, 0, 500);
+    if (gestureGraceMs_ == value) return;
+    gestureGraceMs_ = value;
+    resetGestureActions();
+    emit settingsChanged();
+}
+
+void RuntimeController::setGestureReleaseThreshold(int value)
+{
+    value = std::clamp(value, 0, 100);
+    if (gestureReleaseThreshold_ == value) return;
+    gestureReleaseThreshold_ = value;
+    resetGestureActions();
+    emit settingsChanged();
+}
+
+bool RuntimeController::startGestureRecording(
+    const QString &left, const QString &right)
+{
+    if (runtimeState_ != RuntimeState::Running || recorder_.active()) {
+        recordingError_ = QStringLiteral("Start pipeline first; only one recording at a time");
+        emit stateChanged();
+        return false;
+    }
+    GestureDataRecorder::Labels labels{};
+    for (const auto &selection : {std::pair{left, 0U}, std::pair{right, 1U}}) {
+        if (selection.first != QStringLiteral("UNLABELED")) {
+            auto label = parseGestureName(selection.first);
+            if (!label) {
+                recordingError_ = QStringLiteral("Invalid gesture label");
+                emit stateChanged();
+                return false;
+            }
+            labels[selection.second] = *label;
+        }
+    }
+
+    const QString directory = QStandardPaths::writableLocation(
+        QStandardPaths::AppLocalDataLocation)
+        + QStringLiteral("/gesture_sessions");
+    const QByteArray utf8 = directory.toUtf8();
+    if (!recorder_.start(std::filesystem::u8path(utf8.constData()), labels)) {
+        recordingError_ = QString::fromStdString(recorder_.error());
+        emit stateChanged();
+        return false;
+    }
+    recordingPath_ = filePathDisplay(recorder_.path());
+    recordingError_.clear();
+    emit stateChanged();
+    return true;
+}
+
+void RuntimeController::stopGestureRecording()
+{
+    if (!recorder_.active()) return;
+    recorder_.stop();
+    recordingError_ = QString::fromStdString(recorder_.error());
+    emit stateChanged();
 }
 
 void RuntimeController::refreshDevices()
@@ -1987,6 +2089,8 @@ void RuntimeController::applyTrackingFrame(
     eventConfig.debounceMs = debounceMs_;
     eventConfig.cooldownMs = cooldownMs_;
     eventConfig.requireRelease = requireRelease_;
+    eventConfig.dropoutGraceMs = gestureGraceMs_;
+    eventConfig.releaseThresholdPercent = gestureReleaseThreshold_;
 
     const GestureEventFrame events =
         gestureStateManager_.update(gestures, eventConfig);
@@ -1995,6 +2099,18 @@ void RuntimeController::applyTrackingFrame(
         events.hands[handIndex(HandSide::Left)].phase);
     rightGestureEvent_ = gestureEventDisplayName(
         events.hands[handIndex(HandSide::Right)].phase);
+
+    gestureDiagnostics_.clear();
+    for (std::size_t index = 0; index < kHandCount; ++index) {
+        const auto side = static_cast<HandSide>(index);
+        gestureDiagnostics_.append(diagnosticMap(
+            gestures.hands[index],
+            gestureStateManager_.debugState(side, frame.captureUs)));
+    }
+
+    if (recorder_.active() && !recorder_.append(frame)) {
+        recordingError_ = QString::fromStdString(recorder_.error());
+    }
 
     updateContinuousControl(frame, events);
     emit stateChanged();
@@ -2018,6 +2134,8 @@ void RuntimeController::updateGestureBackendStatus(
 
 void RuntimeController::clearTracking()
 {
+    stopGestureRecording();
+    gestureDiagnostics_.clear();
     leftTracked_ = false;
     rightTracked_ = false;
     leftHandednessConfidence_ = 0.0;

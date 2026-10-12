@@ -574,6 +574,36 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
+                                title: "Release threshold"
+                                description: "Lower threshold for keeping a held gesture during a brief low-confidence frame."
+                                VcComboBox {
+                                    id: releaseThresholdCombo
+                                    theme: root.theme
+                                    model: ["40 %", "50 %", "55 %", "60 %", "70 %"]
+                                    currentIndex: Math.max(0, [40, 50, 55, 60, 70].indexOf(root.uiState.gestureReleaseThreshold))
+                                    implicitWidth: 180
+                                    onActivated: root.uiState.setGestureReleaseThreshold(parseInt(currentText))
+                                }
+                            }
+                            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                title: "Tracking jitter grace"
+                                description: "Ignore short misclassifications without releasing a held input. Real hand loss still releases immediately."
+                                VcComboBox {
+                                    id: gestureGraceCombo
+                                    theme: root.theme
+                                    model: ["0 ms", "50 ms", "100 ms", "150 ms", "200 ms"]
+                                    currentIndex: Math.max(0, [0, 50, 100, 150, 200].indexOf(root.uiState.gestureGraceMs))
+                                    implicitWidth: 180
+                                    onActivated: root.uiState.setGestureGraceMs(parseInt(currentText))
+                                }
+                            }
+                            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
                                 title: "Debounce"
                                 description: "Gesture must remain stable for this long before PRESS is emitted."
                                 VcComboBox {

@@ -10,6 +10,11 @@ Item {
     required property QtObject uiState
 
     property int liveHandIndex: 1
+    property string leftRecordLabel: "UNLABELED"
+    property string rightRecordLabel: "UNLABELED"
+    readonly property var liveDiagnostics: uiState.gestureDiagnostics
+        && uiState.gestureDiagnostics.length > liveHandIndex
+        ? uiState.gestureDiagnostics[liveHandIndex] : ({})
     readonly property bool liveHandIsLeft: liveHandIndex === 0
     readonly property bool liveHandTracked: liveHandIsLeft
         ? uiState.leftTracked
@@ -52,7 +57,7 @@ Item {
             Layout.fillWidth: true
             theme: root.theme
             title: "Gestures"
-            subtitle: "Live gesture recognition with M4 PRESS / HOLD / RELEASE event semantics."
+            subtitle: "M5 gesture reliability, classifier diagnostics and labelled landmark capture."
 
             VcTextField {
                 theme: root.theme
@@ -262,14 +267,20 @@ Item {
             }
 
             VcCard {
-                Layout.preferredWidth: 340
-                Layout.minimumWidth: 320
+                Layout.preferredWidth: 360
+                Layout.minimumWidth: 340
                 Layout.fillHeight: true
                 theme: root.theme
 
-                ColumnLayout {
+                ScrollView {
+                    id: liveScroll
                     anchors.fill: parent
-                    spacing: 0
+                    clip: true
+                    contentWidth: availableWidth
+
+                    ColumnLayout {
+                        width: liveScroll.availableWidth
+                        spacing: 0
 
                     PanelHeader {
                         Layout.fillWidth: true
@@ -455,24 +466,178 @@ Item {
                             Layout.fillWidth: true
                             text: "Backend: " + root.uiState.gestureBackendName
                                 + "\n" + root.uiState.gestureModelStatus
-                                + "\nMappings and event actions are active in M4; custom gesture recording remains later."
+                                + "\nRules scores are heuristics, not calibrated probabilities."
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10
                             wrapMode: Text.WordWrap
                         }
 
-                        Item {
-                            Layout.fillHeight: true
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 1
+                            color: root.theme.borderSubtle
                         }
 
+                        Text {
+                            text: "Classifier diagnostics"
+                            color: root.theme.textPrimary
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Reason: " + (root.liveDiagnostics.reason || "--")
+                                + " | active: " + (root.liveDiagnostics.active || "NONE")
+                                + " | candidate: " + (root.liveDiagnostics.candidate || "NONE")
+                                + (root.liveDiagnostics.inGrace ? " | GRACE" : "")
+                                + (root.liveDiagnostics.inCooldown ? " | COOLDOWN" : "")
+                            color: root.theme.textSecondary
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                        Repeater {
+                            model: root.liveDiagnostics.scores || []
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 6
+                                Text {
+                                    Layout.preferredWidth: 86
+                                    text: modelData.name
+                                    color: root.theme.textMuted
+                                    font.family: root.theme.fontFamily
+                                    font.pixelSize: 9
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 5
+                                    color: root.theme.borderStrong
+                                    Rectangle {
+                                        width: parent.width * Math.max(0, Math.min(1, modelData.value))
+                                        height: parent.height
+                                        color: root.theme.accent
+                                    }
+                                }
+                                Text {
+                                    Layout.preferredWidth: 35
+                                    horizontalAlignment: Text.AlignRight
+                                    text: Math.round(modelData.value * 100) + "%"
+                                    color: root.theme.textSecondary
+                                    font.family: root.theme.fontFamily
+                                    font.pixelSize: 9
+                                }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Curl [I/M/R/L]: " + (root.liveDiagnostics.curl || []).map(
+                                function(v) { return Number(v).toFixed(2) }).join(" / ")
+                                + "\nPinch distance: " + Number(root.liveDiagnostics.pinch || 0).toFixed(3)
+                            color: root.theme.textMuted
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 1
+                            color: root.theme.borderSubtle
+                        }
+                        Text {
+                            text: "Labelled landmark recording"
+                            color: root.theme.textPrimary
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Set the actual gesture for each hand before recording. No camera images are saved."
+                            wrapMode: Text.WordWrap
+                            color: root.theme.textMuted
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 10
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            VcComboBox {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                model: ["UNLABELED", "NONE", "FIST", "OPEN_HAND", "POINT", "PINCH"]
+                                enabled: !root.uiState.recordingActive
+                                onActivated: root.leftRecordLabel = currentText
+                            }
+                            VcComboBox {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                model: ["UNLABELED", "NONE", "FIST", "OPEN_HAND", "POINT", "PINCH"]
+                                enabled: !root.uiState.recordingActive
+                                onActivated: root.rightRecordLabel = currentText
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                Layout.fillWidth: true
+                                text: "LEFT label"
+                                color: root.theme.textMuted
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 9
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: "RIGHT label"
+                                color: root.theme.textMuted
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 9
+                            }
+                        }
                         VcButton {
                             Layout.fillWidth: true
                             theme: root.theme
-                            text: "Record samples"
+                            text: root.uiState.recordingActive ? "Stop recording" : "Record samples"
                             iconName: "camera"
-                            enabled: false
+                            enabled: root.uiState.recordingActive || root.uiState.pipelineRunning
+                            onClicked: {
+                                if (root.uiState.recordingActive)
+                                    root.uiState.stopGestureRecording()
+                                else
+                                    root.uiState.startGestureRecording(root.leftRecordLabel, root.rightRecordLabel)
+                            }
                         }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.uiState.recordingActive
+                                ? "Recording: " + root.uiState.recordedFrames + " frames"
+                                : root.uiState.recordedFrames + " frames in last session"
+                            color: root.theme.textSecondary
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 10
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: root.uiState.recordingPath !== ""
+                            text: root.uiState.recordingPath
+                            wrapMode: Text.WrapAnywhere
+                            color: root.theme.textMuted
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 9
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: root.uiState.recordingError !== ""
+                            text: root.uiState.recordingError
+                            wrapMode: Text.WordWrap
+                            color: root.theme.textPrimary
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 10
+                        }
+                        Item { Layout.preferredHeight: 16 }
+                    }
                     }
                 }
             }

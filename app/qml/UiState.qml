@@ -158,6 +158,20 @@ QtObject {
         runtimeBackend.gestureModelStatus
     readonly property bool gestureModelActive:
         runtimeBackend.gestureModelActive
+    readonly property var gestureDiagnostics:
+        runtimeBackend.gestureDiagnostics
+    readonly property int gestureGraceMs:
+        runtimeBackend.gestureGraceMs
+    readonly property int gestureReleaseThreshold:
+        runtimeBackend.gestureReleaseThreshold
+    readonly property bool recordingActive:
+        runtimeBackend.recordingActive
+    readonly property int recordedFrames:
+        runtimeBackend.recordedFrames
+    readonly property string recordingPath:
+        runtimeBackend.recordingPath
+    readonly property string recordingError:
+        runtimeBackend.recordingError
     readonly property int cursorX:
         runtimeBackend.cursorX
     readonly property int cursorY:
@@ -268,6 +282,22 @@ QtObject {
 
     function setRequireRelease(value) {
         runtimeBackend.requireRelease = value
+    }
+
+    function setGestureGraceMs(value) {
+        runtimeBackend.gestureGraceMs = value
+    }
+
+    function setGestureReleaseThreshold(value) {
+        runtimeBackend.gestureReleaseThreshold = value
+    }
+
+    function startGestureRecording(leftLabel, rightLabel) {
+        return runtimeBackend.startGestureRecording(leftLabel, rightLabel)
+    }
+
+    function stopGestureRecording() {
+        runtimeBackend.stopGestureRecording()
     }
 
     function setActiveProfile(name) {

@@ -14,7 +14,7 @@ ApplicationWindow {
     height: 900
     minimumWidth: 1220
     minimumHeight: 760
-    visible: true
+    visibility: Window.FullScreen
     title: "Virtual Controller"
     color: theme.background
     flags: Qt.Window | Qt.FramelessWindowHint

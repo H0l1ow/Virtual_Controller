@@ -58,6 +58,7 @@ GesturePrediction GestureEngine::updateHand(
 {
     GesturePrediction prediction;
     prediction.trackId = hand.trackId;
+    prediction.tracked = hand.tracked && hand.trackId != 0;
 
     if (!hand.tracked
         || hand.trackId == 0
@@ -76,25 +77,31 @@ GesturePrediction GestureEngine::updateHand(
         state.initialized = false;
     }
 
-    state.stream.push(
-        hand,
-        frameWidth,
-        frameHeight,
-        timestampUs);
+    const auto geometry = extractGestureGeometry(
+        hand, frameWidth, frameHeight);
+    if (!geometry.valid) {
+        state.stream.reset();
+        state.smoothed = {};
+        state.initialized = false;
+        prediction.decision = GestureDecision::InvalidGeometry;
+        return prediction;
+    }
+    prediction.geometryValid = true;
+    prediction.fingerCurl = geometry.curl;
+    prediction.pinchDistance = geometry.pinch[0];
 
+    state.stream.push(hand, frameWidth, frameHeight, timestampUs);
     GestureScores rawScores{};
-
-    if (modelInference_ && state.stream.ready()) {
-        rawScores =
-            modelInference_(state.stream.tensor());
+    if (modelInference_) {
+        if (!state.stream.ready()) {
+            // Never dispatch rule events while the ONNX sequence warms up.
+            prediction.decision = GestureDecision::ModelWarmup;
+            return prediction;
+        }
+        rawScores = modelInference_(state.stream.tensor());
     }
     else {
-        rawScores =
-            ruleGestureScores(
-                extractGestureGeometry(
-                    hand,
-                    frameWidth,
-                    frameHeight));
+        rawScores = ruleGestureScores(geometry);
     }
 
     for (auto &score : rawScores) {
@@ -110,6 +117,7 @@ GesturePrediction GestureEngine::updateHand(
             rawScores,
             state.initialized);
     state.initialized = true;
+    prediction.scores = state.smoothed;
 
     const auto best =
         std::max_element(
@@ -142,9 +150,13 @@ GesturePrediction GestureEngine::updateHand(
         prediction.gesture =
             static_cast<GestureClass>(bestIndex);
         prediction.confidence = *best;
+        prediction.decision = GestureDecision::Recognized;
     }
     else {
         prediction.gesture = GestureClass::None;
+        prediction.decision = best != state.smoothed.end() && *best >= threshold
+            ? GestureDecision::NoneDominant
+            : GestureDecision::BelowThreshold;
         prediction.confidence =
             std::max(noneScore, 1.0F - (best != state.smoothed.end() ? *best : 0.0F));
     }

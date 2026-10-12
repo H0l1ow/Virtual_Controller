@@ -198,5 +198,34 @@ int main()
     assert(state.cursorMovementLocked);
     assert(state.mouseX == 0.0F);
 
+    // M5: a Toggle is persistent during tracking, but never after loss or
+    // reassignment of the hand that produced it.
+    vc::ActionMapper safeToggle;
+    safeToggle.setMappings({
+        {"ctrl_left", vc::HandSide::Left, vc::GestureClass::OpenHand,
+            vc::LogicalAction::KeyCtrl, vc::ActionBehavior::Toggle, true}
+    });
+    auto trackedLeft = eventFrame(vc::HandSide::Left,
+        vc::GestureClass::OpenHand, vc::GestureEventPhase::Press);
+    trackedLeft.hasTrackingStatus = true;
+    trackedLeft.tracked[vc::handIndex(vc::HandSide::Left)] = true;
+    trackedLeft.trackIds[vc::handIndex(vc::HandSide::Left)] = 1;
+    state = safeToggle.apply(trackedLeft, {});
+    assert((state.keys & vc::keyMask(vc::KeyCode::Ctrl)) != 0);
+    auto noEvents = trackedLeft;
+    noEvents.hands = {};
+    state = safeToggle.apply(noEvents, {});
+    assert((state.keys & vc::keyMask(vc::KeyCode::Ctrl)) != 0);
+    noEvents.tracked[vc::handIndex(vc::HandSide::Left)] = false;
+    noEvents.trackIds[vc::handIndex(vc::HandSide::Left)] = 0;
+    state = safeToggle.apply(noEvents, {});
+    assert((state.keys & vc::keyMask(vc::KeyCode::Ctrl)) == 0);
+    state = safeToggle.apply(trackedLeft, {});
+    assert((state.keys & vc::keyMask(vc::KeyCode::Ctrl)) != 0);
+    noEvents.tracked[vc::handIndex(vc::HandSide::Left)] = true;
+    noEvents.trackIds[vc::handIndex(vc::HandSide::Left)] = 2;
+    state = safeToggle.apply(noEvents, {});
+    assert((state.keys & vc::keyMask(vc::KeyCode::Ctrl)) == 0);
+
     return 0;
 }

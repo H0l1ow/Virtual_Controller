@@ -35,6 +35,8 @@ qt_add_executable(
     src/control/ContinuousControlInterpreter.cpp
 
     src/gestures/GestureTypes.hpp
+    src/gestures/GestureDataRecorder.hpp
+    src/gestures/GestureDataRecorder.cpp
     src/gestures/HandFeatures.hpp
     src/gestures/HandFeatures.cpp
     src/gestures/GestureEngine.hpp
