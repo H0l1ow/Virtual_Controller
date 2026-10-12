@@ -1,3 +1,4 @@
+import VirtualController.I18n 1.0
 import QtQuick
 import QtQuick.Layouts
 import "../components"
@@ -8,6 +9,11 @@ Item {
     required property QtObject theme
     required property QtObject uiState
 
+    function localizedStatus(value) {
+        LanguageManager.language
+        return qsTr(value)
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: root.theme.pageMargin
@@ -16,12 +22,12 @@ Item {
         PageToolbar {
             Layout.fillWidth: true
             theme: root.theme
-            title: "Gamepad Monitor"
-            subtitle: "Live logical controller state. The virtual device backend will be connected in a later stage."
+            title: qsTr("Gamepad Monitor")
+            subtitle: qsTr("Live logical controller state. The virtual device backend will be connected in a later stage.")
 
             VcComboBox {
                 theme: root.theme
-                model: ["Xbox layout", "PlayStation layout (planned)"]
+                model: [qsTr("Xbox layout"), qsTr("PlayStation layout (planned)")]
                 currentIndex: 0
                 implicitWidth: 190
                 enabled: false
@@ -29,13 +35,13 @@ Item {
 
             StatusBadge {
                 theme: root.theme
-                text: "Mock backend"
+                text: qsTr("Mock backend")
                 kind: "warning"
             }
 
             StatusBadge {
                 theme: root.theme
-                text: root.uiState.outputArmed ? "Output armed" : "Output disarmed"
+                text: root.uiState.outputArmed ? qsTr("Output armed") : qsTr("Output disarmed")
                 kind: root.uiState.outputArmed ? "success" : "neutral"
             }
         }
@@ -59,8 +65,8 @@ Item {
                         Layout.fillWidth: true
                         theme: root.theme
                         showIcon: false
-                        title: "Controller State"
-                        statusText: root.uiState.pipelineRunning ? "Live" : "Stopped"
+                        title: qsTr("Controller State")
+                        statusText: root.uiState.pipelineRunning ? qsTr("Live") : qsTr("Stopped")
                         statusKind: root.uiState.pipelineRunning ? "success" : "neutral"
                     }
 
@@ -113,7 +119,7 @@ Item {
                             theme: root.theme
                             iconName: "target"
                             value: root.uiState.leftStickValue
-                            label: "Left Stick X / Y"
+                            label: qsTr("Left Stick X / Y")
                         }
 
                         MetricTile {
@@ -121,7 +127,7 @@ Item {
                             theme: root.theme
                             iconName: "target"
                             value: root.uiState.rightStickValue
-                            label: "Right Stick X / Y"
+                            label: qsTr("Right Stick X / Y")
                         }
 
                         MetricTile {
@@ -129,7 +135,7 @@ Item {
                             theme: root.theme
                             iconName: "play"
                             value: root.uiState.triggerValue
-                            label: "LT / RT"
+                            label: qsTr("LT / RT")
                         }
                     }
                 }
@@ -156,7 +162,7 @@ Item {
                             Layout.fillWidth: true
                             theme: root.theme
                             iconName: "mapping"
-                            title: "Active Inputs"
+                            title: qsTr("Active Inputs")
                         }
 
                         Rectangle {
@@ -188,7 +194,7 @@ Item {
                                     }
 
                                     Text {
-                                        text: modelData.value
+                                        text: root.localizedStatus(modelData.value)
                                         color: modelData.value === "Pressed"
                                             ? root.theme.accent
                                             : root.theme.textPrimary
@@ -220,7 +226,7 @@ Item {
                             Layout.fillWidth: true
                             theme: root.theme
                             iconName: "settings"
-                            title: "Backend"
+                            title: qsTr("Backend")
                         }
 
                         Rectangle {
@@ -236,7 +242,7 @@ Item {
                             spacing: 10
 
                             Text {
-                                text: "Output device"
+                                text: qsTr("Output device")
                                 color: root.theme.textMuted
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
@@ -246,9 +252,9 @@ Item {
                                 Layout.fillWidth: true
                                 theme: root.theme
                                 model: [
-                                    "Mock",
-                                    "Xbox-compatible (planned)",
-                                    "PlayStation (planned)"
+                                    qsTr("Mock"),
+                                    qsTr("Xbox-compatible (planned)"),
+                                    qsTr("PlayStation (planned)")
                                 ]
                                 currentIndex: 0
                                 enabled: false
@@ -265,7 +271,7 @@ Item {
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: "Neutralize on tracking loss"
+                                    text: qsTr("Neutralize on tracking loss")
                                     color: root.theme.textPrimary
                                     font.family: root.theme.fontFamily
                                     font.pixelSize: 11
@@ -281,8 +287,8 @@ Item {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: "All active axes and buttons should return to neutral "
-                                    + "when the required hand is lost or the pipeline stops."
+                                text: qsTr("All active axes and buttons should return to neutral ")
+                                    + qsTr("when the required hand is lost or the pipeline stops.")
                                 color: root.theme.textMuted
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10

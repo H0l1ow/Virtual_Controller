@@ -21,6 +21,9 @@ qt_add_executable(
 
     src/main.cpp
 
+    src/i18n/LanguageManager.hpp
+    src/i18n/LanguageManager.cpp
+
     src/runtime/LatestFrameSlot.hpp
     src/runtime/LatestFrameSlot.cpp
     src/runtime/RuntimeMetrics.hpp
@@ -168,6 +171,8 @@ qt_add_resources(
         qml/pages/TestPage.qml
         qml/pages/GamepadPage.qml
         qml/pages/SettingsPage.qml
+
+        i18n/pl.json
 )
 
 # Keep Qt Creator Build/Run self-contained. The runtime also has source-tree

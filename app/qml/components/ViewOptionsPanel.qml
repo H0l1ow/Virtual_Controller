@@ -30,13 +30,13 @@ Rectangle {
     border.color: root.theme.borderStrong
 
     readonly property var options: [
-        { key: "cameraStatus", label: "Camera status", enabled: root.showCameraStatus },
-        { key: "gestureHints", label: "Gesture hints", enabled: root.showGestureHints },
-        { key: "metrics", label: "Performance metrics", enabled: root.showMetrics },
-        { key: "handBadges", label: "Hand state badges", enabled: root.showHandBadges },
-        { key: "trackingPanel", label: "Hand Tracking panel", enabled: root.showTrackingPanel },
-        { key: "controlsPanel", label: "Controls panel", enabled: root.showControlsPanel },
-        { key: "settingsPanel", label: "Settings panel", enabled: root.showSettingsPanel }
+        { key: "cameraStatus", label: qsTr("Camera status"), enabled: root.showCameraStatus },
+        { key: "gestureHints", label: qsTr("Gesture hints"), enabled: root.showGestureHints },
+        { key: "metrics", label: qsTr("Performance metrics"), enabled: root.showMetrics },
+        { key: "handBadges", label: qsTr("Hand state badges"), enabled: root.showHandBadges },
+        { key: "trackingPanel", label: qsTr("Hand Tracking panel"), enabled: root.showTrackingPanel },
+        { key: "controlsPanel", label: qsTr("Controls panel"), enabled: root.showControlsPanel },
+        { key: "settingsPanel", label: qsTr("Settings panel"), enabled: root.showSettingsPanel }
     ]
 
     ColumnLayout {
@@ -60,7 +60,7 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: "Fullscreen UI"
+                text: qsTr("Fullscreen UI")
                 color: root.theme.textPrimary
                 font.family: root.theme.fontFamily
                 font.pixelSize: 12
@@ -156,7 +156,7 @@ Rectangle {
             Layout.preferredHeight: 36
             theme: root.theme
             iconName: "reset"
-            text: "Show all"
+            text: qsTr("Show all")
             variant: "secondary"
             onClicked: root.showAllRequested()
         }

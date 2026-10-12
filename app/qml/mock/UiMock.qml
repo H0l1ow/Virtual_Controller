@@ -150,43 +150,43 @@ QtObject {
         {
             id: "open_hand",
             gesture: "open",
-            title: "Open Hand",
-            action: "Move Cursor",
+            title: qsTr("Open Hand"),
+            action: qsTr("Move Cursor"),
             active: true
         },
         {
             id: "pinch",
             gesture: "pinch",
-            title: "Pinch",
-            action: "Left Click",
+            title: qsTr("Pinch"),
+            action: qsTr("Left Click"),
             active: true
         },
         {
             id: "point",
             gesture: "point",
-            title: "Point",
-            action: "Right Click",
+            title: qsTr("Point"),
+            action: qsTr("Right Click"),
             active: true
         },
         {
             id: "thumb_up",
             gesture: "up",
-            title: "Thumbs Up",
-            action: "Scroll Up",
+            title: qsTr("Thumbs Up"),
+            action: qsTr("Scroll Up"),
             active: true
         },
         {
             id: "thumb_down",
             gesture: "down",
-            title: "Thumbs Down",
-            action: "Scroll Down",
+            title: qsTr("Thumbs Down"),
+            action: qsTr("Scroll Down"),
             active: true
         },
         {
             id: "fist",
             gesture: "fist",
-            title: "Fist",
-            action: "Pause / Resume",
+            title: qsTr("Fist"),
+            action: qsTr("Pause / Resume"),
             active: true
         }
     ]
@@ -195,80 +195,80 @@ QtObject {
     property var mappingRows: [
         { id: "right_pinch_left_mouse", hand: "Right", source: "PINCH", type: "Gesture", action: "Left click", output: "Mouse", behavior: "Hold", state: "Enabled", enabled: true },
         { id: "right_fist_right_mouse", hand: "Right", source: "FIST", type: "Gesture", action: "Right click", output: "Mouse", behavior: "Press", state: "Disabled", enabled: false },
-        { id: "left_pinch_space", hand: "Left", source: "PINCH", type: "Gesture", action: "Key Space", output: "Keyboard", behavior: "Press", state: "Disabled", enabled: false }
+        { id: "left_pinch_space", hand: "Left", source: "PINCH", type: "Gesture", action: qsTr("Key Space"), output: "Keyboard", behavior: "Press", state: "Disabled", enabled: false }
     ]
 
     property var gestureLibrary: [
         {
             id: "open_hand",
             gesture: "open",
-            title: "Open Hand",
+            title: qsTr("Open Hand"),
             category: "Static",
-            description: "Open hand with fingers extended",
+            description: qsTr("Open hand with fingers extended"),
             enabled: true
         },
         {
             id: "pinch",
             gesture: "pinch",
-            title: "Pinch",
+            title: qsTr("Pinch"),
             category: "Static",
-            description: "Thumb and index finger pinch",
+            description: qsTr("Thumb and index finger pinch"),
             enabled: true
         },
         {
             id: "point",
             gesture: "point",
-            title: "Point",
+            title: qsTr("Point"),
             category: "Static",
-            description: "Index finger extended for pointing",
+            description: qsTr("Index finger extended for pointing"),
             enabled: true
         },
         {
             id: "fist",
             gesture: "fist",
-            title: "Fist",
+            title: qsTr("Fist"),
             category: "Static",
-            description: "Closed hand",
+            description: qsTr("Closed hand"),
             enabled: true
         },
         {
             id: "thumb_up",
             gesture: "up",
-            title: "Thumbs Up",
+            title: qsTr("Thumbs Up"),
             category: "Static",
-            description: "Thumb pointing upward",
+            description: qsTr("Thumb pointing upward"),
             enabled: true
         },
         {
             id: "thumb_down",
             gesture: "down",
-            title: "Thumbs Down",
+            title: qsTr("Thumbs Down"),
             category: "Static",
-            description: "Thumb pointing downward",
+            description: qsTr("Thumb pointing downward"),
             enabled: true
         },
         {
             id: "swipe_horizontal",
             gesture: "swipe",
-            title: "Swipe Left / Right",
+            title: qsTr("Swipe Left / Right"),
             category: "Dynamic",
-            description: "Horizontal hand motion",
+            description: qsTr("Horizontal hand motion"),
             enabled: false
         },
         {
             id: "swipe_vertical",
             gesture: "swipe",
-            title: "Swipe Up / Down",
+            title: qsTr("Swipe Up / Down"),
             category: "Dynamic",
-            description: "Vertical hand motion",
+            description: qsTr("Vertical hand motion"),
             enabled: false
         },
         {
             id: "two_hand_rotate",
             gesture: "rotate",
-            title: "Two-Hand Rotate",
+            title: qsTr("Two-Hand Rotate"),
             category: "Two-hand",
-            description: "Relative rotation of both hands",
+            description: qsTr("Relative rotation of both hands"),
             enabled: false
         }
     ]

@@ -6,7 +6,7 @@ Item {
 
     required property QtObject theme
     property string iconName: "monitor"
-    property string title: "Panel"
+    property string title: qsTr("Panel")
     property string statusText: ""
     property string statusKind: "success"
     property bool showIcon: true

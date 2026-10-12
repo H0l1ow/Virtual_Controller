@@ -5,7 +5,7 @@ Rectangle {
     id: root
 
     required property QtObject theme
-    property string text: "Active"
+    property string text: qsTr("Active")
     property string kind: "success"
     property bool showDot: true
 

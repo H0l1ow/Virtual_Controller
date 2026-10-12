@@ -18,7 +18,7 @@ VcCard {
             Layout.fillWidth: true
             theme: root.theme
             iconName: "settings"
-            title: "Settings"
+            title: qsTr("Settings")
         }
 
         Rectangle {
@@ -37,7 +37,7 @@ VcCard {
                 Layout.fillWidth: true
                 Text {
                     Layout.fillWidth: true
-                    text: "Sensitivity"
+                    text: qsTr("Sensitivity")
                     color: root.theme.textPrimary
                     font.family: root.theme.fontFamily
                     font.pixelSize: 11
@@ -65,7 +65,7 @@ VcCard {
                 Layout.topMargin: 2
                 Text {
                     Layout.fillWidth: true
-                    text: "Cursor speed"
+                    text: qsTr("Cursor speed")
                     color: root.theme.textPrimary
                     font.family: root.theme.fontFamily
                     font.pixelSize: 11
@@ -103,7 +103,7 @@ VcCard {
                 spacing: 12
 
                 Text {
-                    text: "Invert X"
+                    text: qsTr("Invert X")
                     color: root.theme.textSecondary
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10
@@ -118,7 +118,7 @@ VcCard {
                 Item { Layout.fillWidth: true }
 
                 Text {
-                    text: "Invert Y"
+                    text: qsTr("Invert Y")
                     color: root.theme.textSecondary
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10
@@ -133,7 +133,7 @@ VcCard {
 
             Text {
                 Layout.fillWidth: true
-                text: "Speed is a DPI-like multiplier: raise it to cross the screen with less hand travel."
+                text: qsTr("Speed is a DPI-like multiplier: raise it to cross the screen with less hand travel.")
                 color: root.theme.textMuted
                 font.family: root.theme.fontFamily
                 font.pixelSize: 9

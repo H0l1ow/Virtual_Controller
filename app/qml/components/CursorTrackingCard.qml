@@ -19,8 +19,8 @@ VcCard {
             theme: root.theme
             iconName: "target"
             title: root.uiState.cursorControlAvailable
-                ? "Cursor Tracking"
-                : "Hand Tracking"
+                ? qsTr("Cursor Tracking")
+                : qsTr("Hand Tracking")
             statusText: root.uiState.trackingStatus
             statusKind: root.uiState.trackingStatus === "Stable"
                 ? "success"
@@ -73,7 +73,7 @@ VcCard {
                         anchors.top: parent.top
                         anchors.leftMargin: 8
                         anchors.topMargin: 6
-                        text: "Desktop"
+                        text: qsTr("Desktop")
                         color: root.theme.textFaint
                         font.family: root.theme.fontFamily
                         font.pixelSize: 9
@@ -123,7 +123,7 @@ VcCard {
                 spacing: 7
 
                 Text {
-                    text: "Cursor Position · Right hand"
+                    text: qsTr("Cursor Position · Right hand")
                     color: root.theme.textMuted
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10
@@ -131,7 +131,7 @@ VcCard {
 
                 Text {
                     text: !root.uiState.cursorControlAvailable
-                        ? "Not available"
+                        ? qsTr("Not available")
                         : (root.uiState.pipelineRunning && root.uiState.rightTracked
                             ? "X: " + root.uiState.cursorX + "    Y: " + root.uiState.cursorY
                             : "X: --    Y: --")
@@ -144,14 +144,14 @@ VcCard {
                 StatusBadge {
                     visible: root.uiState.cursorFrozen
                     theme: root.theme
-                    text: "CURSOR FROZEN"
+                    text: qsTr("CURSOR FROZEN")
                     kind: "warning"
                 }
 
                 StatusBadge {
                     visible: !root.uiState.cursorFrozen && root.uiState.cursorMovementLocked
                     theme: root.theme
-                    text: "WAITING FOR MOVE GESTURE"
+                    text: qsTr("WAITING FOR MOVE GESTURE")
                     kind: "neutral"
                 }
 
@@ -162,14 +162,14 @@ VcCard {
                 }
 
                 Text {
-                    text: "Smoothing"
+                    text: qsTr("Smoothing")
                     color: root.theme.textMuted
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10
                 }
 
                 Text {
-                    text: root.uiState.smoothing ? "On" : "Off"
+                    text: root.uiState.smoothing ? qsTr("On") : qsTr("Off")
                     color: root.uiState.smoothing
                         ? root.theme.accent
                         : root.theme.textSecondary
@@ -185,14 +185,14 @@ VcCard {
                 }
 
                 Text {
-                    text: "Tracking Status"
+                    text: qsTr("Tracking Status")
                     color: root.theme.textMuted
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10
                 }
 
                 Text {
-                    text: root.uiState.trackingStatus
+                    text: qsTr(root.uiState.trackingStatus)
                     color: root.uiState.trackingStatus === "Stable"
                         ? root.theme.accent
                         : root.uiState.pipelineRunning

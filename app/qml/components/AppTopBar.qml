@@ -28,27 +28,27 @@ Rectangle {
 
     readonly property var navItems: [
         {
-            title: "Controller",
+            title: qsTr("Controller"),
             icon: "monitor"
         },
         {
-            title: "Mapping",
+            title: qsTr("Mapping"),
             icon: "mapping"
         },
         {
-            title: "Gestures",
+            title: qsTr("Gestures"),
             icon: "hand"
         },
         {
-            title: "Test",
+            title: qsTr("Test"),
             icon: "target"
         },
         {
-            title: "Gamepad",
+            title: qsTr("Gamepad"),
             icon: "gamepad"
         },
         {
-            title: "Settings",
+            title: qsTr("Settings"),
             icon: "settings"
         }
     ]

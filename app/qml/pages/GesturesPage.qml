@@ -1,3 +1,4 @@
+import VirtualController.I18n 1.0
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -29,6 +30,22 @@ Item {
         ? uiState.leftGestureEvent
         : uiState.rightGestureEvent
 
+    function localizedFrameCount(count) {
+        // Avoid the invalid '1 klatek' / '2 klatek' forms in Polish.
+        const n = Math.max(0, Math.floor(Number(count) || 0))
+        if (LanguageManager.language === "pl") {
+            const few = n % 10 >= 2 && n % 10 <= 4
+                && (n % 100 < 12 || n % 100 > 14)
+            return n + (n === 1 ? " klatka" : few ? " klatki" : " klatek")
+        }
+        return n + (n === 1 ? " frame" : " frames")
+    }
+
+    function localizedLabel(value) {
+        LanguageManager.language
+        return qsTr(value)
+    }
+
     function glyphForGesture(gestureName) {
         switch (gestureName) {
         case "PINCH":
@@ -56,19 +73,19 @@ Item {
         PageToolbar {
             Layout.fillWidth: true
             theme: root.theme
-            title: "Gestures"
-            subtitle: "M5 gesture reliability, classifier diagnostics and labelled landmark capture."
+            title: qsTr("Gestures")
+            subtitle: qsTr("M5 gesture reliability, classifier diagnostics and labelled landmark capture.")
 
             VcTextField {
                 theme: root.theme
-                placeholderText: "Search gestures (planned)"
+                placeholderText: qsTr("Search gestures (planned)")
                 implicitWidth: 210
                 enabled: false
             }
 
             VcButton {
                 theme: root.theme
-                text: "New gesture"
+                text: qsTr("New gesture")
                 iconName: "plus"
                 implicitWidth: 120
                 enabled: false
@@ -98,7 +115,7 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            text: "Gesture Library"
+                            text: qsTr("Gesture Library")
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 15
@@ -106,18 +123,18 @@ Item {
                         }
 
                         Repeater {
-                            model: ["All", "Static", "Dynamic", "Two-hand"]
+                            model: [qsTr("All"), qsTr("Static"), qsTr("Dynamic"), qsTr("Two-hand")]
 
                             delegate: Rectangle {
                                 required property string modelData
 
                                 width: chipText.implicitWidth + 18
                                 height: 30
-                                color: modelData === "All"
+                                color: modelData === qsTr("All")
                                     ? root.theme.surfaceHover
                                     : "transparent"
                                 border.width: 1
-                                border.color: modelData === "All"
+                                border.color: modelData === qsTr("All")
                                     ? root.theme.borderStrong
                                     : root.theme.border
                                 radius: root.theme.controlRadius
@@ -204,7 +221,7 @@ Item {
 
                                                 TagChip {
                                                     theme: root.theme
-                                                    text: modelData.category
+                                                    text: root.localizedLabel(modelData.category)
                                                 }
                                             }
 
@@ -239,8 +256,8 @@ Item {
                                                 StatusBadge {
                                                     theme: root.theme
                                                     text: modelData.enabled
-                                                        ? "Available"
-                                                        : "Planned"
+                                                        ? qsTr("Available")
+                                                        : qsTr("Planned")
                                                     kind: modelData.enabled
                                                         ? "success"
                                                         : "neutral"
@@ -251,7 +268,7 @@ Item {
                                                 }
 
                                                 Text {
-                                                    text: "View details  ›"
+                                                    text: qsTr("View details  ›")
                                                     color: root.theme.textSecondary
                                                     font.family: root.theme.fontFamily
                                                     font.pixelSize: 10
@@ -286,12 +303,12 @@ Item {
                         Layout.fillWidth: true
                         theme: root.theme
                         iconName: "camera"
-                        title: "Live Recognition"
+                        title: qsTr("Live Recognition")
                         statusText: !root.uiState.gestureRecognitionAvailable
-                            ? "Unavailable"
+                            ? qsTr("Unavailable")
                             : (!root.uiState.pipelineRunning
-                                ? "Off"
-                                : root.liveHandTracked ? "Live" : "Hand lost")
+                                ? qsTr("Off")
+                                : root.liveHandTracked ? qsTr("Live") : qsTr("Hand lost"))
                         statusKind: !root.uiState.gestureRecognitionAvailable
                             ? "neutral"
                             : (!root.uiState.pipelineRunning
@@ -331,10 +348,10 @@ Item {
                             visible: !root.liveHandTracked
                                 || !root.uiState.gestureRecognitionAvailable
                             text: !root.uiState.gestureRecognitionAvailable
-                                ? "GESTURE RECOGNITION UNAVAILABLE"
+                                ? qsTr("GESTURE RECOGNITION UNAVAILABLE")
                                 : (root.uiState.pipelineRunning
-                                    ? "HAND NOT TRACKED"
-                                    : "PIPELINE STOPPED")
+                                    ? qsTr("HAND NOT TRACKED")
+                                    : qsTr("PIPELINE STOPPED"))
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 11
@@ -348,7 +365,7 @@ Item {
                             anchors.rightMargin: 10
                             anchors.topMargin: 10
                             theme: root.theme
-                            model: ["Left hand", "Right hand"]
+                            model: [qsTr("Left hand"), qsTr("Right hand")]
                             currentIndex: root.liveHandIndex
                             implicitWidth: 132
                             onActivated: root.liveHandIndex = currentIndex
@@ -359,7 +376,7 @@ Item {
                             anchors.bottom: parent.bottom
                             anchors.leftMargin: 10
                             anchors.bottomMargin: 10
-                            text: root.liveHandIsLeft ? "LEFT HAND" : "RIGHT HAND"
+                            text: root.liveHandIsLeft ? qsTr("LEFT HAND") : qsTr("RIGHT HAND")
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 9
@@ -378,7 +395,7 @@ Item {
                         spacing: 10
 
                         Text {
-                            text: "Detected gesture"
+                            text: qsTr("Detected gesture")
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10
@@ -386,8 +403,8 @@ Item {
 
                         Text {
                             text: root.uiState.gestureRecognitionAvailable
-                                ? root.liveGesture
-                                : "Unavailable"
+                                ? root.localizedLabel(root.liveGesture)
+                                : qsTr("Unavailable")
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 20
@@ -399,7 +416,7 @@ Item {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: "Gesture confidence"
+                                text: qsTr("Gesture confidence")
                                 color: root.theme.textSecondary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
@@ -446,14 +463,14 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 Layout.fillWidth: true
-                                text: "Event state"
+                                text: qsTr("Event state")
                                 color: root.theme.textSecondary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
                             }
                             StatusBadge {
                                 theme: root.theme
-                                text: root.liveEvent
+                                text: root.localizedLabel(root.liveEvent)
                                 kind: root.liveEvent === "PRESS"
                                     ? "success"
                                     : root.liveEvent === "RELEASE"
@@ -464,9 +481,9 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            text: "Backend: " + root.uiState.gestureBackendName
+                            text: qsTr("Backend: ") + root.uiState.gestureBackendName
                                 + "\n" + root.uiState.gestureModelStatus
-                                + "\nRules scores are heuristics, not calibrated probabilities."
+                                + qsTr("\nRules scores are heuristics, not calibrated probabilities.")
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10
@@ -480,7 +497,7 @@ Item {
                         }
 
                         Text {
-                            text: "Classifier diagnostics"
+                            text: qsTr("Classifier diagnostics")
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 12
@@ -488,11 +505,11 @@ Item {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: "Reason: " + (root.liveDiagnostics.reason || "--")
-                                + " | active: " + (root.liveDiagnostics.active || "NONE")
-                                + " | candidate: " + (root.liveDiagnostics.candidate || "NONE")
-                                + (root.liveDiagnostics.inGrace ? " | GRACE" : "")
-                                + (root.liveDiagnostics.inCooldown ? " | COOLDOWN" : "")
+                            text: qsTr("Reason: ") + (root.liveDiagnostics.reason || "--")
+                                + qsTr(" | active: ") + (root.liveDiagnostics.active || "NONE")
+                                + qsTr(" | candidate: ") + (root.liveDiagnostics.candidate || "NONE")
+                                + (root.liveDiagnostics.inGrace ? qsTr(" | GRACE") : "")
+                                + (root.liveDiagnostics.inCooldown ? qsTr(" | COOLDOWN") : "")
                             color: root.theme.textSecondary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10
@@ -533,9 +550,9 @@ Item {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: "Curl [I/M/R/L]: " + (root.liveDiagnostics.curl || []).map(
+                            text: qsTr("Curl [I/M/R/L]: ") + (root.liveDiagnostics.curl || []).map(
                                 function(v) { return Number(v).toFixed(2) }).join(" / ")
-                                + "\nPinch distance: " + Number(root.liveDiagnostics.pinch || 0).toFixed(3)
+                                + qsTr("\nPinch distance: ") + Number(root.liveDiagnostics.pinch || 0).toFixed(3)
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10
@@ -547,7 +564,7 @@ Item {
                             color: root.theme.borderSubtle
                         }
                         Text {
-                            text: "Labelled landmark recording"
+                            text: qsTr("Labelled landmark recording")
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 12
@@ -555,7 +572,7 @@ Item {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: "Set the actual gesture for each hand before recording. No camera images are saved."
+                            text: qsTr("Set the actual gesture for each hand before recording. No camera images are saved.")
                             wrapMode: Text.WordWrap
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
@@ -583,14 +600,14 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 Layout.fillWidth: true
-                                text: "LEFT label"
+                                text: qsTr("LEFT label")
                                 color: root.theme.textMuted
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 9
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: "RIGHT label"
+                                text: qsTr("RIGHT label")
                                 color: root.theme.textMuted
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 9
@@ -599,7 +616,7 @@ Item {
                         VcButton {
                             Layout.fillWidth: true
                             theme: root.theme
-                            text: root.uiState.recordingActive ? "Stop recording" : "Record samples"
+                            text: root.uiState.recordingActive ? qsTr("Stop recording") : qsTr("Record samples")
                             iconName: "camera"
                             enabled: root.uiState.recordingActive || root.uiState.pipelineRunning
                             onClicked: {
@@ -612,8 +629,8 @@ Item {
                         Text {
                             Layout.fillWidth: true
                             text: root.uiState.recordingActive
-                                ? "Recording: " + root.uiState.recordedFrames + " frames"
-                                : root.uiState.recordedFrames + " frames in last session"
+                                ? qsTr("Recording: ") + root.localizedFrameCount(root.uiState.recordedFrames)
+                                : qsTr("Last session: ") + root.localizedFrameCount(root.uiState.recordedFrames)
                             color: root.theme.textSecondary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10

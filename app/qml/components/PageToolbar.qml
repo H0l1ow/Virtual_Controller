@@ -5,7 +5,7 @@ Rectangle {
     id: root
 
     required property QtObject theme
-    property string title: "Page"
+    property string title: qsTr("Page")
     property string subtitle: ""
     default property alias extraContent: extra.data
 

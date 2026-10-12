@@ -4,7 +4,7 @@ import QtQuick.Layouts
 Item {
     id: root
     required property QtObject theme
-    property string title: "Setting"
+    property string title: qsTr("Setting")
     property string description: ""
     default property alias controlContent: controlHost.data
     implicitHeight: Math.max(60, labels.implicitHeight + 18)

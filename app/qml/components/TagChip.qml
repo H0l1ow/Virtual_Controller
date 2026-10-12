@@ -4,7 +4,7 @@ Rectangle {
     id: root
 
     required property QtObject theme
-    property string text: "Enabled"
+    property string text: qsTr("Enabled")
     property string kind: "neutral"
 
     readonly property color c: kind === "success"

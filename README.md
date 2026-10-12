@@ -1,7 +1,9 @@
-# Virtual Controller - M5.0 Gesture Reliability & Diagnostics (0.10.0)
+# Virtual Controller - M5.1 Language Switch (0.10.1)
 
 Qt/QML + C++20 desktop application for two-hand camera tracking, gesture-driven
 mouse/keyboard input, mapping profiles and an in-app Gesture Playground.
+
+M5.1 adds instant **English / Polski** UI switching in **Settings > General > Language**. The choice is persisted with `QSettings`, translations are bundled inside Qt resources, and Mapping/profile identifiers remain unchanged. See **PATCH_M5_1_README.md** for installation and language extension details.
 
 M5.0 builds on M4.9's strict cursor gate. It adds tolerant gesture HOLD
 semantics with immediate release on true tracking loss, per-hand Toggle safety,

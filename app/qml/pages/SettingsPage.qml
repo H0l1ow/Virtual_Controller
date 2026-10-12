@@ -1,3 +1,4 @@
+import VirtualController.I18n 1.0
 import QtQuick
 import QtQml
 import QtQuick.Layouts
@@ -7,27 +8,31 @@ Item {
     id: root
     required property QtObject theme
     required property QtObject uiState
-    property int sectionIndex: 2
+    property int sectionIndex: 0
 
     readonly property var sections: [
         {
-            title: "Camera",
+            title: qsTr("General"),
+            icon: "settings"
+        },
+        {
+            title: qsTr("Camera"),
             icon: "camera"
         },
         {
-            title: "Tracking",
+            title: qsTr("Tracking"),
             icon: "hand"
         },
         {
-            title: "Control",
+            title: qsTr("Control"),
             icon: "target"
         },
         {
-            title: "Gestures",
+            title: qsTr("Gestures"),
             icon: "mapping"
         },
         {
-            title: "Model",
+            title: qsTr("Model"),
             icon: "settings"
         }
     ]
@@ -40,18 +45,18 @@ Item {
         PageToolbar {
             Layout.fillWidth: true
             theme: root.theme
-            title: "Settings"
-            subtitle: "Camera, tracking, control and model configuration."
+            title: qsTr("Settings")
+            subtitle: qsTr("Language, camera, tracking and control preferences.")
             VcButton {
                 theme: root.theme
-                text: "Reset defaults"
+                text: qsTr("Reset defaults")
                 iconName: "reset"
-                implicitWidth: 128
+                implicitWidth: LanguageManager.language === "pl" ? 192 : 128
                 onClicked: root.uiState.resetSettingsDefaults()
             }
             VcButton {
                 theme: root.theme
-                text: "Save"
+                text: qsTr("Save")
                 iconName: "save"
                 implicitWidth: 90
                 enabled: false
@@ -134,7 +139,7 @@ Item {
                         color: root.theme.borderSubtle
                     }
                     Text {
-                        text: "Virtual Controller v" + Qt.application.version
+                        text: qsTr("Virtual Controller v") + Qt.application.version
                         color: root.theme.textMuted
                         font.family: root.theme.fontFamily
                         font.pixelSize: 9
@@ -152,21 +157,22 @@ Item {
                     anchors.fill: parent
                     currentIndex: root.sectionIndex
 
-                    // CAMERA
+                    // GENERAL / LOCALIZATION
                     Item {
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: 18
                             spacing: 0
+
                             Text {
-                                text: "Camera"
+                                text: qsTr("General")
                                 color: root.theme.textPrimary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 20
                                 font.weight: Font.DemiBold
                             }
                             Text {
-                                text: "Video source and preview behavior."
+                                text: qsTr("Application language and appearance.")
                                 color: root.theme.textMuted
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
@@ -175,8 +181,53 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Camera device"
-                                description: "Select the RGB camera used for hand tracking."
+                                title: qsTr("Language")
+                                description: qsTr("Change the interface language instantly. Your choice is saved automatically.")
+                                VcComboBox {
+                                    id: languageCombo
+                                    theme: root.theme
+                                    model: LanguageManager.languageNames
+                                    currentIndex: LanguageManager.languageIndex
+                                    implicitWidth: 220
+                                    onActivated: function(index) {
+                                        LanguageManager.setLanguageByIndex(index)
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: root.theme.borderSubtle
+                            }
+                            Item { Layout.fillHeight: true }
+                        }
+                    }
+
+                    // CAMERA
+                    Item {
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 18
+                            spacing: 0
+                            Text {
+                                text: qsTr("Camera")
+                                color: root.theme.textPrimary
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 20
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: qsTr("Video source and preview behavior.")
+                                color: root.theme.textMuted
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 10
+                                Layout.bottomMargin: 16
+                            }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                title: qsTr("Camera device")
+                                description: qsTr("Select the RGB camera used for hand tracking.")
                                 VcComboBox {
                                     theme: root.theme
                                     model: root.uiState.cameraNames
@@ -198,8 +249,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Capture format"
-                                description: "Resolution and target frame rate."
+                                title: qsTr("Capture format")
+                                description: qsTr("Resolution and target frame rate.")
                                 VcComboBox {
                                     theme: root.theme
                                     model: root.uiState.formatNames
@@ -221,8 +272,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Mirror preview"
-                                description: "Mirror only the displayed image; tracking coordinates remain normalized."
+                                title: qsTr("Mirror preview")
+                                description: qsTr("Mirror only the displayed image; tracking coordinates remain normalized.")
                                 VcSwitch {
                                     id: mirrorPreviewSwitch
                                     theme: root.theme
@@ -238,8 +289,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Swap handedness"
-                                description: "Swap logical LEFT / RIGHT if camera placement requires it."
+                                title: qsTr("Swap handedness")
+                                description: qsTr("Swap logical LEFT / RIGHT if camera placement requires it.")
                                 VcSwitch {
                                     id: swapHandednessSwitch
                                     theme: root.theme
@@ -260,14 +311,14 @@ Item {
                             anchors.margins: 18
                             spacing: 0
                             Text {
-                                text: "Tracking"
+                                text: qsTr("Tracking")
                                 color: root.theme.textPrimary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 20
                                 font.weight: Font.DemiBold
                             }
                             Text {
-                                text: "Hand detection and landmark stability."
+                                text: qsTr("Hand detection and landmark stability.")
                                 color: root.theme.textMuted
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
@@ -276,12 +327,12 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Maximum hands"
-                                description: "The project architecture is designed for simultaneous " +
-                                    "left and right hand tracking."
+                                title: qsTr("Maximum hands")
+                                description: qsTr("The project architecture is designed for simultaneous ") +
+                                    qsTr("left and right hand tracking.")
                                 VcComboBox {
                                     theme: root.theme
-                                    model: ["2 hands"]
+                                    model: [qsTr("2 hands")]
                                     implicitWidth: 180
                                     enabled: false
                                 }
@@ -294,8 +345,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Detection confidence"
-                                description: "Minimum confidence required to accept a newly detected hand."
+                                title: qsTr("Detection confidence")
+                                description: qsTr("Minimum confidence required to accept a newly detected hand.")
                                 VcSlider {
                                     id: detectionConfidenceSlider
                                     theme: root.theme
@@ -319,8 +370,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Tracking confidence"
-                                description: "Minimum confidence used to keep tracking an existing hand."
+                                title: qsTr("Tracking confidence")
+                                description: qsTr("Minimum confidence used to keep tracking an existing hand.")
                                 VcSlider {
                                     id: trackingConfidenceSlider
                                     theme: root.theme
@@ -344,8 +395,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Show landmarks"
-                                description: "Render landmarks and skeleton on the camera preview."
+                                title: qsTr("Show landmarks")
+                                description: qsTr("Render landmarks and skeleton on the camera preview.")
                                 VcSwitch {
                                     id: showLandmarksSwitch
                                     theme: root.theme
@@ -367,14 +418,14 @@ Item {
                             anchors.margins: 18
                             spacing: 0
                             Text {
-                                text: "Control"
+                                text: qsTr("Control")
                                 color: root.theme.textPrimary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 20
                                 font.weight: Font.DemiBold
                             }
                             Text {
-                                text: "Cursor response, smoothing and deadzone."
+                                text: qsTr("Cursor response, smoothing and deadzone.")
                                 color: root.theme.textMuted
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
@@ -383,8 +434,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Sensitivity"
-                                description: "Fine cursor gain for normal hand movement."
+                                title: qsTr("Sensitivity")
+                                description: qsTr("Fine cursor gain for normal hand movement.")
                                 VcSlider {
                                     id: settingsSensitivitySlider
                                     theme: root.theme
@@ -407,8 +458,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Cursor speed"
-                                description: "DPI-like multiplier. Higher values move across the monitor with less hand travel."
+                                title: qsTr("Cursor speed")
+                                description: qsTr("DPI-like multiplier. Higher values move across the monitor with less hand travel.")
                                 VcSlider {
                                     id: cursorSpeedSlider
                                     theme: root.theme
@@ -434,8 +485,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Invert X axis"
-                                description: "Reverse horizontal cursor direction."
+                                title: qsTr("Invert X axis")
+                                description: qsTr("Reverse horizontal cursor direction.")
                                 VcSwitch {
                                     id: invertXSwitch
                                     theme: root.theme
@@ -451,8 +502,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Invert Y axis"
-                                description: "Reverse vertical cursor direction."
+                                title: qsTr("Invert Y axis")
+                                description: qsTr("Reverse vertical cursor direction.")
                                 VcSwitch {
                                     id: invertYSwitch
                                     theme: root.theme
@@ -468,8 +519,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Smoothing"
-                                description: "Apply the One Euro filter to reduce cursor jitter."
+                                title: qsTr("Smoothing")
+                                description: qsTr("Apply the One Euro filter to reduce cursor jitter.")
                                 VcSwitch {
                                     id: smoothingSwitch
                                     theme: root.theme
@@ -485,8 +536,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Deadzone"
-                                description: "Suppress very small per-frame hand movement before it reaches the cursor."
+                                title: qsTr("Deadzone")
+                                description: qsTr("Suppress very small per-frame hand movement before it reaches the cursor.")
                                 VcSlider {
                                     id: deadzoneSlider
                                     theme: root.theme
@@ -509,8 +560,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Active profile"
-                                description: "Profiles combine mappings with control tuning."
+                                title: qsTr("Active profile")
+                                description: qsTr("Profiles combine mappings with control tuning.")
                                 VcComboBox {
                                     id: settingsProfileCombo
                                     theme: root.theme
@@ -534,14 +585,14 @@ Item {
                             anchors.margins: 18
                             spacing: 0
                             Text {
-                                text: "Gestures"
+                                text: qsTr("Gestures")
                                 color: root.theme.textPrimary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 20
                                 font.weight: Font.DemiBold
                             }
                             Text {
-                                text: "Gesture event thresholds and state behavior."
+                                text: qsTr("Gesture event thresholds and state behavior.")
                                 color: root.theme.textMuted
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
@@ -550,8 +601,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Recognition threshold"
-                                description: "Minimum recognition confidence before a gesture is reported as active."
+                                title: qsTr("Recognition threshold")
+                                description: qsTr("Minimum recognition confidence before a gesture is reported as active.")
                                 VcSlider {
                                     id: recognitionThresholdSlider
                                     theme: root.theme
@@ -574,8 +625,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Release threshold"
-                                description: "Lower threshold for keeping a held gesture during a brief low-confidence frame."
+                                title: qsTr("Release threshold")
+                                description: qsTr("Lower threshold for keeping a held gesture during a brief low-confidence frame.")
                                 VcComboBox {
                                     id: releaseThresholdCombo
                                     theme: root.theme
@@ -589,8 +640,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Tracking jitter grace"
-                                description: "Ignore short misclassifications without releasing a held input. Real hand loss still releases immediately."
+                                title: qsTr("Tracking jitter grace")
+                                description: qsTr("Ignore short misclassifications without releasing a held input. Real hand loss still releases immediately.")
                                 VcComboBox {
                                     id: gestureGraceCombo
                                     theme: root.theme
@@ -604,8 +655,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Debounce"
-                                description: "Gesture must remain stable for this long before PRESS is emitted."
+                                title: qsTr("Debounce")
+                                description: qsTr("Gesture must remain stable for this long before PRESS is emitted.")
                                 VcComboBox {
                                     id: debounceCombo
                                     theme: root.theme
@@ -623,8 +674,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Cooldown"
-                                description: "Minimum quiet time after RELEASE before another PRESS can fire."
+                                title: qsTr("Cooldown")
+                                description: qsTr("Minimum quiet time after RELEASE before another PRESS can fire.")
                                 VcComboBox {
                                     id: cooldownCombo
                                     theme: root.theme
@@ -642,8 +693,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Require release"
-                                description: "Require one complete observation away from the released gesture before it can trigger again."
+                                title: qsTr("Require release")
+                                description: qsTr("Require one complete observation away from the released gesture before it can trigger again.")
                                 VcSwitch {
                                     id: requireReleaseSwitch
                                     theme: root.theme
@@ -665,14 +716,14 @@ Item {
                             anchors.margins: 18
                             spacing: 0
                             Text {
-                                text: "Model"
+                                text: qsTr("Model")
                                 color: root.theme.textPrimary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 20
                                 font.weight: Font.DemiBold
                             }
                             Text {
-                                text: "Gesture recognition backend and optional causal TCN runtime."
+                                text: qsTr("Gesture recognition backend and optional causal TCN runtime.")
                                 color: root.theme.textMuted
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
@@ -681,8 +732,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Hand tracker"
-                                description: "MediaPipe Hand Landmarker runtime model."
+                                title: qsTr("Hand tracker")
+                                description: qsTr("MediaPipe Hand Landmarker runtime model.")
                                 VcTextField {
                                     theme: root.theme
                                     text: "models/hand_landmarker.task"
@@ -698,8 +749,8 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Gesture model"
-                                description: "Causal TCN exported to ONNX and executed by ONNX Runtime C++."
+                                title: qsTr("Gesture model")
+                                description: qsTr("Causal TCN exported to ONNX and executed by ONNX Runtime C++.")
                                 VcTextField {
                                     theme: root.theme
                                     text: "models/gesture_model.onnx"
@@ -715,7 +766,7 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Recognition backend"
+                                title: qsTr("Recognition backend")
                                 description: root.uiState.gestureModelStatus
                                 StatusBadge {
                                     theme: root.theme
@@ -731,13 +782,12 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: "Reload model (later)"
-                                description: "Restart tracking after replacing the model. Hot reload is not enabled yet."
+                                title: qsTr("Reload model (later)")
+                                description: qsTr("Restart tracking after replacing the model. Hot reload is not enabled yet.")
                                 VcButton {
                                     theme: root.theme
-                                    text: "Reload"
+                                    text: qsTr("Reload")
                                     iconName: "reset"
-                                    implicitWidth: 110
                                     enabled: false
                                 }
                             }

@@ -6,8 +6,8 @@ Rectangle {
 
     required property QtObject theme
     property string gesture: "open"
-    property string title: "Open Palm"
-    property string action: "Move Cursor"
+    property string title: qsTr("Open Palm")
+    property string action: qsTr("Move Cursor")
     property bool active: true
 
     implicitHeight: 42

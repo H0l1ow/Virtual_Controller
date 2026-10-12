@@ -18,7 +18,7 @@ VcCard {
             Layout.fillWidth: true
             theme: root.theme
             iconName: "play"
-            title: "Controls"
+            title: qsTr("Controls")
         }
 
         Rectangle {
@@ -39,8 +39,8 @@ VcCard {
                 theme: root.theme
                 iconName: root.uiState.canStop ? "reset" : "play"
                 text: root.uiState.runtimeStateName === "Stopping"
-                    ? "Stopping..."
-                    : (root.uiState.canStop ? "Stop tracking" : "Start tracking")
+                    ? qsTr("Stopping...")
+                    : (root.uiState.canStop ? qsTr("Stop tracking") : qsTr("Start tracking"))
                 variant: "secondary"
                 enabled: root.uiState.canStart || root.uiState.canStop
                 onClicked: root.uiState.togglePipeline()
@@ -52,7 +52,7 @@ VcCard {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "System output"
+                    text: qsTr("System output")
                     color: root.theme.textPrimary
                     font.family: root.theme.fontFamily
                     font.pixelSize: 11
@@ -61,8 +61,8 @@ VcCard {
 
                 Text {
                     text: !root.uiState.outputAvailable
-                        ? "Unavailable"
-                        : (root.uiState.outputArmed ? "Armed" : "Disarmed")
+                        ? qsTr("Unavailable")
+                        : (root.uiState.outputArmed ? qsTr("Armed") : qsTr("Disarmed"))
                     color: root.uiState.outputArmed
                         ? root.theme.accent
                         : root.theme.textMuted
@@ -89,7 +89,7 @@ VcCard {
                     Layout.fillWidth: true
                     theme: root.theme
                     iconName: "target"
-                    text: "Calibrate"
+                    text: qsTr("Calibrate")
                     enabled: false
                 }
 
@@ -97,7 +97,7 @@ VcCard {
                     Layout.fillWidth: true
                     theme: root.theme
                     iconName: "reset"
-                    text: "Reset"
+                    text: qsTr("Reset")
                     enabled: !root.uiState.pipelineRunning
                     onClicked: root.uiState.resetSettingsDefaults()
                 }
@@ -125,9 +125,9 @@ VcCard {
                     text: root.uiState.outputError.length > 0
                         ? root.uiState.outputError
                         : (root.uiState.outputAvailable
-                            ? "M4: cursor movement and mapped mouse/keyboard actions share the protected output path. "
-                                + "System output is opt-in; STOP, stale frames and F8 release everything."
-                            : "Windows mouse/keyboard output is not available in this build.")
+                            ? qsTr("M4: cursor movement and mapped mouse/keyboard actions share the protected output path. ")
+                                + qsTr("System output is opt-in; STOP, stale frames and F8 release everything.")
+                            : qsTr("Windows mouse/keyboard output is not available in this build."))
                     color: root.theme.textSecondary
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10

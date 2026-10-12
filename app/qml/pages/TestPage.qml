@@ -1,3 +1,4 @@
+import VirtualController.I18n 1.0
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -90,7 +91,7 @@ Item {
             result.push({
                 rowIndex: i,
                 row: row,
-                label: row.hand + " + " + row.source + "  →  " + row.action + "  /  " + row.behavior
+                label: root.displayToken(row.hand) + " + " + root.displayToken(row.source) + "  →  " + root.displayToken(row.action) + "  /  " + root.displayToken(row.behavior)
             })
         }
         return result
@@ -155,6 +156,12 @@ Item {
             return false
         const values = root.uiState.logicalKeys || []
         return values.indexOf(keyName) !== -1
+    }
+
+    function displayToken(value) {
+        // Human-readable text only. Mapping behavior still uses canonical IDs.
+        LanguageManager.language
+        return qsTr(value)
     }
 
     function logicalKeysText() {
@@ -265,7 +272,7 @@ Item {
                 queue.push({
                     mappingPosition: mappingPosition,
                     exerciseIndex: exerciseIndex,
-                    label: root.testableMappings[mappingPosition].label + " — " + exercises[exerciseIndex]
+                    label: root.testableMappings[mappingPosition].label + " — " + root.displayToken(exercises[exerciseIndex])
                 })
             }
         }
@@ -298,7 +305,7 @@ Item {
             root.runAllActive = false
             root.testStarted = false
             root.testStatus = "Run complete"
-            root.lastResult = root.runPassed + " passed, " + root.runFailed + " failed"
+            root.lastResult = qsTr("Passed: ") + root.runPassed + qsTr(", Failed: ") + root.runFailed
             return
         }
 
@@ -348,11 +355,11 @@ Item {
                 if (root.cursorInsideNormalized(target.x, target.y, 38)) {
                     root.progress += 1
                     root.targetIndex += 1
-                    root.lastResult = "Target " + root.progress + " / " + root.clickTargetCount
+                    root.lastResult = qsTr("Target ") + root.progress + " / " + root.clickTargetCount
                     if (root.progress >= root.clickTargetCount)
-                        root.completeCurrentTest("Left-click targets completed")
+                        root.completeCurrentTest(qsTr("Left-click targets completed"))
                 } else {
-                    root.lastResult = "Left click detected, but cursor was outside the target"
+                    root.lastResult = qsTr("Left click detected, but cursor was outside the target")
                 }
             }
         } else if (exercise === "Right-click targets") {
@@ -361,30 +368,30 @@ Item {
                 if (root.cursorInsideNormalized(target.x, target.y, 38)) {
                     root.progress += 1
                     root.targetIndex += 1
-                    root.lastResult = "Target " + root.progress + " / " + root.clickTargetCount
+                    root.lastResult = qsTr("Target ") + root.progress + " / " + root.clickTargetCount
                     if (root.progress >= root.clickTargetCount)
-                        root.completeCurrentTest("Right-click targets completed")
+                        root.completeCurrentTest(qsTr("Right-click targets completed"))
                 } else {
-                    root.lastResult = "Right click detected, but cursor was outside the target"
+                    root.lastResult = qsTr("Right click detected, but cursor was outside the target")
                 }
             }
         } else if (exercise === "Drag & Drop") {
             if (!root.dragActive && leftPressEdge && matches) {
                 if (root.cursorInsideNormalized(0.22, 0.50, 54)) {
                     root.dragActive = true
-                    root.lastResult = "Object grabbed — keep the gesture held"
+                    root.lastResult = qsTr("Object grabbed — keep the gesture held")
                 } else {
-                    root.lastResult = "Press detected outside the source object"
+                    root.lastResult = qsTr("Press detected outside the source object")
                 }
             }
 
             if (root.dragActive && leftReleaseEdge) {
                 if (root.cursorInsideNormalized(0.78, 0.50, 66)) {
                     root.dragActive = false
-                    root.completeCurrentTest("Drag & Drop completed")
+                    root.completeCurrentTest(qsTr("Drag & Drop completed"))
                 } else {
                     root.dragActive = false
-                    root.lastResult = "Released outside the DROP zone — try again"
+                    root.lastResult = qsTr("Released outside the DROP zone — try again")
                 }
             }
         } else if (exercise === "Freeze / reposition") {
@@ -396,7 +403,7 @@ Item {
                 root.freezeLastY = root.uiState.cursorY
                 root.freezeMaxMove = 0
                 root.freezeReleaseJump = 0
-                root.lastResult = "Frozen — reposition the hand, then release the gesture"
+                root.lastResult = qsTr("Frozen — reposition the hand, then release the gesture")
             }
 
             if (root.freezeActive && frozen) {
@@ -417,10 +424,10 @@ Item {
                 root.freezeActive = false
                 if (root.freezeMaxMove <= allowedMove && root.freezeReleaseJump <= allowedReleaseJump) {
                     root.completeCurrentTest(
-                        "Freeze stable; release jump " + Math.round(root.freezeReleaseJump) + " px")
+                        qsTr("Freeze stable; release jump ") + Math.round(root.freezeReleaseJump) + " px")
                 } else {
-                    root.lastResult = "Freeze moved " + Math.round(root.freezeMaxMove)
-                        + " px; release jump " + Math.round(root.freezeReleaseJump) + " px — try again"
+                    root.lastResult = qsTr("Freeze moved ") + Math.round(root.freezeMaxMove)
+                        + qsTr(" px; release jump ") + Math.round(root.freezeReleaseJump) + qsTr(" px — try again")
                 }
             }
         } else if (exercise === "Cursor movement gate") {
@@ -430,8 +437,8 @@ Item {
                 root.movementGateStartY = root.uiState.cursorY
                 root.movementGateMaxMove = 0
                 root.lastResult = row.behavior === "Toggle"
-                    ? "Movement enabled — move the hand, then perform the gesture again to lock"
-                    : "Movement enabled — move the hand, then release the gesture"
+                    ? qsTr("Movement enabled — move the hand, then perform the gesture again to lock")
+                    : qsTr("Movement enabled — move the hand, then release the gesture")
             }
 
             if (root.movementGateActive && !movementLocked) {
@@ -446,11 +453,11 @@ Item {
                 root.movementGateActive = false
                 if (root.movementGateMaxMove >= requiredMove) {
                     root.completeCurrentTest(
-                        "Movement gate opened, cursor moved "
+                        qsTr("Movement gate opened, cursor moved ")
                         + Math.round(root.movementGateMaxMove)
-                        + " px, then locked again")
+                        + qsTr(" px, then locked again"))
                 } else {
-                    root.lastResult = "Gate toggled correctly, but move the cursor farther before locking ("
+                    root.lastResult = qsTr("Gate toggled correctly, but move the cursor farther before locking (")
                         + Math.round(root.movementGateMaxMove) + " / " + requiredMove + " px)"
                 }
             }
@@ -460,15 +467,15 @@ Item {
             if (matches && wheel * expectedDirection > 0.25 && now - root.lastScrollAcceptedMs >= 140) {
                 root.lastScrollAcceptedMs = now
                 root.progress += 1
-                root.lastResult = "Scroll step " + root.progress + " / 5"
+                root.lastResult = qsTr("Scroll step ") + root.progress + " / 5"
                 if (root.progress >= 5)
-                    root.completeCurrentTest(row.action + " completed")
+                    root.completeCurrentTest(root.displayToken(row.action) + qsTr(" completed"))
             } else if (matches && wheel * expectedDirection < -0.25) {
-                root.lastResult = "Wrong scroll direction detected"
+                root.lastResult = qsTr("Wrong scroll direction detected")
             }
         } else if (exercise === "Key action") {
             if (keyPressEdge && matches)
-                root.completeCurrentTest(row.action + " detected")
+                root.completeCurrentTest(root.displayToken(row.action) + qsTr(" detected"))
         }
 
         root.previousLeftPressed = leftPressed
@@ -524,8 +531,8 @@ Item {
         PageToolbar {
             Layout.fillWidth: true
             theme: root.theme
-            title: "Gesture Playground"
-            subtitle: "Test enabled Mapping rules inside the app before relying on Windows output."
+            title: qsTr("Gesture Playground")
+            subtitle: qsTr("Test enabled Mapping rules inside the app before relying on Windows output.")
 
             Text {
                 text: root.uiState.activeProfile
@@ -542,7 +549,7 @@ Item {
             }
 
             Text {
-                text: root.uiState.outputArmed ? "SYSTEM OUTPUT" : "SAFE INTERNAL"
+                text: root.uiState.outputArmed ? qsTr("SYSTEM OUTPUT") : qsTr("SAFE INTERNAL")
                 color: root.uiState.outputArmed ? root.theme.warning : root.theme.success
                 font.family: root.theme.fontFamily
                 font.pixelSize: 10
@@ -559,7 +566,7 @@ Item {
 
             VcButton {
                 theme: root.theme
-                text: root.runAllActive ? "Cancel run" : "Run all"
+                text: root.runAllActive ? qsTr("Cancel run") : qsTr("Run all")
                 iconName: root.runAllActive ? "reset" : "play"
                 enabled: root.testableMappings.length > 0 && root.uiState.pipelineRunning
                 onClicked: {
@@ -589,14 +596,14 @@ Item {
                     PanelHeader {
                         Layout.fillWidth: true
                         theme: root.theme
-                        title: "Exercise setup"
-                        statusText: root.testableMappings.length + " mappings"
+                        title: qsTr("Exercise setup")
+                        statusText: qsTr("Mappings") + ": " + root.testableMappings.length
                         statusKind: root.testableMappings.length > 0 ? "success" : "warning"
                     }
 
                     Text {
                         Layout.fillWidth: true
-                        text: "MAPPING"
+                        text: qsTr("MAPPING")
                         color: root.theme.textMuted
                         font.family: root.theme.fontFamily
                         font.pixelSize: 9
@@ -620,7 +627,7 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "EXERCISE"
+                        text: qsTr("EXERCISE")
                         color: root.theme.textMuted
                         font.family: root.theme.fontFamily
                         font.pixelSize: 9
@@ -633,6 +640,7 @@ Item {
                         Layout.fillWidth: true
                         theme: root.theme
                         model: root.currentExercises()
+                        labelFormatter: root.displayToken
                         currentIndex: model.length === 0
                             ? -1
                             : Math.min(root.selectedExerciseIndex, model.length - 1)
@@ -645,7 +653,7 @@ Item {
                     VcButton {
                         Layout.fillWidth: true
                         theme: root.theme
-                        text: root.testStarted ? "Restart test" : "Start test"
+                        text: root.testStarted ? qsTr("Restart test") : qsTr("Start test")
                         iconName: "play"
                         enabled: root.testableMappings.length > 0
                             && root.uiState.pipelineRunning
@@ -656,7 +664,7 @@ Item {
                     VcButton {
                         Layout.fillWidth: true
                         theme: root.theme
-                        text: "Mark failed / next"
+                        text: qsTr("Mark failed / next")
                         variant: "danger"
                         iconName: "reset"
                         visible: root.runAllActive
@@ -675,7 +683,7 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            text: "How it works"
+                            text: qsTr("How it works")
                             color: root.theme.textSecondary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 11
@@ -683,7 +691,7 @@ Item {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: "Safe Internal reads ControllerState after GestureStateManager and ActionMapper, but does not require Windows SendInput. Enable System output above only when you want an end-to-end OS check."
+                            text: qsTr("Safe Internal reads ControllerState after GestureStateManager and ActionMapper, but does not require Windows SendInput. Enable System output above only when you want an end-to-end OS check.")
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10
@@ -696,7 +704,7 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         visible: root.testableMappings.length === 0
-                        text: "No enabled testable mappings. Enable or add a rule on the Mapping page first."
+                        text: qsTr("No enabled testable mappings. Enable or add a rule on the Mapping page first.")
                         color: root.theme.warning
                         font.family: root.theme.fontFamily
                         font.pixelSize: 10
@@ -752,7 +760,7 @@ Item {
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: root.currentExercise().length > 0 ? root.currentExercise() : "No exercise"
+                            text: root.currentExercise().length > 0 ? root.displayToken(root.currentExercise()) : qsTr("No exercise")
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 18
@@ -762,25 +770,25 @@ Item {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: {
                                 if (!root.testStarted)
-                                    return "Choose an enabled mapping and start the test"
+                                    return qsTr("Choose an enabled mapping and start the test")
                                 if (root.currentExercise() === "Click targets")
-                                    return "Move the logical cursor onto the target and perform the mapped left-click gesture"
+                                    return qsTr("Move the logical cursor onto the target and perform the mapped left-click gesture")
                                 if (root.currentExercise() === "Right-click targets")
-                                    return "Move onto the target and perform the mapped right-click gesture"
+                                    return qsTr("Move onto the target and perform the mapped right-click gesture")
                                 if (root.currentExercise() === "Drag & Drop")
-                                    return root.dragActive ? "Keep holding and move to DROP" : "Grab the object with the mapped Hold action"
+                                    return root.dragActive ? qsTr("Keep holding and move to DROP") : qsTr("Grab the object with the mapped Hold action")
                                 if (root.currentExercise() === "Freeze / reposition")
-                                    return root.freezeActive ? "Reposition your hand, then release the freeze gesture" : "Activate the mapped Freeze cursor gesture"
+                                    return root.freezeActive ? qsTr("Reposition your hand, then release the freeze gesture") : qsTr("Activate the mapped Freeze cursor gesture")
                                 if (root.currentExercise() === "Cursor movement gate")
                                     return root.uiState.cursorMovementLocked
-                                        ? "Perform the mapped gesture to enable cursor movement"
+                                        ? qsTr("Perform the mapped gesture to enable cursor movement")
                                         : (root.selectedMapping() && root.selectedMapping().behavior === "Toggle"
-                                            ? "Move the cursor, then perform the gesture again to lock movement"
-                                            : "Move the cursor while holding the gesture, then release it")
+                                            ? qsTr("Move the cursor, then perform the gesture again to lock movement")
+                                            : qsTr("Move the cursor while holding the gesture, then release it"))
                                 if (root.currentExercise() === "Scroll steps")
-                                    return "Perform five mapped scroll steps in the requested direction"
+                                    return qsTr("Perform five mapped scroll steps in the requested direction")
                                 if (root.currentExercise() === "Key action")
-                                    return "Perform the mapped gesture once"
+                                    return qsTr("Perform the mapped gesture once")
                                 return ""
                             }
                             color: root.theme.textMuted
@@ -830,7 +838,7 @@ Item {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "DRAG"
+                            text: qsTr("DRAG")
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 12
@@ -851,7 +859,7 @@ Item {
 
                         Text {
                             anchors.centerIn: parent
-                            text: "DROP"
+                            text: qsTr("DROP")
                             color: root.theme.accent
                             font.family: root.theme.fontFamily
                             font.pixelSize: 12
@@ -877,7 +885,7 @@ Item {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: root.uiState.cursorFrozen ? "FROZEN" : "FREEZE"
+                                text: root.uiState.cursorFrozen ? qsTr("FROZEN") : qsTr("FREEZE")
                                 color: root.uiState.cursorFrozen ? root.theme.accent : root.theme.textSecondary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 16
@@ -886,7 +894,7 @@ Item {
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Max movement: " + Math.round(root.freezeMaxMove) + " px   •   Release jump: " + Math.round(root.freezeReleaseJump) + " px"
+                            text: qsTr("Max movement: ") + Math.round(root.freezeMaxMove) + " px   •   Release jump: " + Math.round(root.freezeReleaseJump) + " px"
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10
@@ -913,7 +921,7 @@ Item {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: root.uiState.cursorMovementLocked ? "MOVEMENT LOCKED" : "MOVEMENT ENABLED"
+                                text: root.uiState.cursorMovementLocked ? qsTr("MOVEMENT LOCKED") : qsTr("MOVEMENT ENABLED")
                                 color: root.uiState.cursorMovementLocked ? root.theme.textSecondary : root.theme.accent
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 14
@@ -923,7 +931,7 @@ Item {
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Cursor movement: " + Math.round(root.movementGateMaxMove) + " px"
+                            text: qsTr("Cursor movement: ") + Math.round(root.movementGateMaxMove) + " px"
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10
@@ -1043,7 +1051,7 @@ Item {
 
                             StatusBadge {
                                 theme: root.theme
-                                text: root.testStatus.toUpperCase()
+                                text: root.displayToken(root.testStatus.toUpperCase())
                                 kind: root.testStatus === "Passed" ? "success"
                                     : root.testStatus === "Failed" ? "error"
                                     : root.testStatus === "Running" ? "warning"
@@ -1051,7 +1059,7 @@ Item {
                             }
                             Text {
                                 Layout.fillWidth: true
-                                text: root.lastResult.length > 0 ? root.lastResult : "Waiting for test input"
+                                text: root.lastResult.length > 0 ? root.lastResult : qsTr("Waiting for test input")
                                 color: root.theme.textSecondary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 10
@@ -1085,12 +1093,12 @@ Item {
                     PanelHeader {
                         Layout.fillWidth: true
                         theme: root.theme
-                        title: "Live diagnostics"
+                        title: qsTr("Live diagnostics")
                     }
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Classifier → event → mapped logical action"
+                        text: qsTr("Classifier → event → mapped logical action")
                         color: root.theme.textMuted
                         font.family: root.theme.fontFamily
                         font.pixelSize: 10
@@ -1105,24 +1113,24 @@ Item {
                         columnSpacing: 8
                         rowSpacing: 8
 
-                        Text { text: "Hand"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
+                        Text { text: qsTr("Hand"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
                         Text { Layout.fillWidth: true; text: root.selectedMapping() ? root.selectedMapping().hand : "-"; color: root.theme.textPrimary; font.family: root.theme.fontFamily; font.pixelSize: 11; font.weight: Font.DemiBold }
-                        Text { text: "Expected"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
+                        Text { text: qsTr("Expected"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
                         Text { Layout.fillWidth: true; text: root.selectedMapping() ? root.selectedMapping().source : "-"; color: root.theme.textPrimary; font.family: root.theme.fontFamily; font.pixelSize: 11; font.weight: Font.DemiBold }
-                        Text { text: "Recognized"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
-                        Text { Layout.fillWidth: true; text: root.liveGestureFor(root.selectedMapping()); color: root.gestureMatches(root.selectedMapping()) ? root.theme.success : root.theme.textSecondary; font.family: root.theme.fontFamily; font.pixelSize: 11; font.weight: Font.DemiBold }
-                        Text { text: "Event"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
+                        Text { text: qsTr("Recognized"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
+                        Text { Layout.fillWidth: true; text: root.displayToken(root.liveGestureFor(root.selectedMapping())); color: root.gestureMatches(root.selectedMapping()) ? root.theme.success : root.theme.textSecondary; font.family: root.theme.fontFamily; font.pixelSize: 11; font.weight: Font.DemiBold }
+                        Text { text: qsTr("Event"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
                         Text { Layout.fillWidth: true; text: root.liveEventFor(root.selectedMapping()); color: root.theme.textSecondary; font.family: root.theme.fontFamily; font.pixelSize: 11; font.weight: Font.DemiBold }
-                        Text { text: "Mapped action"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
+                        Text { text: qsTr("Mapped action"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
                         Text { Layout.fillWidth: true; text: root.selectedMapping() ? root.selectedMapping().action : "-"; color: root.theme.textPrimary; font.family: root.theme.fontFamily; font.pixelSize: 11; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                        Text { text: "Behavior"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
+                        Text { text: qsTr("Behavior"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
                         Text { Layout.fillWidth: true; text: root.selectedMapping() ? root.selectedMapping().behavior : "-"; color: root.theme.textSecondary; font.family: root.theme.fontFamily; font.pixelSize: 11 }
                     }
 
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
 
                     Text {
-                        text: "LOGICAL OUTPUT"
+                        text: qsTr("LOGICAL OUTPUT")
                         color: root.theme.textMuted
                         font.family: root.theme.fontFamily
                         font.pixelSize: 9
@@ -1134,21 +1142,21 @@ Item {
                         Layout.fillWidth: true
                         StatusBadge { theme: root.theme; text: "LMB"; kind: root.uiState.logicalMouseLeft ? "success" : "neutral" }
                         StatusBadge { theme: root.theme; text: "RMB"; kind: root.uiState.logicalMouseRight ? "success" : "neutral" }
-                        StatusBadge { theme: root.theme; text: "FREEZE"; kind: root.uiState.cursorFrozen ? "warning" : "neutral" }
-                        StatusBadge { theme: root.theme; text: root.uiState.cursorMovementLocked ? "MOVE LOCKED" : "MOVE ON"; kind: root.uiState.cursorMovementLocked ? "neutral" : "success" }
+                        StatusBadge { theme: root.theme; text: qsTr("FREEZE"); kind: root.uiState.cursorFrozen ? "warning" : "neutral" }
+                        StatusBadge { theme: root.theme; text: root.uiState.cursorMovementLocked ? qsTr("MOVE LOCKED") : qsTr("MOVE ON"); kind: root.uiState.cursorMovementLocked ? "neutral" : "success" }
                         Item { Layout.fillWidth: true }
                     }
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Wheel: " + Number(root.uiState.logicalWheel).toFixed(1)
+                        text: qsTr("Wheel: ") + Number(root.uiState.logicalWheel).toFixed(1)
                         color: root.theme.textSecondary
                         font.family: root.theme.fontFamily
                         font.pixelSize: 10
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Keys: " + root.logicalKeysText()
+                        text: qsTr("Keys: ") + root.logicalKeysText()
                         color: root.theme.textSecondary
                         font.family: root.theme.fontFamily
                         font.pixelSize: 10
@@ -1156,7 +1164,7 @@ Item {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Cursor: " + root.uiState.cursorX + " / " + root.uiState.cursorY
+                        text: qsTr("Cursor: ") + root.uiState.cursorX + " / " + root.uiState.cursorY
                         color: root.theme.textSecondary
                         font.family: root.theme.fontFamily
                         font.pixelSize: 10
@@ -1165,7 +1173,7 @@ Item {
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
 
                     Text {
-                        text: "RUN ALL"
+                        text: qsTr("RUN ALL")
                         color: root.theme.textMuted
                         font.family: root.theme.fontFamily
                         font.pixelSize: 9
@@ -1175,16 +1183,16 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         text: root.runAllActive
-                            ? "Exercise " + (root.runQueuePosition + 1) + " / " + root.runQueue.length
-                            : "Not running"
+                            ? qsTr("Exercise ") + (root.runQueuePosition + 1) + " / " + root.runQueue.length
+                            : qsTr("Not running")
                         color: root.theme.textSecondary
                         font.family: root.theme.fontFamily
                         font.pixelSize: 10
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        StatusBadge { theme: root.theme; text: root.runPassed + " passed"; kind: "success" }
-                        StatusBadge { theme: root.theme; text: root.runFailed + " failed"; kind: root.runFailed > 0 ? "error" : "neutral" }
+                        StatusBadge { theme: root.theme; text: qsTr("Passed: ") + root.runPassed; kind: "success" }
+                        StatusBadge { theme: root.theme; text: qsTr("Failed: ") + root.runFailed; kind: root.runFailed > 0 ? "error" : "neutral" }
                         Item { Layout.fillWidth: true }
                     }
 
@@ -1193,8 +1201,8 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         text: root.uiState.outputArmed
-                            ? "System output is armed. Playground actions are also being sent to Windows. F8 remains the emergency disarm."
-                            : "Safe Internal mode: the playground validates logical mappings without sending clicks/keys to Windows."
+                            ? qsTr("System output is armed. Playground actions are also being sent to Windows. F8 remains the emergency disarm.")
+                            : qsTr("Safe Internal mode: the playground validates logical mappings without sending clicks/keys to Windows.")
                         color: root.uiState.outputArmed ? root.theme.warning : root.theme.textMuted
                         font.family: root.theme.fontFamily
                         font.pixelSize: 9

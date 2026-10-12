@@ -5,7 +5,7 @@ Item {
     id: root
 
     required property QtObject theme
-    property string text: "Controller"
+    property string text: qsTr("Controller")
     property string iconName: "monitor"
     property bool selected: false
     signal clicked()

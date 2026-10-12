@@ -5,6 +5,14 @@ import QtQuick.Layouts
 ComboBox {
     id: root
     required property QtObject theme
+    // Optional localized display; the underlying ComboBox.currentText stays
+    // unchanged for Mapping/profile JSON and runtime APIs.
+    property var labelFormatter: null
+    function labelFor(value) {
+        return root.labelFormatter ? root.labelFormatter(value) : value
+    }
+
+    displayText: root.labelFor(root.currentText)
     implicitHeight: 40
     leftPadding: 12
     rightPadding: 34
@@ -15,7 +23,7 @@ ComboBox {
     delegate: ItemDelegate {
         width: root.width
         contentItem: Text {
-            text: modelData
+            text: root.labelFor(modelData)
             color: root.theme.textPrimary
             font.family: root.theme.fontFamily
             font.pixelSize: 12

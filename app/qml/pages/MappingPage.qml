@@ -1,3 +1,4 @@
+import VirtualController.I18n 1.0
 import QtQuick
 import QtQml
 import QtQuick.Controls
@@ -25,6 +26,13 @@ Item {
         "Key Left", "Key Right", "Key Up", "Key Down",
         "Key Ctrl", "Key Shift", "Key Alt"
     ]
+
+    function displayOption(value) {
+        // The mapper expects stable English action/behavior identifiers.
+        // Only the ComboBox and table labels are translated.
+        LanguageManager.language
+        return qsTr(value)
+    }
 
     function optionIndex(options, value, fallback) {
         const index = options.indexOf(value)
@@ -60,8 +68,8 @@ Item {
         PageToolbar {
             Layout.fillWidth: true
             theme: root.theme
-            title: "Gesture Mapping"
-            subtitle: "M4: PRESS / HOLD / RELEASE events mapped to mouse and keyboard actions."
+            title: qsTr("Gesture Mapping")
+            subtitle: qsTr("M4: PRESS / HOLD / RELEASE events mapped to mouse and keyboard actions.")
 
             VcComboBox {
                 id: mappingProfileCombo
@@ -74,7 +82,7 @@ Item {
 
             VcButton {
                 theme: root.theme
-                text: "Reload"
+                text: qsTr("Reload")
                 iconName: "reset"
                 implicitWidth: 100
                 onClicked: root.uiState.reloadActiveProfile()
@@ -82,7 +90,7 @@ Item {
 
             VcButton {
                 theme: root.theme
-                text: "Add mapping"
+                text: qsTr("Add mapping")
                 iconName: "plus"
                 implicitWidth: 124
                 onClicked: root.selectedRow = root.uiState.addMapping()
@@ -90,7 +98,7 @@ Item {
 
             VcButton {
                 theme: root.theme
-                text: "Remove"
+                text: qsTr("Remove")
                 iconName: "trash"
                 variant: "danger"
                 implicitWidth: 104
@@ -131,7 +139,7 @@ Item {
                         Layout.fillWidth: true
                         theme: root.theme
                         iconName: "mapping"
-                        title: "Event model"
+                        title: qsTr("Event model")
                     }
 
                     Rectangle {
@@ -148,7 +156,7 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            text: "Recognized gesture"
+                            text: qsTr("Recognized gesture")
                             color: root.theme.textSecondary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 11
@@ -173,7 +181,7 @@ Item {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: "Mouse / Keyboard"
+                            text: qsTr("Mouse / Keyboard")
                             color: root.theme.textSecondary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 11
@@ -189,7 +197,7 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            text: "Profiles"
+                            text: qsTr("Profiles")
                             color: root.theme.textSecondary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 11
@@ -197,7 +205,7 @@ Item {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: "JSON profiles are stored in:\n" + root.uiState.mappingProfileDirectory
+                            text: qsTr("JSON profiles are stored in:\n") + root.uiState.mappingProfileDirectory
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 9
@@ -226,14 +234,14 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            text: "Mappings"
+                            text: qsTr("Mappings")
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 15
                             font.weight: Font.DemiBold
                         }
                         Text {
-                            text: root.uiState.mappingRows.length + " rules"
+                            text: qsTr("Mappings") + ": " + root.uiState.mappingRows.length
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10
@@ -259,12 +267,12 @@ Item {
 
                             Repeater {
                                 model: [
-                                    { title: "Hand", width: 58 },
-                                    { title: "Gesture", width: 116 },
-                                    { title: "Behavior", width: 76 },
-                                    { title: "Action", width: 130 },
-                                    { title: "Output", width: 78 },
-                                    { title: "State", width: 76 }
+                                    { title: qsTr("Hand"), width: 58 },
+                                    { title: qsTr("Gesture"), width: 116 },
+                                    { title: qsTr("Behavior"), width: 76 },
+                                    { title: qsTr("Action"), width: 130 },
+                                    { title: qsTr("Output"), width: 78 },
+                                    { title: qsTr("State"), width: 76 }
                                 ]
                                 delegate: Text {
                                     required property var modelData
@@ -327,14 +335,14 @@ Item {
 
                                         Text {
                                             Layout.preferredWidth: 58
-                                            text: modelData.hand
+                                            text: root.displayOption(modelData.hand)
                                             color: root.theme.textSecondary
                                             font.family: root.theme.fontFamily
                                             font.pixelSize: 11
                                         }
                                         Text {
                                             Layout.preferredWidth: 116
-                                            text: modelData.source
+                                            text: root.displayOption(modelData.source)
                                             color: root.theme.textPrimary
                                             font.family: root.theme.fontFamily
                                             font.pixelSize: 11
@@ -343,12 +351,12 @@ Item {
                                         TagChip {
                                             Layout.preferredWidth: 76
                                             theme: root.theme
-                                            text: modelData.behavior
+                                            text: root.displayOption(modelData.behavior)
                                         }
                                         Text {
                                             Layout.fillWidth: true
                                             Layout.minimumWidth: 130
-                                            text: modelData.action
+                                            text: root.displayOption(modelData.action)
                                             color: root.theme.textSecondary
                                             font.family: root.theme.fontFamily
                                             font.pixelSize: 11
@@ -356,7 +364,7 @@ Item {
                                         }
                                         Text {
                                             Layout.preferredWidth: 78
-                                            text: modelData.output
+                                            text: root.displayOption(modelData.output)
                                             color: root.theme.textSecondary
                                             font.family: root.theme.fontFamily
                                             font.pixelSize: 11
@@ -364,7 +372,7 @@ Item {
                                         StatusBadge {
                                             Layout.preferredWidth: 76
                                             theme: root.theme
-                                            text: modelData.state
+                                            text: root.displayOption(modelData.state)
                                             kind: modelData.enabled ? "success" : "neutral"
                                         }
                                     }
@@ -393,7 +401,7 @@ Item {
                         Layout.fillWidth: true
                         theme: root.theme
                         iconName: "settings"
-                        title: "Mapping Details"
+                        title: qsTr("Mapping Details")
                     }
                     Rectangle {
                         Layout.fillWidth: true
@@ -408,28 +416,31 @@ Item {
                         spacing: 9
                         enabled: root.selectedRow >= 0
 
-                        Text { text: "Hand"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
+                        Text { text: qsTr("Hand"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
                         VcComboBox {
                             id: handCombo
                             Layout.fillWidth: true
                             theme: root.theme
                             model: root.handOptions
+                            labelFormatter: root.displayOption
                         }
 
-                        Text { text: "Gesture"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
+                        Text { text: qsTr("Gesture"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
                         VcComboBox {
                             id: gestureCombo
                             Layout.fillWidth: true
                             theme: root.theme
                             model: root.gestureOptions
+                            labelFormatter: root.displayOption
                         }
 
-                        Text { text: "Action"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
+                        Text { text: qsTr("Action"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
                         VcComboBox {
                             id: actionCombo
                             Layout.fillWidth: true
                             theme: root.theme
                             model: root.actionOptions
+                            labelFormatter: root.displayOption
                             onActivated: {
                                 if ((currentText === "Freeze cursor"
                                         || currentText === "Enable cursor movement")
@@ -439,12 +450,13 @@ Item {
                             }
                         }
 
-                        Text { text: "Behavior"; color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
+                        Text { text: qsTr("Behavior"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
                         VcComboBox {
                             id: behaviorCombo
                             Layout.fillWidth: true
                             theme: root.theme
                             model: root.behaviorOptions
+                            labelFormatter: root.displayOption
                             onActivated: {
                                 if (actionCombo.currentText === "Enable cursor movement"
                                         && currentText === "Press") {
@@ -464,7 +476,7 @@ Item {
                             Layout.fillWidth: true
                             Text {
                                 Layout.fillWidth: true
-                                text: "Enabled"
+                                text: qsTr("Enabled")
                                 color: root.theme.textPrimary
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 11
@@ -481,19 +493,19 @@ Item {
                             Layout.fillWidth: true
                             text: actionCombo.currentText === "Freeze cursor"
                                 ? (behaviorCombo.currentText === "Toggle"
-                                    ? "Toggle freezes/unfreezes cursor movement on each PRESS. Tracking continues in the background."
+                                    ? qsTr("Toggle freezes/unfreezes cursor movement on each PRESS. Tracking continues in the background.")
                                     : behaviorCombo.currentText === "Hold"
-                                        ? "Hold freezes cursor movement until RELEASE. You can reposition your hand without a cursor jump."
-                                        : "Press freezes cursor movement for the PRESS frame only; Hold is recommended.")
+                                        ? qsTr("Hold freezes cursor movement until RELEASE. You can reposition your hand without a cursor jump.")
+                                        : qsTr("Press freezes cursor movement for the PRESS frame only; Hold is recommended."))
                                 : actionCombo.currentText === "Enable cursor movement"
                                     ? (behaviorCombo.currentText === "Toggle"
-                                        ? "Toggle: first PRESS enables cursor movement, the next PRESS disables it. Cursor movement is locked by default and only an active Enable cursor movement mapping can unlock it."
-                                        : "Hold: cursor movement is enabled only while this gesture is held. Tracking continues while locked, so activating the gesture does not cause a cursor jump.")
+                                        ? qsTr("Toggle: first PRESS enables cursor movement, the next PRESS disables it. Cursor movement is locked by default and only an active Enable cursor movement mapping can unlock it.")
+                                        : qsTr("Hold: cursor movement is enabled only while this gesture is held. Tracking continues while locked, so activating the gesture does not cause a cursor jump."))
                                     : behaviorCombo.currentText === "Hold"
-                                        ? "Hold keeps the button/key down until RELEASE. Useful for pinch-drag."
+                                        ? qsTr("Hold keeps the button/key down until RELEASE. Useful for pinch-drag.")
                                         : behaviorCombo.currentText === "Toggle"
-                                            ? "Toggle flips the target state on every PRESS. F8 or disarm always releases it."
-                                            : "Press generates a short one-shot action when PRESS is emitted."
+                                            ? qsTr("Toggle flips the target state on every PRESS. F8 or disarm always releases it.")
+                                            : qsTr("Press generates a short one-shot action when PRESS is emitted.")
                             color: root.theme.textMuted
                             font.family: root.theme.fontFamily
                             font.pixelSize: 9
@@ -505,7 +517,7 @@ Item {
                         VcButton {
                             Layout.fillWidth: true
                             theme: root.theme
-                            text: "Save mapping"
+                            text: qsTr("Save mapping")
                             iconName: "save"
                             onClicked: root.uiState.updateMapping(
                                 root.selectedRow,
@@ -519,7 +531,7 @@ Item {
                         VcButton {
                             Layout.fillWidth: true
                             theme: root.theme
-                            text: "Remove mapping"
+                            text: qsTr("Remove mapping")
                             variant: "danger"
                             onClicked: {
                                 const oldIndex = root.selectedRow

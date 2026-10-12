@@ -1,10 +1,12 @@
 #include "runtime/RuntimeController.hpp"
+#include "i18n/LanguageManager.hpp"
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QtQml/qqml.h>
 #include <QQuickStyle>
 #include <QUrl>
 #include <QtGlobal>
@@ -74,10 +76,17 @@ int main(int argc, char *argv[])
 
     vc::RuntimeController runtimeController;
     QQmlApplicationEngine engine;
+    // Owned by QGuiApplication so the singleton outlives the QML engine.
+    auto *languageManager = new vc::LanguageManager(&engine, &app);
 
     engine.rootContext()->setContextProperty(
         QStringLiteral("runtimeController"),
         &runtimeController);
+
+    // Expose localization as a QML singleton, independent of context properties.
+    // Register before engine.load(), and keep the C++ object alive through app.exec().
+    qmlRegisterSingletonInstance(
+        "VirtualController.I18n", 1, 0, "LanguageManager", languageManager);
 
     QObject::connect(
         &runtimeController,

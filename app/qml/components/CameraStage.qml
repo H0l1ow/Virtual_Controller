@@ -53,7 +53,7 @@ VcCard {
     Text {
         anchors.centerIn: parent
         visible: !root.uiState.cameraRunning
-        text: "CAMERA PREVIEW"
+        text: qsTr("CAMERA PREVIEW")
         color: root.theme.textPrimary
         opacity: 0.055
         font.family: root.theme.fontFamily
@@ -293,8 +293,8 @@ VcCard {
             Text {
                 Layout.fillWidth: true
                 text: root.uiState.cameraRunning
-                    ? "Camera Active"
-                    : "Camera Off"
+                    ? qsTr("Camera Active")
+                    : qsTr("Camera Off")
                 color: root.theme.textPrimary
                 font.family: root.theme.fontFamily
                 font.pixelSize: 12
@@ -448,11 +448,11 @@ VcCard {
                 anchors.centerIn: parent
                 text: root.uiState.leftTracked
                     ? (root.uiState.gestureRecognitionAvailable
-                        ? "L  " + root.uiState.leftGesture + "  "
+                        ? "L  " + qsTr(root.uiState.leftGesture) + "  "
                             + Math.round(root.uiState.leftGestureConfidence * 100) + "%"
-                        : "L  TRACKED  MP " + root.uiState.leftReportedSide + " "
+                        : qsTr("L  TRACKED  MP ") + root.uiState.leftReportedSide + " "
                             + Math.round(root.uiState.leftConfidence * 100) + "%")
-                    : "L  NOT TRACKED"
+                    : qsTr("L  NOT TRACKED")
                 color: root.uiState.leftTracked
                     ? root.theme.textSecondary
                     : root.theme.textMuted
@@ -481,11 +481,11 @@ VcCard {
                 anchors.centerIn: parent
                 text: root.uiState.rightTracked
                     ? (root.uiState.gestureRecognitionAvailable
-                        ? "R  " + root.uiState.rightGesture + "  "
+                        ? "R  " + qsTr(root.uiState.rightGesture) + "  "
                             + Math.round(root.uiState.rightGestureConfidence * 100) + "%"
-                        : "R  TRACKED  MP " + root.uiState.rightReportedSide + " "
+                        : qsTr("R  TRACKED  MP ") + root.uiState.rightReportedSide + " "
                             + Math.round(root.uiState.rightConfidence * 100) + "%")
-                    : "R  NOT TRACKED"
+                    : qsTr("R  NOT TRACKED")
                 color: root.uiState.rightTracked
                     ? root.theme.accent
                     : root.theme.textMuted
