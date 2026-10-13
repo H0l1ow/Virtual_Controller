@@ -84,7 +84,6 @@ Item {
                 theme: root.theme
                 text: qsTr("Reload")
                 iconName: "reset"
-                implicitWidth: 100
                 onClicked: root.uiState.reloadActiveProfile()
             }
 
@@ -92,7 +91,6 @@ Item {
                 theme: root.theme
                 text: qsTr("Add mapping")
                 iconName: "plus"
-                implicitWidth: 124
                 onClicked: root.selectedRow = root.uiState.addMapping()
             }
 
@@ -101,7 +99,6 @@ Item {
                 text: qsTr("Remove")
                 iconName: "trash"
                 variant: "danger"
-                implicitWidth: 104
                 enabled: root.selectedRow >= 0
                 onClicked: {
                     const oldIndex = root.selectedRow

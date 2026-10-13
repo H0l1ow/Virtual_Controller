@@ -1,7 +1,12 @@
-# Virtual Controller - M5.1 Language Switch (0.10.1)
+# Virtual Controller - M5.2 Settings & Mini Preview (0.10.2)
 
 Qt/QML + C++20 desktop application for two-hand camera tracking, gesture-driven
 mouse/keyboard input, mapping profiles and an in-app Gesture Playground.
+
+M5.2 introduces QSettings-backed user settings (explicit Save/Reset),
+Light/Dark/Follow Windows appearance, a mini live-camera window on minimize
+(Picture-in-Picture; shares the original camera stream), and a quick profile
+selector in the main top bar. See **PATCH_M5_2_README.md** for details.
 
 M5.1 adds instant **English / Polski** UI switching in **Settings > General > Language**. The choice is persisted with `QSettings`, translations are bundled inside Qt resources, and Mapping/profile identifiers remain unchanged. See **PATCH_M5_1_README.md** for installation and language extension details.
 
@@ -89,6 +94,9 @@ remains a separate mapping action and has priority over the movement gate.
 - Gesture jitter grace: 100 ms (only while tracking is valid)
 - Gesture release threshold: 55%
 - System output: OFF
+- Appearance: Dark (or follow Windows, or Light)
+- Mini camera preview on minimize: ON
+- Settings persistence: click Save (language remains automatically saved)
 - Cursor movement gate: LOCKED until a mapped enable action is active
 
 ## Qt Creator

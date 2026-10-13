@@ -9,6 +9,8 @@ QtObject {
     property bool cameraRunning: true
     property bool pipelineRunning: true
     property bool outputArmed: false
+    property bool hasUnsavedSettings: false
+    property string settingsSaveError: ""
 
     readonly property string runtimeStateName:
         pipelineRunning ? "Running" : "Stopped"
@@ -288,6 +290,10 @@ QtObject {
         { keyName: "LB / RB", value: "Off / Off" },
         { keyName: "D-Pad", value: "Neutral" }
     ]
+
+    function attachPiPVideoSink(sink) {}
+    function setPiPActive(active) {}
+    function saveSettings() { return true }
 
     function attachVideoOutput(output) {
         // No-op in mock mode.

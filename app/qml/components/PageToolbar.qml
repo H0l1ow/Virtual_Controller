@@ -24,9 +24,13 @@ Rectangle {
 
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             spacing: 1
 
             Text {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                elide: Text.ElideRight
                 text: root.title
                 color: root.theme.textPrimary
                 font.family: root.theme.fontFamily
@@ -35,6 +39,9 @@ Rectangle {
             }
 
             Text {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                elide: Text.ElideRight
                 visible: root.subtitle.length > 0
                 text: root.subtitle
                 color: root.theme.textMuted

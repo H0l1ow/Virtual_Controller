@@ -10,13 +10,16 @@ Button {
     property string iconName: ""
 
     implicitHeight: 42
-    implicitWidth: Math.max(104, contentRow.implicitWidth + 28)
+    // Respect translated text width instead of relying on a RowLayout's
+    // computed width (which may be constrained by its parent).
+    implicitWidth: Math.max(104, labelText.implicitWidth + 28
+                            + (root.iconName.length > 0 ? 20 + contentRow.spacing : 0))
     hoverEnabled: enabled
     opacity: enabled ? 1.0 : 0.45
 
     readonly property color baseColor: {
         if (variant === "primary") return theme.surfaceRaised
-        if (variant === "danger") return "#271419"
+        if (variant === "danger") return theme.isLight ? "#FBE7EA" : "#271419"
         if (variant === "ghost") return "transparent"
         return theme.surfaceRaised
     }
@@ -47,7 +50,11 @@ Button {
         }
 
         Text {
+            id: labelText
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            elide: Text.ElideRight
+            clip: true
             text: root.text
             color: root.variant === "danger" ? root.theme.error : root.theme.textPrimary
             font.family: root.theme.fontFamily

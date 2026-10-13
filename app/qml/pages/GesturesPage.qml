@@ -328,7 +328,7 @@ Item {
                         Layout.leftMargin: 12
                         Layout.rightMargin: 12
                         Layout.topMargin: 12
-                        color: "#151D23"
+                        color: root.theme.surfaceRaised
                         border.width: 1
                         border.color: root.theme.borderStrong
                         clip: true

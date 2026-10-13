@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
+import VirtualController.Preferences 1.0
 import "theme"
 import "mock"
 import "components"
@@ -21,6 +22,7 @@ ApplicationWindow {
 
     Theme {
         id: theme
+        mode: AppPreferences.effectiveTheme
     }
     UiMock {
         id: uiStateMock
@@ -38,6 +40,24 @@ ApplicationWindow {
         mockUi ? uiStateMock : runtimeUiState
 
     property int currentPage: 0
+
+    function restoreMainWindow() {
+        if (controllerFullscreen)
+            showFullScreen()
+        else
+            showNormal()
+        raise()
+        requestActivate()
+    }
+
+    MiniPreviewWindow {
+        id: miniPreview
+        uiState: window.uiState
+        theme: theme
+        minimizeActive: window.visibility === Window.Minimized
+        enabledByUser: AppPreferences.pipEnabled
+        onRestoreRequested: window.restoreMainWindow()
+    }
 
     // Controller fullscreen is a presentation mode only. Tracking keeps using
     // the same camera pipeline and the same VideoOutput instance.

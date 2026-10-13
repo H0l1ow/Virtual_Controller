@@ -62,7 +62,7 @@ VcCard {
                     anchors.rightMargin: 8
                     anchors.topMargin: 8
                     anchors.bottomMargin: 7
-                    color: "#111920"
+                    color: root.theme.surfaceRaised
                     border.width: 1
                     border.color: root.theme.border
                     radius: root.theme.smallRadius

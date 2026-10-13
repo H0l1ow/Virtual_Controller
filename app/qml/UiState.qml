@@ -1,4 +1,5 @@
 import QtQuick
+import VirtualController.Preferences 1.0
 import "catalog"
 
 QtObject {
@@ -7,6 +8,15 @@ QtObject {
     required property QtObject runtimeBackend
 
     property QtObject catalog: UiCatalog {}
+
+    // Runtime changes are applied live. Save commits a versioned snapshot to
+    // QSettings; unsafe values such as outputArmed are deliberately excluded.
+    property bool settingsReady: false
+    property string savedSettingsSnapshot: ""
+    readonly property bool hasUnsavedSettings:
+        settingsReady && JSON.stringify(settingsSnapshot()) !== savedSettingsSnapshot
+    readonly property string settingsSaveError: AppPreferences.saveError
+
 
     readonly property string runtimeStateName:
         runtimeBackend.runtimeStateName
@@ -220,6 +230,14 @@ QtObject {
         runtimeBackend.attachVideoOutput(output)
     }
 
+    function attachPiPVideoSink(sink) {
+        runtimeBackend.attachPiPVideoSink(sink)
+    }
+
+    function setPiPActive(active) {
+        runtimeBackend.setPiPActive(active)
+    }
+
     function selectCamera(index) {
         runtimeBackend.selectCamera(index)
     }
@@ -335,6 +353,84 @@ QtObject {
         runtimeBackend.togglePipeline()
     }
 
+    function settingsSnapshot() {
+        return {
+            themeMode: AppPreferences.themeMode,
+            pipEnabled: AppPreferences.pipEnabled,
+            cameraName: cameraNames[cameraIndex] || "",
+            formatName: formatNames[formatIndex] || "",
+            sensitivity: sensitivity,
+            cursorSpeedPercent: cursorSpeedPercent,
+            smoothing: smoothing,
+            invertX: invertX,
+            invertY: invertY,
+            deadzone: deadzone,
+            detectionConfidence: detectionConfidence,
+            trackingConfidence: trackingConfidence,
+            swapHandedness: swapHandedness,
+            recognitionThreshold: recognitionThreshold,
+            debounceMs: debounceMs,
+            cooldownMs: cooldownMs,
+            requireRelease: requireRelease,
+            gestureGraceMs: gestureGraceMs,
+            gestureReleaseThreshold: gestureReleaseThreshold,
+            showLandmarks: showLandmarks,
+            mirrorPreview: mirrorPreview,
+            activeProfile: activeProfile
+        }
+    }
+
+    function restoreSavedSettings() {
+        const saved = AppPreferences.loadSettings()
+        const has = (name) => Object.prototype.hasOwnProperty.call(saved, name)
+
+        // Apply to the real C++ runtime, not only to visual controls.
+        if (has("sensitivity")) setSensitivity(saved.sensitivity)
+        if (has("cursorSpeedPercent")) setCursorSpeedPercent(saved.cursorSpeedPercent)
+        if (has("smoothing")) setSmoothing(saved.smoothing)
+        if (has("invertX")) setInvertX(saved.invertX)
+        if (has("invertY")) setInvertY(saved.invertY)
+        if (has("deadzone")) setDeadzone(saved.deadzone)
+        if (has("detectionConfidence")) setDetectionConfidence(saved.detectionConfidence)
+        if (has("trackingConfidence")) setTrackingConfidence(saved.trackingConfidence)
+        if (has("swapHandedness")) setSwapHandedness(saved.swapHandedness)
+        if (has("recognitionThreshold")) setRecognitionThreshold(saved.recognitionThreshold)
+        if (has("debounceMs")) setDebounceMs(saved.debounceMs)
+        if (has("cooldownMs")) setCooldownMs(saved.cooldownMs)
+        if (has("requireRelease")) setRequireRelease(saved.requireRelease)
+        if (has("gestureGraceMs")) setGestureGraceMs(saved.gestureGraceMs)
+        if (has("gestureReleaseThreshold")) setGestureReleaseThreshold(saved.gestureReleaseThreshold)
+        if (has("showLandmarks")) showLandmarks = saved.showLandmarks
+        if (has("mirrorPreview")) mirrorPreview = saved.mirrorPreview
+
+        // Camera order may change across reboots. Match labels, never indices.
+        if (has("cameraName")) {
+            const camera = cameraNames.indexOf(saved.cameraName)
+            if (camera >= 0) selectCamera(camera)
+        }
+        if (has("formatName")) {
+            const format = formatNames.indexOf(saved.formatName)
+            if (format >= 0) selectFormat(format)
+        }
+        if (has("activeProfile") && profileNames.indexOf(saved.activeProfile) >= 0)
+            setActiveProfile(saved.activeProfile)
+
+        // Do not restore outputArmed or running sessions across launches.
+        setOutputArmed(false)
+        savedSettingsSnapshot = JSON.stringify(settingsSnapshot())
+        settingsReady = true
+    }
+
+    function saveSettings() {
+        if (!settingsReady)
+            return false
+        const snapshot = settingsSnapshot()
+        if (!AppPreferences.saveSettings(snapshot))
+            return false
+        savedSettingsSnapshot = JSON.stringify(snapshot)
+        return true
+    }
+
     function resetSettingsDefaults() {
         if (pipelineRunning)
             return
@@ -345,20 +441,23 @@ QtObject {
         setInvertX(false)
         setInvertY(false)
         setDeadzone(12)
-
         setDetectionConfidence(60)
         setTrackingConfidence(55)
-
         setRecognitionThreshold(80)
         setDebounceMs(120)
         setCooldownMs(250)
         setRequireRelease(true)
-
+        setGestureGraceMs(100)
+        setGestureReleaseThreshold(55)
         showLandmarks = true
         mirrorPreview = true
         setSwapHandedness(false)
-
         setActiveProfile("Default")
         setOutputArmed(false)
+        AppPreferences.themeMode = "dark"
+        AppPreferences.pipEnabled = true
+        // Reset is a preview until the user clicks Save.
     }
+
+    Component.onCompleted: restoreSavedSettings()
 }

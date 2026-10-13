@@ -63,6 +63,14 @@ Item {
         Component.onCompleted: requestPaint()
     }
 
+    Connections {
+        target: root.theme
+        function onModeChanged() {
+            bodyCanvas.requestPaint()
+            dpadCanvas.requestPaint()
+        }
+    }
+
     // Shoulder buttons are deliberately kept inside the controller bounds.
     Rectangle {
         z: 1

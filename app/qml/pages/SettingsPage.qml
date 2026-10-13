@@ -1,4 +1,5 @@
 import VirtualController.I18n 1.0
+import VirtualController.Preferences 1.0
 import QtQuick
 import QtQml
 import QtQuick.Layouts
@@ -47,19 +48,32 @@ Item {
             theme: root.theme
             title: qsTr("Settings")
             subtitle: qsTr("Language, camera, tracking and control preferences.")
+            Text {
+                text: root.uiState.settingsSaveError.length > 0
+                    ? qsTr("Save failed")
+                    : root.uiState.hasUnsavedSettings
+                        ? qsTr("Unsaved changes")
+                        : qsTr("Saved")
+                color: root.uiState.settingsSaveError.length > 0
+                    ? root.theme.error
+                    : root.uiState.hasUnsavedSettings
+                        ? root.theme.warning : root.theme.textMuted
+                font.family: root.theme.fontFamily
+                font.pixelSize: 11
+            }
             VcButton {
                 theme: root.theme
                 text: qsTr("Reset defaults")
                 iconName: "reset"
-                implicitWidth: LanguageManager.language === "pl" ? 192 : 128
+                enabled: !root.uiState.pipelineRunning
                 onClicked: root.uiState.resetSettingsDefaults()
             }
             VcButton {
                 theme: root.theme
                 text: qsTr("Save")
                 iconName: "save"
-                implicitWidth: 90
-                enabled: false
+                enabled: root.uiState.hasUnsavedSettings
+                onClicked: root.uiState.saveSettings()
             }
         }
 
@@ -198,6 +212,51 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 1
                                 color: root.theme.borderSubtle
+                            }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                title: qsTr("Appearance")
+                                description: qsTr("Use the system theme or switch between light and dark mode.")
+                                VcComboBox {
+                                    theme: root.theme
+                                    model: [qsTr("Follow Windows"), qsTr("Dark"), qsTr("Light")]
+                                    currentIndex: Math.max(0, ["system", "dark", "light"].indexOf(AppPreferences.themeMode))
+                                    implicitWidth: 220
+                                    onActivated: function(index) {
+                                        AppPreferences.themeMode = ["system", "dark", "light"][index]
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: root.theme.borderSubtle
+                            }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                title: qsTr("Mini camera preview")
+                                description: qsTr("Show a camera overlay in the bottom-right corner when minimized.")
+                                VcSwitch {
+                                    theme: root.theme
+                                    checked: AppPreferences.pipEnabled
+                                    onToggled: AppPreferences.pipEnabled = checked
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: root.theme.borderSubtle
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                Layout.topMargin: 14
+                                text: qsTr("Settings take effect immediately. Click Save to keep them after a restart.")
+                                color: root.theme.textMuted
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
                             }
                             Item { Layout.fillHeight: true }
                         }

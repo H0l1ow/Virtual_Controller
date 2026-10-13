@@ -1089,6 +1089,7 @@ void RuntimeController::attachVideoOutput(
 
         videoOutput_.clear();
         captureSession_.setVideoOutput(nullptr);
+        updatePiPConnection();
         return;
     }
 
@@ -1106,6 +1107,43 @@ void RuntimeController::attachVideoOutput(
 
     videoOutput_ = output;
     captureSession_.setVideoOutput(output);
+    updatePiPConnection();
+}
+
+void RuntimeController::attachPiPVideoSink(QObject *sink)
+{
+    // QML VideoOutput.videoSink is a QVideoSink. Reject other objects.
+    pipSink_ = qobject_cast<QVideoSink *>(sink);
+    if (sink && !pipSink_)
+        qWarning() << "[pip] Expected a QVideoSink";
+    updatePiPConnection();
+}
+
+void RuntimeController::setPiPActive(bool active)
+{
+    if (pipActive_ == active)
+        return;
+    pipActive_ = active;
+    updatePiPConnection();
+}
+
+void RuntimeController::updatePiPConnection()
+{
+    QObject::disconnect(pipFrameConnection_);
+    pipFrameConnection_ = {};
+    QVideoSink *source = captureSession_.videoSink();
+    if (!pipActive_ || !pipSink_ || !source || source == pipSink_)
+        return;
+
+    const QPointer<QVideoSink> destination(pipSink_);
+    // Queued if needed: the secondary Qt Quick VideoOutput belongs to the GUI
+    // thread. No second QCamera or MediaPipe instance is created.
+    pipFrameConnection_ = connect(
+        source, &QVideoSink::videoFrameChanged, pipSink_,
+        [destination](const QVideoFrame &frame) {
+            if (destination && frame.isValid())
+                destination->setVideoFrame(frame);
+        });
 }
 
 void RuntimeController::selectCamera(

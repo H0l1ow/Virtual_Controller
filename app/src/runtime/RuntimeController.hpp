@@ -24,6 +24,7 @@
 #include <QStringList>
 #include <QTimer>
 #include <QVariant>
+#include <QVideoSink>
 
 #include <atomic>
 #include <chrono>
@@ -857,6 +858,8 @@ public:
     void setActiveProfile(const QString &name);
 
     Q_INVOKABLE void attachVideoOutput(QObject *output);
+    Q_INVOKABLE void attachPiPVideoSink(QObject *sink);
+    Q_INVOKABLE void setPiPActive(bool active);
     Q_INVOKABLE void selectCamera(int index);
     Q_INVOKABLE void selectFormat(int index);
 
@@ -972,6 +975,12 @@ private:
     std::unique_ptr<QCamera> camera_;
     QMediaCaptureSession captureSession_;
     QPointer<QObject> videoOutput_;
+    // Secondary sink mirrors the same camera frames when PiP is visible.
+    // It never replaces the tracking/primary capture sink.
+    QPointer<QVideoSink> pipSink_;
+    bool pipActive_{false};
+    QMetaObject::Connection pipFrameConnection_;
+    void updatePiPConnection();
 
     QMetaObject::Connection frameConnection_;
     QMetaObject::Connection cameraActiveConnection_;

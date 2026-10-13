@@ -24,6 +24,8 @@ qt_add_executable(
     src/i18n/LanguageManager.hpp
     src/i18n/LanguageManager.cpp
 
+    src/runtime/AppPreferences.hpp
+    src/runtime/AppPreferences.cpp
     src/runtime/LatestFrameSlot.hpp
     src/runtime/LatestFrameSlot.cpp
     src/runtime/RuntimeMetrics.hpp
@@ -140,6 +142,7 @@ qt_add_resources(
 
         qml/components/AppTopBar.qml
         qml/components/CameraStage.qml
+        qml/components/MiniPreviewWindow.qml
         qml/components/ControlsCard.qml
         qml/components/CursorTrackingCard.qml
         qml/components/GamepadVisual.qml

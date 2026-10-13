@@ -58,7 +58,7 @@ Rectangle {
         spacing: 0
 
         Item {
-            Layout.preferredWidth: 320
+            Layout.preferredWidth: root.width < 1400 ? 260 : 320
             Layout.fillHeight: true
 
             RowLayout {
@@ -109,7 +109,7 @@ Rectangle {
                 required property var modelData
                 required property int index
                 Layout.fillHeight: true
-                Layout.preferredWidth: 118
+                Layout.preferredWidth: root.width < 1400 ? 106 : 118
                 theme: root.theme
                 text: modelData.title
                 iconName: modelData.icon
@@ -130,6 +130,31 @@ Rectangle {
                         root.windowRef.startSystemMove()
                 }
                 onDoubleClicked: root.toggleWindowSize()
+            }
+        }
+
+        RowLayout {
+            Layout.alignment: Qt.AlignVCenter
+            spacing: 8
+            Text {
+                visible: root.width >= 1400
+                text: qsTr("Profile")
+                color: root.theme.textMuted
+                font.family: root.theme.fontFamily
+                font.pixelSize: 11
+            }
+            VcComboBox {
+                id: quickProfile
+                theme: root.theme
+                implicitWidth: 148
+                implicitHeight: 32
+                model: root.windowRef.uiState.profileNames
+                currentIndex: Math.max(0, root.windowRef.uiState.profileNames.indexOf(
+                    root.windowRef.uiState.activeProfile))
+                onActivated: function(index) {
+                    if (index >= 0)
+                        root.windowRef.uiState.setActiveProfile(currentText)
+                }
             }
         }
 

@@ -45,8 +45,9 @@ class LocalizationTests(unittest.TestCase):
         settings = (QML / "pages" / "SettingsPage.qml").read_text(encoding="utf-8")
         self.assertIn('QStringLiteral("ui/language")', manager)
         self.assertIn("m_engine->retranslate()", manager)
-        self.assertIn("languageManager.setLanguageByIndex(index)", settings)
-        self.assertIn("currentIndex: languageManager.languageIndex", settings)
+        self.assertIn("LanguageManager.setLanguageByIndex(index)", settings)
+        self.assertIn("currentIndex: LanguageManager.languageIndex", settings)
+        self.assertIn("qmlRegisterSingletonInstance(", (ROOT / "app" / "src" / "main.cpp").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

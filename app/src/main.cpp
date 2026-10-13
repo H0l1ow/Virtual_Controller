@@ -1,5 +1,6 @@
 #include "runtime/RuntimeController.hpp"
 #include "i18n/LanguageManager.hpp"
+#include "runtime/AppPreferences.hpp"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -78,6 +79,7 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     // Owned by QGuiApplication so the singleton outlives the QML engine.
     auto *languageManager = new vc::LanguageManager(&engine, &app);
+    auto *appPreferences = new vc::AppPreferences(&app);
 
     engine.rootContext()->setContextProperty(
         QStringLiteral("runtimeController"),
@@ -87,6 +89,8 @@ int main(int argc, char *argv[])
     // Register before engine.load(), and keep the C++ object alive through app.exec().
     qmlRegisterSingletonInstance(
         "VirtualController.I18n", 1, 0, "LanguageManager", languageManager);
+    qmlRegisterSingletonInstance(
+        "VirtualController.Preferences", 1, 0, "AppPreferences", appPreferences);
 
     QObject::connect(
         &runtimeController,
