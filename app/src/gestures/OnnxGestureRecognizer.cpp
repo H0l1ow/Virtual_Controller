@@ -1,6 +1,7 @@
 #include "gestures/OnnxGestureRecognizer.hpp"
 
 #include <QDir>
+#include <QCryptographicHash>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -136,6 +137,25 @@ OnnxGestureRecognizer::OnnxGestureRecognizer(
     validateMetadata(
         metadata,
         windowSize_);
+
+    // M6: keep the ONNX graph bound to the exported metadata. Accidentally
+    // replacing only one of these files must never activate an unknown model.
+    const QString expectedHash = metadata.value(
+        QStringLiteral("sha256")).toString();
+    if (expectedHash.size() != 64) {
+        throw std::runtime_error("Missing or invalid ONNX SHA-256 metadata");
+    }
+    QFile modelFile(modelPath);
+    if (!modelFile.open(QIODevice::ReadOnly)) {
+        throw std::runtime_error("Cannot read gesture ONNX file");
+    }
+    QCryptographicHash digest(QCryptographicHash::Sha256);
+    if (!digest.addData(&modelFile) ||
+        QString::fromLatin1(digest.result().toHex())
+            != expectedHash.toLower()) {
+        throw std::runtime_error("Gesture ONNX and metadata SHA-256 mismatch");
+    }
+    modelFile.close();
 
     impl_->options.SetIntraOpNumThreads(1);
     impl_->options.SetInterOpNumThreads(1);

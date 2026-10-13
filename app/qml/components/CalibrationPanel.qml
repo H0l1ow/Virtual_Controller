@@ -11,6 +11,16 @@ Item {
     property string selectedGesture: "PINCH"
     readonly property var classes: ["FIST", "OPEN_HAND", "POINT", "PINCH"]
     readonly property var sides: ["Left", "Right"]
+    property string rangeKind: "Motion"
+    readonly property var rangeKinds: ["Motion", "PinchClosed", "PinchOpen"]
+    readonly property var currentRange: {
+        const results = root.uiState.rangeCalibrationResults || []
+        for (const item of results) {
+            if (item.side === root.selectedHand) return item
+        }
+        return ({})
+    }
+    readonly property var appliedRange: root.uiState.handCalibration[root.selectedHand] || ({})
 
     function labelForGesture(code) {
         switch (code) {
@@ -32,6 +42,15 @@ Item {
         case "AMBIGUOUS": return qsTr("Gesture overlaps another class. Change the pose and retry.")
         case "CANCELLED": return qsTr("Calibration cancelled.")
         default: return qsTr("Select a hand and a gesture, then capture 36 valid frames.")
+        }
+    }
+    function rangeStatusLabel(code) {
+        switch (code) {
+        case "CAPTURING": return qsTr("Capturing samples")
+        case "READY": return qsTr("Range ready to apply")
+        case "INSUFFICIENT": return qsTr("Insufficient movement or invalid PINCH sample; retry")
+        case "CANCELLED": return qsTr("Calibration cancelled")
+        default: return qsTr("Choose a step and collect samples")
         }
     }
     function suggestedThreshold(code) {
@@ -86,7 +105,7 @@ Item {
                     labelFormatter: root.labelForSide
                     currentIndex: root.sides.indexOf(root.selectedHand)
                     implicitWidth: 175
-                    enabled: !root.uiState.calibrationActive
+                    enabled: !root.uiState.calibrationActive && !root.uiState.rangeCalibrationActive
                     onActivated: root.selectedHand = root.sides[currentIndex]
                 }
             }
@@ -101,7 +120,7 @@ Item {
                     labelFormatter: root.labelForGesture
                     currentIndex: root.classes.indexOf(root.selectedGesture)
                     implicitWidth: 175
-                    enabled: !root.uiState.calibrationActive
+                    enabled: !root.uiState.calibrationActive && !root.uiState.rangeCalibrationActive
                     onActivated: root.selectedGesture = root.classes[currentIndex]
                 }
             }
@@ -113,7 +132,7 @@ Item {
                     theme: root.theme
                     text: qsTr("Capture samples")
                     iconName: "camera"
-                    enabled: root.uiState.pipelineRunning && !root.uiState.calibrationActive
+                    enabled: root.uiState.pipelineRunning && !root.uiState.calibrationActive && !root.uiState.rangeCalibrationActive
                     onClicked: root.uiState.startGestureCalibration(root.selectedHand, root.selectedGesture)
                 }
                 VcButton {
@@ -215,6 +234,120 @@ Item {
                 iconName: "reset"
                 enabled: !root.uiState.calibrationActive
                 onClicked: root.uiState.clearGestureCalibration()
+            }
+            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
+            Text {
+                text: qsTr("Movement and PINCH range calibration")
+                color: root.theme.textPrimary
+                font.family: root.theme.fontFamily
+                font.pixelSize: 15
+                font.weight: Font.DemiBold
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("With the selected hand, move across your comfortable X/Y range, then record PINCH closed and open separately. 60 tracked samples per step. Only Apply updates the cursor and Rules gesture detection.")
+                color: root.theme.textSecondary
+                font.family: root.theme.fontFamily
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            SettingsRow {
+                Layout.fillWidth: true
+                theme: root.theme
+                title: qsTr("Calibration step")
+                description: qsTr("Movement, fingertips touching, or fingertips separated.")
+                VcComboBox {
+                    theme: root.theme
+                    implicitWidth: 225
+                    model: [qsTr("Hand movement"), qsTr("PINCH closed"), qsTr("PINCH open")]
+                    currentIndex: root.rangeKinds.indexOf(root.rangeKind)
+                    enabled: !root.uiState.rangeCalibrationActive
+                    onActivated: root.rangeKind = root.rangeKinds[currentIndex]
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                VcButton {
+                    theme: root.theme
+                    text: qsTr("Capture range")
+                    iconName: "camera"
+                    enabled: root.uiState.pipelineRunning && !root.uiState.calibrationActive && !root.uiState.rangeCalibrationActive
+                    onClicked: root.uiState.startRangeCalibration(root.selectedHand, root.rangeKind)
+                }
+                VcButton {
+                    theme: root.theme
+                    text: qsTr("Cancel")
+                    enabled: root.uiState.rangeCalibrationActive
+                    onClicked: root.uiState.cancelRangeCalibration()
+                }
+                Item { Layout.fillWidth: true }
+                Text {
+                    text: root.uiState.rangeCalibrationProgress + "%"
+                    color: root.theme.textPrimary
+                    font.family: root.theme.fontFamily
+                    font.pixelSize: 12
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Range sampling status: ") + root.rangeStatusLabel(root.uiState.rangeCalibrationStatus)
+                wrapMode: Text.WordWrap
+                color: root.theme.textSecondary
+                font.family: root.theme.fontFamily
+                font.pixelSize: 11
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Movement span X/Y: ") + Number(root.currentRange.spanX || 0).toFixed(3)
+                    + " / " + Number(root.currentRange.spanY || 0).toFixed(3)
+                    + qsTr(" | PINCH closed/open: ") + Number(root.currentRange.closedDistance || 0).toFixed(3)
+                    + " / " + Number(root.currentRange.openDistance || 0).toFixed(3)
+                wrapMode: Text.WordWrap
+                color: root.theme.textMuted
+                font.family: root.theme.fontFamily
+                font.pixelSize: 11
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                VcButton {
+                    theme: root.theme
+                    text: qsTr("Apply movement")
+                    enabled: !!root.currentRange.motionValid && !root.uiState.rangeCalibrationActive
+                    onClicked: root.uiState.applyRangeCalibration(root.selectedHand, "Motion")
+                }
+                VcButton {
+                    theme: root.theme
+                    text: qsTr("Apply PINCH")
+                    enabled: !!root.currentRange.closedValid && !!root.currentRange.openValid
+                        && root.currentRange.openDistance - root.currentRange.closedDistance >= 0.12
+                        && !root.uiState.rangeCalibrationActive
+                    onClicked: root.uiState.applyRangeCalibration(root.selectedHand, "Pinch")
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Applied cursor X/Y gain: ") + Number(root.appliedRange.motionX || 1).toFixed(2)
+                    + " / " + Number(root.appliedRange.motionY || 1).toFixed(2)
+                    + qsTr(" | Rules PINCH thresholds: ") + Number(root.appliedRange.pinchLow || 0.17).toFixed(3)
+                    + " / " + Number(root.appliedRange.pinchHigh || 0.43).toFixed(3)
+                wrapMode: Text.WordWrap
+                color: root.theme.textSecondary
+                font.family: root.theme.fontFamily
+                font.pixelSize: 11
+            }
+            VcButton {
+                theme: root.theme
+                text: qsTr("Reset movement and PINCH calibration")
+                onClicked: root.uiState.resetRangeCalibration()
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Calibration is per hand. Cursor movement currently uses the right hand. PINCH distance adjustment applies to Rules, not ONNX. Save settings to keep changes.")
+                wrapMode: Text.WordWrap
+                color: root.theme.textMuted
+                font.family: root.theme.fontFamily
+                font.pixelSize: 10
             }
             Item { Layout.preferredHeight: 8 }
         }

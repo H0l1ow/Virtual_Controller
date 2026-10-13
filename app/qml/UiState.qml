@@ -100,6 +100,11 @@ QtObject {
     readonly property string calibrationGesture: runtimeBackend.calibrationGesture
     readonly property string calibrationHand: runtimeBackend.calibrationHand
     readonly property var calibrationResults: runtimeBackend.calibrationResults
+    readonly property bool rangeCalibrationActive: runtimeBackend.rangeCalibrationActive
+    readonly property int rangeCalibrationProgress: runtimeBackend.rangeCalibrationProgress
+    readonly property string rangeCalibrationStatus: runtimeBackend.rangeCalibrationStatus
+    readonly property var rangeCalibrationResults: runtimeBackend.rangeCalibrationResults
+    readonly property var handCalibration: runtimeBackend.handCalibration
     readonly property bool cursorPlaygroundActive: runtimeBackend.cursorPlaygroundActive
     readonly property var cursorPlaygroundState: runtimeBackend.cursorPlaygroundState
     readonly property int debounceMs:
@@ -154,6 +159,12 @@ QtObject {
         runtimeBackend.conversionP50Ms
     readonly property int conversionP95Ms:
         runtimeBackend.conversionP95Ms
+    readonly property int cameraIntervalP50Ms: runtimeBackend.cameraIntervalP50Ms
+    readonly property int mediaPipeP50Ms: runtimeBackend.mediaPipeP50Ms
+    readonly property int gestureP50Ms: runtimeBackend.gestureP50Ms
+    readonly property int gestureP95Ms: runtimeBackend.gestureP95Ms
+    readonly property int outputDispatchP50Ms: runtimeBackend.outputDispatchP50Ms
+    readonly property int outputDispatchP95Ms: runtimeBackend.outputDispatchP95Ms
     readonly property real replacedFrames:
         Number(runtimeBackend.replacedFrames)
     readonly property real replacedPercent:
@@ -196,6 +207,14 @@ QtObject {
         runtimeBackend.recordingPath
     readonly property string recordingError:
         runtimeBackend.recordingError
+    readonly property bool replayActive: runtimeBackend.replayActive
+    readonly property int replayFrames: runtimeBackend.replayFrames
+    readonly property string replayStatus: runtimeBackend.replayStatus
+    readonly property string replayError: runtimeBackend.replayError
+    readonly property string replayLeftGesture: runtimeBackend.replayLeftGesture
+    readonly property string replayRightGesture: runtimeBackend.replayRightGesture
+    readonly property string replayLeftLabel: runtimeBackend.replayLeftLabel
+    readonly property string replayRightLabel: runtimeBackend.replayRightLabel
     readonly property int cursorX:
         runtimeBackend.cursorX
     readonly property int cursorY:
@@ -320,6 +339,10 @@ QtObject {
         return runtimeBackend.applyGestureCalibration(gesture)
     }
     function clearGestureCalibration() { runtimeBackend.clearGestureCalibration() }
+    function startRangeCalibration(side, kind) { return runtimeBackend.startRangeCalibration(side, kind) }
+    function cancelRangeCalibration() { runtimeBackend.cancelRangeCalibration() }
+    function applyRangeCalibration(side, kind) { return runtimeBackend.applyRangeCalibration(side, kind) }
+    function resetRangeCalibration() { runtimeBackend.resetRangeCalibration() }
     function startCursorPlayground() { return runtimeBackend.startCursorPlayground() }
     function stopCursorPlayground() { runtimeBackend.stopCursorPlayground() }
 
@@ -350,6 +373,9 @@ QtObject {
     function stopGestureRecording() {
         runtimeBackend.stopGestureRecording()
     }
+    function startGestureReplay(path) { return runtimeBackend.startGestureReplay(path) }
+    function stopGestureReplay() { runtimeBackend.stopGestureReplay() }
+    function reloadGestureModel() { return runtimeBackend.reloadGestureModel() }
 
     function setActiveProfile(name) {
         runtimeBackend.activeProfile = name
@@ -403,6 +429,7 @@ QtObject {
             pipEnabled: AppPreferences.pipEnabled,
             pipSizeMode: AppPreferences.pipSizeMode,
             pipShowLandmarks: AppPreferences.pipShowLandmarks,
+            pipScreenName: AppPreferences.pipScreenName,
             pipX: AppPreferences.pipX,
             pipY: AppPreferences.pipY,
             autoRecoverCamera: autoRecoverCamera,
@@ -419,6 +446,7 @@ QtObject {
             swapHandedness: swapHandedness,
             recognitionThreshold: recognitionThreshold,
             gestureThresholdOverrides: gestureThresholdOverrides,
+            handCalibration: handCalibration,
             debounceMs: debounceMs,
             cooldownMs: cooldownMs,
             requireRelease: requireRelease,
@@ -445,6 +473,7 @@ QtObject {
         if (has("trackingConfidence")) setTrackingConfidence(saved.trackingConfidence)
         if (has("swapHandedness")) setSwapHandedness(saved.swapHandedness)
         if (has("recognitionThreshold")) setRecognitionThreshold(saved.recognitionThreshold)
+        if (has("handCalibration")) runtimeBackend.setHandCalibration(saved.handCalibration)
         if (has("gestureThresholdOverrides")) {
             const overrides = saved.gestureThresholdOverrides
             for (const klass of ["FIST", "OPEN_HAND", "POINT", "PINCH"]) {
@@ -503,6 +532,7 @@ QtObject {
         setTrackingConfidence(55)
         setRecognitionThreshold(80)
         resetGestureThresholds()
+        resetRangeCalibration()
         setDebounceMs(120)
         setCooldownMs(250)
         setRequireRelease(true)
@@ -520,6 +550,7 @@ QtObject {
         AppPreferences.pipEnabled = true
         AppPreferences.pipSizeMode = "medium"
         AppPreferences.pipShowLandmarks = true
+        AppPreferences.pipScreenName = ""
         AppPreferences.setPipPosition(-1, -1)
         setAutoRecoverCamera(true)
         // Reset is a preview until the user clicks Save.

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(VirtualController VERSION 0.12.0 LANGUAGES CXX)
+project(VirtualController VERSION 0.14.0 LANGUAGES CXX)
 
 include(CTest)
 
@@ -51,7 +51,7 @@ set(
     VC_GESTURE_MODEL
     "${CMAKE_SOURCE_DIR}/models/gesture_model.onnx"
     CACHE FILEPATH
-    "Optional M3 gesture TCN model"
+    "Optional trained M6 gesture TCN model"
 )
 
 if(VC_WITH_ONNX)

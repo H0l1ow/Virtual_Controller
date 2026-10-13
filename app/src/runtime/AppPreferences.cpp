@@ -1,6 +1,7 @@
 #include "runtime/AppPreferences.hpp"
 
 #include <QGuiApplication>
+#include <QScreen>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QSettings>
@@ -43,12 +44,21 @@ AppPreferences::AppPreferences(QObject *parent)
     pipShowLandmarks_ = saved.value(QStringLiteral("pipShowLandmarks"), true).toBool();
     pipX_ = saved.value(QStringLiteral("pipX"), -1).toInt();
     pipY_ = saved.value(QStringLiteral("pipY"), -1).toInt();
+    pipScreenName_ = saved.value(QStringLiteral("pipScreenName")).toString();
     const QString tracking = saved.value(QStringLiteral("shortcutTracking"), shortcutTracking_).toString();
     const QString stop = saved.value(QStringLiteral("shortcutStop"), shortcutStop_).toString();
     const QString next = saved.value(QStringLiteral("shortcutNextProfile"), shortcutNextProfile_).toString();
     if (validShortcut(tracking)) shortcutTracking_ = tracking;
     if (validShortcut(stop)) shortcutStop_ = stop;
     if (validShortcut(next)) shortcutNextProfile_ = next;
+
+    auto *guiApp = qobject_cast<QGuiApplication *>(QCoreApplication::instance());
+    connect(guiApp, &QGuiApplication::screenAdded, this,
+            [this](QScreen *) { emit pipLayoutChanged(); });
+    connect(guiApp, &QGuiApplication::screenRemoved, this,
+            [this](QScreen *) { emit pipLayoutChanged(); });
+    connect(guiApp, &QGuiApplication::primaryScreenChanged, this,
+            [this](QScreen *) { emit pipLayoutChanged(); });
 
     connect(QGuiApplication::styleHints(),
             &QStyleHints::colorSchemeChanged,
@@ -136,6 +146,35 @@ void AppPreferences::setPipShowLandmarks(bool enabled)
     emit pipLayoutChanged();
 }
 
+QStringList AppPreferences::pipScreenNames() const
+{
+    QStringList names;
+    for (auto *screen : QGuiApplication::screens())
+        names.append(screen->name());
+    return names;
+}
+
+QScreen *AppPreferences::pipScreen() const
+{
+    for (auto *screen : QGuiApplication::screens()) {
+        if (!pipScreenName_.isEmpty() && screen->name() == pipScreenName_)
+            return screen;
+    }
+    return QGuiApplication::primaryScreen();
+}
+
+void AppPreferences::setPipScreenName(const QString &name)
+{
+    if (!name.isEmpty() && !pipScreenNames().contains(name))
+        return;
+    if (pipScreenName_ == name)
+        return;
+    pipScreenName_ = name;
+    pipX_ = -1;
+    pipY_ = -1;
+    emit pipLayoutChanged();
+}
+
 void AppPreferences::setPipPosition(int x, int y)
 {
     // (-1,-1) is the documented bottom-right default; other negative
@@ -178,6 +217,7 @@ bool AppPreferences::saveSettings(const QVariantMap &values)
     snapshot.insert(QStringLiteral("pipShowLandmarks"), pipShowLandmarks_);
     snapshot.insert(QStringLiteral("pipX"), pipX_);
     snapshot.insert(QStringLiteral("pipY"), pipY_);
+    snapshot.insert(QStringLiteral("pipScreenName"), pipScreenName_);
     snapshot.insert(QStringLiteral("shortcutTracking"), shortcutTracking_);
     snapshot.insert(QStringLiteral("shortcutStop"), shortcutStop_);
     snapshot.insert(QStringLiteral("shortcutNextProfile"), shortcutNextProfile_);

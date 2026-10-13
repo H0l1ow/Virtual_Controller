@@ -24,6 +24,12 @@ struct RuntimeMetricsSnapshot {
     int inferenceP95Ms{};
     int conversionP50Ms{};
     int conversionP95Ms{};
+    int cameraIntervalP50Ms{};
+    int mediaPipeP50Ms{};
+    int gestureP50Ms{};
+    int gestureP95Ms{};
+    int outputDispatchP50Ms{};
+    int outputDispatchP95Ms{};
 
     std::int64_t lastFrameReceivedUs{};
 };
@@ -42,7 +48,10 @@ public:
     void recordProcessed(
         std::int64_t conversionUs,
         std::int64_t inferenceUs,
-        std::int64_t pipelineLatencyUs);
+        std::int64_t pipelineLatencyUs,
+        std::int64_t gestureUs = 0);
+
+    void recordOutputDispatch(std::int64_t dispatchUs);
 
     RuntimeMetricsSnapshot snapshot(
         std::int64_t nowUs);
@@ -69,6 +78,9 @@ private:
     std::deque<std::int64_t> pipelineLatencyUs_;
     std::deque<std::int64_t> inferenceUs_;
     std::deque<std::int64_t> conversionUs_;
+    std::deque<std::int64_t> gestureUs_;
+    std::deque<std::int64_t> outputDispatchUs_;
+    std::deque<std::int64_t> cameraIntervalUs_;
 
     std::mutex snapshotMutex_;
     std::int64_t lastSnapshotUs_{};

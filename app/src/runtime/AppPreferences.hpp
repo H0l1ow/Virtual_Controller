@@ -2,6 +2,8 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
+#include <QScreen>
 #include <QVariantMap>
 
 namespace vc {
@@ -17,6 +19,9 @@ class AppPreferences final : public QObject {
     Q_PROPERTY(bool pipShowLandmarks READ pipShowLandmarks WRITE setPipShowLandmarks NOTIFY pipLayoutChanged)
     Q_PROPERTY(int pipX READ pipX NOTIFY pipLayoutChanged)
     Q_PROPERTY(int pipY READ pipY NOTIFY pipLayoutChanged)
+    Q_PROPERTY(QString pipScreenName READ pipScreenName WRITE setPipScreenName NOTIFY pipLayoutChanged)
+    Q_PROPERTY(QStringList pipScreenNames READ pipScreenNames NOTIFY pipLayoutChanged)
+    Q_PROPERTY(QScreen *pipScreen READ pipScreen NOTIFY pipLayoutChanged)
     Q_PROPERTY(QString shortcutTracking READ shortcutTracking WRITE setShortcutTracking NOTIFY shortcutsChanged)
     Q_PROPERTY(QString shortcutStop READ shortcutStop WRITE setShortcutStop NOTIFY shortcutsChanged)
     Q_PROPERTY(QString shortcutNextProfile READ shortcutNextProfile WRITE setShortcutNextProfile NOTIFY shortcutsChanged)
@@ -32,6 +37,10 @@ public:
     bool pipShowLandmarks() const { return pipShowLandmarks_; }
     int pipX() const { return pipX_; }
     int pipY() const { return pipY_; }
+    QString pipScreenName() const { return pipScreenName_; }
+    QStringList pipScreenNames() const;
+    QScreen *pipScreen() const;
+    void setPipScreenName(const QString &name);
     QString saveError() const { return saveError_; }
     QString shortcutTracking() const { return shortcutTracking_; }
     QString shortcutStop() const { return shortcutStop_; }
@@ -67,6 +76,7 @@ private:
     bool pipShowLandmarks_{true};
     int pipX_{-1};
     int pipY_{-1};
+    QString pipScreenName_;
     QString saveError_;
     QString shortcutTracking_{QStringLiteral("Ctrl+Alt+F9")};
     QString shortcutStop_{QStringLiteral("Ctrl+Alt+F10")};

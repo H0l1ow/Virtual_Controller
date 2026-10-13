@@ -73,6 +73,19 @@ int main()
     assert(std::abs(doubleSpeed.controller.mouseX)
         > std::abs(normalSpeed.controller.mouseX) * 1.9F);
 
+    // Per-user comfortable hand range scales motion without changing input
+    // safety: the first tracked sample remains a neutral baseline.
+    interpreter.reset();
+    config.cursorSpeedPercent = 100;
+    config.movementScaleX = 1.6F;
+    config.movementScaleY = 1.2F;
+    const auto scaledBaseline = interpreter.update(hand(20, 0.5F, 0.5F), 1'240'000, config);
+    assert(scaledBaseline.controller.neutral());
+    const auto scaled = interpreter.update(hand(20, 0.51F, 0.49F), 1'273'333, config);
+    assert(std::abs(scaled.controller.mouseX) > std::abs(normalSpeed.controller.mouseX) * 1.5F);
+    config.movementScaleX = 1.0F;
+    config.movementScaleY = 1.0F;
+
     // Each axis can be inverted independently.
     interpreter.reset();
     config.cursorSpeedPercent = 100;

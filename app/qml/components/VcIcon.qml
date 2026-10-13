@@ -178,6 +178,18 @@ Item {
                 line(w*0.34,h*0.34,w*0.50,h*0.16)
                 line(w*0.66,h*0.34,w*0.50,h*0.16)
                 line(w*0.20,h*0.82,w*0.80,h*0.82)
+            } else if (root.name === "folder") {
+                ctx.beginPath()
+                ctx.moveTo(w*0.12,h*0.30)
+                ctx.lineTo(w*0.42,h*0.30)
+                ctx.lineTo(w*0.52,h*0.41)
+                ctx.lineTo(w*0.88,h*0.41)
+                ctx.lineTo(w*0.82,h*0.80)
+                ctx.lineTo(w*0.18,h*0.80)
+                ctx.closePath()
+                ctx.stroke()
+            } else if (root.name === "stop") {
+                rect(w*0.26,h*0.26,w*0.48,h*0.48)
             } else if (root.name === "menu") {
                 line(w*0.18,h*0.30,w*0.82,h*0.30)
                 line(w*0.18,h*0.50,w*0.82,h*0.50)

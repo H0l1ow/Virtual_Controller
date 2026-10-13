@@ -215,3 +215,21 @@ add_executable(vc_mapping_validator_tests MappingValidatorTests.cpp)
 target_include_directories(vc_mapping_validator_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
 target_compile_features(vc_mapping_validator_tests PRIVATE cxx_std_20)
 add_test(NAME vc_mapping_validator_tests COMMAND vc_mapping_validator_tests)
+
+add_executable(vc_hand_range_tests
+    HandRangeCalibratorTests.cpp
+    ../app/src/gestures/HandRangeCalibrator.cpp
+    ../app/src/gestures/HandFeatures.cpp
+)
+target_include_directories(vc_hand_range_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
+target_compile_features(vc_hand_range_tests PRIVATE cxx_std_20)
+add_test(NAME vc_hand_range_tests COMMAND vc_hand_range_tests)
+
+# M6: freeze numeric native features against the Python vcml fixture. No Qt.
+add_executable(vc_m6_feature_contract_tests
+    M6FeatureContractTests.cpp
+    ../app/src/gestures/HandFeatures.cpp
+)
+target_include_directories(vc_m6_feature_contract_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
+target_compile_features(vc_m6_feature_contract_tests PRIVATE cxx_std_20)
+add_test(NAME vc_m6_feature_contract_tests COMMAND vc_m6_feature_contract_tests)

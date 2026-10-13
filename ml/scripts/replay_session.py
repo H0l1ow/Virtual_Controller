@@ -8,55 +8,14 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
-import math
 import sys
 import time
 from collections import Counter
 from pathlib import Path
-from typing import Iterator
 
-SCHEMA = "vc.gestures.jsonl.v1"
-SIDES = ("LEFT", "RIGHT")
-LABELS = {"UNLABELED", "NONE", "FIST", "OPEN_HAND", "POINT", "PINCH"}
-
-
-def read_frames(path: Path) -> Iterator[dict]:
-    """Yield validated frames in file order. Reject incompatible schemas."""
-    previous_timestamp: int | None = None
-    with path.open("r", encoding="utf-8") as source:
-        for lineno, line in enumerate(source, 1):
-            if not line.strip():
-                continue
-            try:
-                frame = json.loads(line)
-                if frame.get("schema") != SCHEMA:
-                    raise ValueError("unsupported schema")
-                if not isinstance(frame.get("timestamp_us"), int):
-                    raise ValueError("timestamp_us must be integer")
-                if previous_timestamp is not None and frame["timestamp_us"] <= previous_timestamp:
-                    raise ValueError("non-monotonic timestamps")
-                previous_timestamp = frame["timestamp_us"]
-                hands = frame.get("hands")
-                if not isinstance(hands, list) or len(hands) != 2:
-                    raise ValueError("expected two side entries")
-                for i, hand in enumerate(hands):
-                    if hand.get("side") != SIDES[i]:
-                        raise ValueError("invalid hand ordering")
-                    if hand.get("label") not in LABELS:
-                        raise ValueError("unknown label")
-                    points = hand.get("landmarks")
-                    if not isinstance(points, list) or len(points) != (21 if hand.get("tracked") else 0):
-                        raise ValueError("invalid landmark count")
-                    for point in points:
-                        if not isinstance(point, list) or len(point) != 3:
-                            raise ValueError("invalid landmark shape")
-                        if any(v is not None and (not isinstance(v, (int, float)) or not math.isfinite(v))
-                               for v in point):
-                            raise ValueError("invalid landmark value")
-                yield frame
-            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
-                raise ValueError(f"{path}:{lineno}: {error}") from error
+# Single validator shared by playback and ML dataset preparation.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from vcml.recordings import SCHEMA, SIDES, LABELS, read_frames
 
 
 def playback(source: Path, speed: float = 0.0, csv_path: Path | None = None,

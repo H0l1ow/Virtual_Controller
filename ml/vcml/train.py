@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 from pathlib import Path
@@ -18,6 +19,17 @@ def load_dataset(path: Path):
         x = np.asarray(data["X"], np.float32)
         y = np.asarray(data["y"], np.int64)
         split = np.asarray(data["split"], np.int8)
+        if "subject" not in data.files or "session" not in data.files:
+            raise ValueError("M6 requires subject/session split metadata; run prepare_dataset.py")
+        subject = np.asarray(data["subject"], np.int32)
+        session = np.asarray(data["session"], np.int32)
+
+    if subject.shape != (len(x),) or session.shape != (len(x),):
+        raise ValueError("Invalid subject/session metadata shape")
+    for groups in (subject, session):
+        for group in np.unique(groups):
+            if len(np.unique(split[groups == group])) != 1:
+                raise ValueError("Dataset leaks subject/session across train/validation/test")
 
     if x.ndim != 3 or x.shape[1:] != (WINDOW_SIZE, FEATURE_COUNT):
         raise ValueError(f"Expected X [N,{WINDOW_SIZE},{FEATURE_COUNT}], got {x.shape}")
@@ -27,8 +39,10 @@ def load_dataset(path: Path):
         raise ValueError("Dataset is empty or contains non-finite values")
     if np.any(y < 0) or np.any(y >= len(LABELS)):
         raise ValueError("Class index outside M3 label set")
-    if not all(np.any(split == value) for value in (0, 1)):
-        raise ValueError("Dataset needs train split=0 and val split=1")
+    if not all(np.any(split == value) for value in (0, 1, 2)):
+        raise ValueError("Dataset needs train=0, validation=1 and held-out test=2")
+    if np.any((split < 0) | (split > 2)):
+        raise ValueError("Dataset contains invalid split labels")
     return x, y, split
 
 
@@ -79,10 +93,18 @@ def train(
     mean = x[train_mask].reshape(-1, FEATURE_COUNT).mean(0)
     std = x[train_mask].reshape(-1, FEATURE_COUNT).std(0)
     std = np.where(std < 1e-5, 1.0, std).astype(np.float32)
+    counts = np.bincount(y[train_mask], minlength=len(LABELS))
+    if np.any(counts == 0):
+        missing = [LABELS[i] for i, n in enumerate(counts) if n == 0]
+        raise ValueError(f"Training split has no examples of {missing}; collect additional sessions")
+    # Temper inverse frequencies. Extremely common stationary gestures should
+    # not drown out rare intentional commands (without extreme loss weights).
+    weights = 1.0 / np.sqrt(counts.astype(np.float64))
+    weights = np.clip(weights / weights.mean(), .25, 4.0)
 
     model = GestureModel(hidden, dropout, mean, std).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss(weight=torch.tensor(weights, dtype=torch.float32, device=device))
 
     train_set = TensorDataset(
         torch.from_numpy(x[train_mask]),
@@ -105,6 +127,9 @@ def train(
         "batchSize": batch_size,
         "learningRate": learning_rate,
         "seed": seed,
+        "datasetSha256": hashlib.sha256(dataset.read_bytes()).hexdigest(),
+        "trainClassCounts": {LABELS[i]: int(v) for i, v in enumerate(counts)},
+        "classWeights": weights.tolist(),
     }
 
     for epoch in range(epochs):

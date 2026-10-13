@@ -19,19 +19,27 @@ int main()
     metrics.recordProcessed(2'000, 10'000, 18'000);
     metrics.recordProcessed(3'000, 12'000, 22'000);
     metrics.recordProcessed(4'000, 20'000, 35'000);
+    metrics.recordProcessed(5'000, 13'000, 23'000, 7'000);
+    metrics.recordOutputDispatch(2'000);
+    metrics.recordOutputDispatch(3'000);
 
     const auto first = metrics.snapshot(2'000'000);
 
     assert(first.receivedFrames == 10);
-    assert(first.processedFrames == 3);
+    assert(first.processedFrames == 4);
     assert(first.replacedFrames == 3);
     assert(std::abs(first.replacedPercent - 30.0) < 0.001);
-    assert(first.pipelineLatencyP50Ms == 22);
+    assert(first.pipelineLatencyP50Ms == 23);
     assert(first.pipelineLatencyP95Ms == 35);
-    assert(first.inferenceP50Ms == 12);
+    assert(first.inferenceP50Ms == 13);
     assert(first.inferenceP95Ms == 20);
-    assert(first.conversionP50Ms == 3);
-    assert(first.conversionP95Ms == 4);
+    assert(first.conversionP50Ms == 4);
+    assert(first.conversionP95Ms == 5);
+    assert(first.gestureP50Ms == 0); // existing call sites default to 0
+    assert(first.gestureP95Ms == 7);
+    assert(first.outputDispatchP50Ms == 3);
+    assert(first.cameraIntervalP50Ms == 10);
+    assert(first.mediaPipeP50Ms == first.inferenceP50Ms);
 
     for (int i = 0; i < 20; ++i) {
         metrics.recordFrameReceived(

@@ -20,13 +20,27 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def export_model(run: Path, output: Path):
+def export_model(run: Path, output: Path, evaluation: Path | None = None):
     checkpoint = torch.load(run / "best.pt", map_location="cpu", weights_only=True)
     config = checkpoint["config"]
+
+    if config.get("featureCount") != FEATURE_COUNT or config.get("windowSize") != WINDOW_SIZE or config.get("labels") != LABELS:
+        raise ValueError("Checkpoint does not match the native gesture model contract")
 
     model = GestureModel(config["hidden"], config["dropout"])
     model.load_state_dict(checkpoint["model"])
     model.eval()
+
+    heldout = None
+    if evaluation is not None:
+        report = json.loads(evaluation.read_text(encoding="utf-8"))
+        if report.get("split") != "test" or report.get("datasetSha256") != config.get("datasetSha256"):
+            raise ValueError("Evaluation must be for the same held-out test dataset")
+        heldout = {
+            "windowCount": report["windowCount"],
+            "tcnMacroF1": report["models"]["TCN"]["macroF1"],
+            "rulesMacroF1": report["models"]["Rules"]["macroF1"],
+        }
 
     output.mkdir(parents=True, exist_ok=True)
     model_path = output / "gesture_model.onnx"
@@ -45,7 +59,7 @@ def export_model(run: Path, output: Path):
 
     metadata = {
         "schemaVersion": 2,
-        "modelVersion": "0.8.0",
+        "modelVersion": "0.14.0",
         "featureSchema": FEATURE_SCHEMA,
         "featureCount": FEATURE_COUNT,
         "windowSize": WINDOW_SIZE,
@@ -56,28 +70,33 @@ def export_model(run: Path, output: Path):
         "normalizationEmbedded": True,
         "architecture": "causal_tcn",
         "validationMacroF1": checkpoint.get("validation_macro_f1"),
+        "heldoutEvaluation": heldout,
+        "datasetSha256": config.get("datasetSha256"),
         "sha256": sha256(model_path),
     }
-    (output / "model_metadata.json").write_text(
-        json.dumps(metadata, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
     # Optional runtime parity check when onnxruntime is installed.
-    parity = {"checked": False}
+    parity = {"checked": False, "reason": "onnxruntime Python is not installed"}
     try:
         import onnxruntime as ort
 
+        generator = torch.Generator().manual_seed(42)
+        examples = torch.cat([sample, torch.randn(5, WINDOW_SIZE, FEATURE_COUNT,
+                                                  generator=generator).clamp(-5, 5)])
         with torch.inference_mode():
-            reference = model(sample).numpy()
+            reference = model(examples).numpy()
         session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
-        actual = session.run(["logits"], {"features": sample.numpy()})[0]
+        actual = session.run(["logits"], {"features": examples.numpy()})[0]
         max_abs = float(np.max(np.abs(reference - actual)))
         parity = {"checked": True, "max_abs": max_abs}
         if max_abs > 2e-4:
             raise ValueError(f"ONNX parity error too high: {max_abs}")
     except ImportError:
         pass
+
+    (output / "model_metadata.json").write_text(
+        json.dumps(metadata, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     (output / "parity_report.json").write_text(
         json.dumps(parity, indent=2) + "\n",
@@ -87,11 +106,13 @@ def export_model(run: Path, output: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Export the M3 causal TCN to ONNX")
+    parser = argparse.ArgumentParser(description="Export M6 causal TCN to ONNX")
     parser.add_argument("--run", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--evaluation", type=Path,
+                        help="Held-out test JSON report; recorded in model_metadata.json")
     args = parser.parse_args()
-    metadata, parity = export_model(args.run, args.out)
+    metadata, parity = export_model(args.run, args.out, args.evaluation)
     print(json.dumps({"metadata": metadata, "parity": parity}, indent=2))
 
 

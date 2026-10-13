@@ -267,6 +267,14 @@ int main()
     testEngineThresholdAndReset();
     testModelWarmupNoRuleFallback();
     testPerClassThresholdsWithModel();
+    // Rule-only pinch calibration changes a geometric score without changing
+    // the ONNX feature vector schema or existing default thresholds.
+    GestureGeometry geometry{};
+    geometry.valid = true;
+    geometry.pinch[0] = 0.30F;
+    const float baseline = ruleGestureScores(geometry)[gestureIndex(GestureClass::Pinch)];
+    const float calibrated = ruleGestureScores(geometry, 0.28F, 0.65F)[gestureIndex(GestureClass::Pinch)];
+    assert(calibrated > baseline);
 
     std::cout << "Gesture recognition tests passed\n";
     return 0;

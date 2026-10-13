@@ -1,7 +1,18 @@
-# Virtual Controller - M5.4 Desktop Integration (0.12.0)
+# Virtual Controller - M6.0 ML Gesture Pipeline (0.14.0)
 
 Qt/QML + C++20 desktop application for two-hand camera tracking, gesture-driven
 mouse/keyboard input, mapping profiles and an in-app Gesture Playground.
+
+M6.0 adds a deterministic, session/subject-safe JSONL-to-training dataset
+builder, class-balanced causal TCN training, held-out TCN-vs-Rules comparison,
+model/dataset SHA256 checks and deployment instructions. It does **not**
+ship an unvalidated pretrained model: real labelled recordings are needed.
+See **PATCH_M6_0_README.md** and **ml/README.md**.
+
+M5.5 completes the pre-ML audit: independent camera/MediaPipe/gesture/output
+metrics, Rules-only landmark replay without system output, working model reload,
+per-hand movement/PINCH calibration and PiP monitor selection. Its UI scaling
+remains to be validated at 100-200% Windows DPI. See **PATCH_M5_5_README.md**.
 
 M5.4 introduces Windows System Tray integration, configurable global shortcuts,
 non-destructive mapping conflict validation, and safe profile copy/delete tools.
@@ -85,6 +96,12 @@ remains a separate mapping action and has priority over the movement gate.
   retained special/navigation keyboard actions.
 - editable Mapping page with `Press`, `Hold`, `Toggle` behavior and row removal.
 - JSON mapping profiles (`vc.mapping.profile.v1`), with safe duplicate/delete and live conflict diagnostics.
+- Movement range and PINCH calibration for each hand; explicit Apply then Save.
+- Offline Rules replay for previously recorded landmark sessions.
+- Independent live performance timings for camera interval, conversion,
+  MediaPipe, gesture classification, output dispatch and pipeline latency.
+- Reload Model: safe worker teardown/restart, with output disarmed after restart.
+- PiP display selector plus size, position and optional landmark overlay.
 - Windows System Tray (restore, start/stop, disarm, profile choice, exit) and global hotkeys.
 - Emergency F8 remains reserved; shortcut activation never arms system output.
 - Gesture Playground / Test tab with click, drag, freeze, scroll, keyboard and
@@ -123,7 +140,9 @@ remains a separate mapping action and has priority over the movement gate.
 7. Arm System output only for end-to-end Windows testing.
 8. F8 remains the emergency disarm key.
 
-The default build keeps `VC_WITH_ONNX=OFF`.
+The default build keeps `VC_WITH_ONNX=OFF`. To use your trained model,
+install ONNX Runtime SDK, set `VC_WITH_ONNX=ON` and rebuild after export.
+See `ml/README.md` for exact instructions.
 
 ## Tests
 
@@ -135,8 +154,9 @@ cmake --build build-core
 ctest --test-dir build-core --output-on-failure
 ```
 
-The M5.4 core suite contains 13 test executables. Additional stdlib-only Python
-replay checks: `python -m unittest discover -s ml/tests -p 'test_replay_session.py'`.
+The Qt-independent core suite contains 14 test executables. M6 adds Python
+dataset/split/evaluation tests: `python -m unittest discover -s ml/tests -p 'test_*.py'`.
 
+See `PATCH_M5_5_README.md` for the newest changes and audit of ten requested features.
 See `PATCH_M5_0_README.md` for M5 installation, new gesture diagnostics,
 recording and remaining limitations.

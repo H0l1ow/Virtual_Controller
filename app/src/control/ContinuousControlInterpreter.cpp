@@ -162,9 +162,9 @@ ContinuousControlResult ContinuousControlInterpreter::update(
     }
 
     result.controller.mouseX =
-        clampDelta(dx * gain);
+        clampDelta(dx * gain * std::clamp(config.movementScaleX, 0.5F, 2.0F));
     result.controller.mouseY =
-        clampDelta(dy * gain);
+        clampDelta(dy * gain * std::clamp(config.movementScaleY, 0.5F, 2.0F));
     result.cursorTracked = true;
     result.filteredX = x;
     result.filteredY = y;

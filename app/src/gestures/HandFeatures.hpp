@@ -104,6 +104,8 @@ private:
 };
 
 GestureScores ruleGestureScores(
-    const GestureGeometry &geometry);
+    const GestureGeometry &geometry,
+    float pinchLow = 0.17F,
+    float pinchHigh = 0.43F);
 
 } // namespace vc

@@ -74,6 +74,17 @@ QtObject {
     property string calibrationGesture: "PINCH"
     property string calibrationHand: "Right"
     property var calibrationResults: []
+    property bool rangeCalibrationActive: false
+    property int rangeCalibrationProgress: 0
+    property string rangeCalibrationStatus: "IDLE"
+    property var rangeCalibrationResults: [
+        {side: "Left", motionValid: false, closedValid: false, openValid: false,
+         spanX: 0, spanY: 0, closedDistance: 0, openDistance: 0},
+        {side: "Right", motionValid: false, closedValid: false, openValid: false,
+         spanX: 0, spanY: 0, closedDistance: 0, openDistance: 0}
+    ]
+    property var handCalibration: ({Left: {motionX: 1, motionY: 1, pinchLow: 0.17, pinchHigh: 0.43},
+                                    Right: {motionX: 1, motionY: 1, pinchLow: 0.17, pinchHigh: 0.43}})
     property bool cursorPlaygroundActive: false
     property var cursorPlaygroundState: ({
         active: false, complete: false, tracked: rightTracked,
@@ -169,6 +180,20 @@ QtObject {
     property int recordedFrames: 0
     property string recordingPath: ""
     property string recordingError: "Mock mode: no dataset is written"
+    property bool replayActive: false
+    property int replayFrames: 0
+    property string replayStatus: ""
+    property string replayError: ""
+    property string replayLeftGesture: "NONE"
+    property string replayRightGesture: "NONE"
+    property string replayLeftLabel: "UNLABELED"
+    property string replayRightLabel: "UNLABELED"
+    property int cameraIntervalP50Ms: 33
+    property int mediaPipeP50Ms: 8
+    property int gestureP50Ms: 1
+    property int gestureP95Ms: 3
+    property int outputDispatchP50Ms: 1
+    property int outputDispatchP95Ms: 2
     readonly property string leftReportedSide: leftTracked ? "L" : "-"
     readonly property string rightReportedSide: rightTracked ? "R" : "-"
 
@@ -413,7 +438,14 @@ QtObject {
     function setRequireRelease(value) { requireRelease = value }
     function setGestureGraceMs(value) { gestureGraceMs = value }
     function setGestureReleaseThreshold(value) { gestureReleaseThreshold = value }
+    function startRangeCalibration(side, kind) { return false }
+    function cancelRangeCalibration() { rangeCalibrationActive = false }
+    function applyRangeCalibration(side, kind) { return false }
+    function resetRangeCalibration() { rangeCalibrationActive = false }
     function startGestureRecording(leftLabel, rightLabel) { return false }
+    function startGestureReplay(path) { replayError = "Mock replay unavailable"; return false }
+    function stopGestureReplay() { replayActive = false }
+    function reloadGestureModel() { return false }
     function stopGestureRecording() { recordingActive = false }
     function setActiveProfile(name) { activeProfile = name }
 

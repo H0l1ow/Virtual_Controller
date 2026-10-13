@@ -194,6 +194,8 @@ RuntimeController::RuntimeController(
 {
     for (auto &threshold : gestureThresholdOverrides_)
         threshold.store(-1);
+    for (auto &value : appliedPinchLow_) value.store(0.17F);
+    for (auto &value : appliedPinchHigh_) value.store(0.43F);
     refreshDevices();
     updateCursorGeometry();
     cursorX_ = cursorScreenWidth_ / 2;
@@ -226,6 +228,9 @@ RuntimeController::RuntimeController(
         }
         refreshDevices();
     });
+
+    replayTimer_.setInterval(33); // deterministic nominal 30 FPS; source timestamps are kept for recognition
+    connect(&replayTimer_, &QTimer::timeout, this, &RuntimeController::tickGestureReplay);
 
     statsTimer_.setInterval(250);
 
@@ -274,6 +279,9 @@ bool RuntimeController::shutdownForExit(
 {
     qInfo() << "[shutdown] shutdownForExit begin";
 
+    stopGestureReplay();
+    pendingModelReload_ = false;
+    reloadQueued_ = false;
     outputService_.stop();
     refreshOutputStatus();
     resetContinuousControl();
@@ -910,7 +918,7 @@ void RuntimeController::setOutputArmed(
         }
         // Cursor Playground is an isolated test mode: fail closed even if an
         // unrelated QML control attempts to arm Windows input.
-        if (playgroundMode_ || calibrator_.capturing()
+        if (playgroundMode_ || calibrator_.capturing() || rangeCalibrator_.capturing()
             || runtimeState_ != RuntimeState::Running
             || !outputSnapshot_.ready) {
             emit stateChanged();
@@ -1113,6 +1121,7 @@ bool RuntimeController::startGestureCalibration(const QString &hand, const QStri
         && hand.compare(QStringLiteral("Right"), Qt::CaseInsensitive) != 0)
         return false;
     stopCursorPlayground();
+    cancelRangeCalibration();
     setOutputArmed(false);
     calibrator_.start(side, *gesture);
     emit stateChanged();
@@ -1169,6 +1178,7 @@ bool RuntimeController::startCursorPlayground()
     if (runtimeState_ != RuntimeState::Running)
         return false;
     cancelGestureCalibration();
+    cancelRangeCalibration();
     setOutputArmed(false);
     resetContinuousControl();
     playgroundSampleUs_ = nowUs();
@@ -1647,6 +1657,7 @@ void RuntimeController::start()
         return;
     }
 
+    stopGestureReplay();
     // Explicit user start overrides a pending automatic reconnect request.
     // The policy has already disarmed itself before invoking start() when
     // called by pollCameraRecovery().
@@ -2006,6 +2017,20 @@ void RuntimeController::finalizeSessionStop(
     setRuntimeState(terminalState);
     emit stateChanged();
 
+    // Reload starts a fresh worker session only after the prior tracker and
+    // camera are completely stopped. Output stays disarmed after restart.
+    if (pendingModelReload_) {
+        pendingModelReload_ = false;
+        if (terminalState == RuntimeState::Stopped && !exitRequested_) {
+            reloadQueued_ = true;
+            QMetaObject::invokeMethod(this, [this] {
+                if (!reloadQueued_ || exitRequested_ || runtimeState_ != RuntimeState::Stopped)
+                    return;
+                reloadQueued_ = false;
+                start();
+            }, Qt::QueuedConnection);
+        }
+    }
     maybeEmitApplicationExitReady();
 }
 
@@ -2019,6 +2044,7 @@ void RuntimeController::handleWorkerFault(
         return;
     }
 
+    pendingModelReload_ = false;
     errorMessage_ = message;
     requestSessionStop(
         RuntimeState::Faulted);
@@ -2038,6 +2064,9 @@ void RuntimeController::handleWorkerSessionFinished(
 
 void RuntimeController::stop()
 {
+    pendingModelReload_ = false;
+    reloadQueued_ = false;
+    stopGestureReplay(); // Global STOP also cancels offline replay.
     cancelCameraRecovery();
     requestSessionStop(
         RuntimeState::Stopped);
@@ -2060,6 +2089,9 @@ void RuntimeController::requestApplicationExit()
     }
 
     exitRequested_ = true;
+    pendingModelReload_ = false;
+    reloadQueued_ = false;
+    stopGestureReplay();
     cancelCameraRecovery();
     emit applicationExitRequested();
 
@@ -2326,7 +2358,13 @@ void RuntimeController::workerLoop(
                     thresholds.fallbackPercent = recognitionThreshold_.load();
                     for (std::size_t idx = 1; idx < kGestureClassCount; ++idx)
                         thresholds.overrides[idx] = gestureThresholdOverrides_[idx].load();
+                    const auto gestureStartUs = nowUs();
+                    for (std::size_t side = 0; side < kHandCount; ++side) {
+                        gestureEngine.setPinchRange(static_cast<HandSide>(side),
+                            appliedPinchLow_[side].load(), appliedPinchHigh_[side].load());
+                    }
                     const GestureFrame gestures = gestureEngine.update(tracking, thresholds);
+                    const auto gestureEndUs = nowUs();
 
                     const auto processingEndUs =
                         nowUs();
@@ -2339,7 +2377,8 @@ void RuntimeController::workerLoop(
                                 raw.trackEndUs
                                     - raw.trackStartUs,
                                 processingEndUs
-                                    - captureUs);
+                                    - captureUs,
+                                gestureEndUs - gestureStartUs);
                     }
 
                     QMetaObject::invokeMethod(
@@ -2504,6 +2543,7 @@ void RuntimeController::applyTrackingFrame(
         gestureStateManager_.update(gestures, eventConfig);
 
     calibrator_.ingest(gestures);
+    rangeCalibrator_.ingest(frame);
 
     leftGestureEvent_ = gestureEventDisplayName(
         events.hands[handIndex(HandSide::Left)].phase);
@@ -2522,7 +2562,10 @@ void RuntimeController::applyTrackingFrame(
         recordingError_ = QString::fromStdString(recorder_.error());
     }
 
+    const auto outputStartUs = nowUs();
     updateContinuousControl(frame, events);
+    if (metrics_)
+        metrics_->recordOutputDispatch(nowUs() - outputStartUs);
     emit stateChanged();
 }
 
@@ -2547,6 +2590,7 @@ void RuntimeController::clearTracking()
     playgroundMode_ = false;
     cursorPlayground_.stop();
     calibrator_.cancel();
+    rangeCalibrator_.cancel();
     stopGestureRecording();
     gestureDiagnostics_.clear();
     leftTracked_ = false;
@@ -2620,6 +2664,8 @@ void RuntimeController::updateContinuousControl(
     config.smoothing = smoothing_;
     config.invertX = invertX_;
     config.invertY = invertY_;
+    config.movementScaleX = appliedMotionX_[handIndex(HandSide::Right)];
+    config.movementScaleY = appliedMotionY_[handIndex(HandSide::Right)];
 
     const auto &rightHand =
         frame.hands[handIndex(HandSide::Right)];
@@ -2687,6 +2733,223 @@ void RuntimeController::refreshOutputStatus()
 {
     outputSnapshot_ =
         outputService_.status();
+}
+
+QString RuntimeController::rangeCalibrationStatus() const
+{
+    switch (rangeCalibrator_.status()) {
+    case HandRangeCalibrator::Status::Capturing: return QStringLiteral("CAPTURING");
+    case HandRangeCalibrator::Status::Ready: return QStringLiteral("READY");
+    case HandRangeCalibrator::Status::Insufficient: return QStringLiteral("INSUFFICIENT");
+    case HandRangeCalibrator::Status::Cancelled: return QStringLiteral("CANCELLED");
+    default: return QStringLiteral("IDLE");
+    }
+}
+
+QVariantList RuntimeController::rangeCalibrationResults() const
+{
+    QVariantList result;
+    for (std::size_t i = 0; i < kHandCount; ++i) {
+        const auto r = rangeCalibrator_.result(static_cast<HandSide>(i));
+        QVariantMap item;
+        item.insert(QStringLiteral("side"), i == 0 ? QStringLiteral("Left") : QStringLiteral("Right"));
+        item.insert(QStringLiteral("motionValid"), r.motionValid);
+        item.insert(QStringLiteral("spanX"), r.spanX);
+        item.insert(QStringLiteral("spanY"), r.spanY);
+        item.insert(QStringLiteral("closedValid"), r.closedValid);
+        item.insert(QStringLiteral("closedDistance"), r.closedDistance);
+        item.insert(QStringLiteral("openValid"), r.openValid);
+        item.insert(QStringLiteral("openDistance"), r.openDistance);
+        result.append(item);
+    }
+    return result;
+}
+
+QVariantMap RuntimeController::handCalibration() const
+{
+    QVariantMap values;
+    for (std::size_t i = 0; i < kHandCount; ++i) {
+        QVariantMap hand;
+        hand.insert(QStringLiteral("motionX"), appliedMotionX_[i]);
+        hand.insert(QStringLiteral("motionY"), appliedMotionY_[i]);
+        hand.insert(QStringLiteral("pinchLow"), appliedPinchLow_[i].load());
+        hand.insert(QStringLiteral("pinchHigh"), appliedPinchHigh_[i].load());
+        values.insert(i == 0 ? QStringLiteral("Left") : QStringLiteral("Right"), hand);
+    }
+    return values;
+}
+
+void RuntimeController::setHandCalibration(const QVariantMap &values)
+{
+    bool changed = false;
+    for (std::size_t i = 0; i < kHandCount; ++i) {
+        const auto hand = values.value(i == 0 ? QStringLiteral("Left") : QStringLiteral("Right")).toMap();
+        if (hand.isEmpty()) continue;
+        const float x = hand.value(QStringLiteral("motionX"), 1.0).toFloat();
+        const float y = hand.value(QStringLiteral("motionY"), 1.0).toFloat();
+        const float low = hand.value(QStringLiteral("pinchLow"), 0.17).toFloat();
+        const float high = hand.value(QStringLiteral("pinchHigh"), 0.43).toFloat();
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(low) || !std::isfinite(high)
+            || x < 0.5F || x > 2.0F || y < 0.5F || y > 2.0F
+            || low < 0.02F || high > 2.0F || high - low < 0.03F) continue;
+        appliedMotionX_[i] = x;
+        appliedMotionY_[i] = y;
+        appliedPinchLow_[i].store(low);
+        appliedPinchHigh_[i].store(high);
+        changed = true;
+    }
+    if (changed) {
+        resetContinuousControl();
+        emit settingsChanged();
+    }
+}
+
+bool RuntimeController::startRangeCalibration(const QString &side, const QString &kind)
+{
+    const auto parsedSide = parseHandName(side);
+    if (!parsedSide || runtimeState_ != RuntimeState::Running) return false;
+    HandRangeCalibrator::Kind mode;
+    if (kind == QStringLiteral("Motion")) mode = HandRangeCalibrator::Kind::Motion;
+    else if (kind == QStringLiteral("PinchClosed")) mode = HandRangeCalibrator::Kind::PinchClosed;
+    else if (kind == QStringLiteral("PinchOpen")) mode = HandRangeCalibrator::Kind::PinchOpen;
+    else return false;
+    cancelGestureCalibration();
+    stopCursorPlayground();
+    setOutputArmed(false);
+    rangeCalibrator_.start(*parsedSide, mode);
+    emit stateChanged();
+    return true;
+}
+
+void RuntimeController::cancelRangeCalibration()
+{
+    rangeCalibrator_.cancel();
+    emit stateChanged();
+}
+
+bool RuntimeController::applyRangeCalibration(const QString &side, const QString &kind)
+{
+    const auto parsedSide = parseHandName(side);
+    if (!parsedSide || rangeCalibrator_.capturing()) return false;
+    const auto r = rangeCalibrator_.result(*parsedSide);
+    QVariantMap values = handCalibration();
+    auto hand = values.value(side).toMap();
+    if (kind == QStringLiteral("Motion") && r.motionValid) {
+        hand.insert(QStringLiteral("motionX"), std::clamp(0.35F / r.spanX, 0.5F, 2.0F));
+        hand.insert(QStringLiteral("motionY"), std::clamp(0.35F / r.spanY, 0.5F, 2.0F));
+    } else if (kind == QStringLiteral("Pinch") && r.closedValid && r.openValid
+               && r.openDistance - r.closedDistance >= 0.12F) {
+        const float span = r.openDistance - r.closedDistance;
+        hand.insert(QStringLiteral("pinchLow"), r.closedDistance + 0.10F * span);
+        hand.insert(QStringLiteral("pinchHigh"), r.closedDistance + 0.50F * span);
+        if (hand.value(QStringLiteral("pinchHigh")).toFloat() > 2.0F
+            || hand.value(QStringLiteral("pinchLow")).toFloat() < 0.02F)
+            return false;
+    } else return false;
+    values.insert(side, hand);
+    setHandCalibration(values);
+    return true;
+}
+
+void RuntimeController::resetRangeCalibration()
+{
+    rangeCalibrator_.reset();
+    QVariantMap defaults;
+    for (const auto &name : {QStringLiteral("Left"), QStringLiteral("Right")}) {
+        defaults.insert(name, QVariantMap{{QStringLiteral("motionX"), 1.0},
+            {QStringLiteral("motionY"), 1.0}, {QStringLiteral("pinchLow"), 0.17},
+            {QStringLiteral("pinchHigh"), 0.43}});
+    }
+    setHandCalibration(defaults);
+    emit stateChanged();
+}
+
+bool RuntimeController::reloadGestureModel()
+{
+    if (runtimeState_ != RuntimeState::Running) {
+        gestureModelStatus_ = QStringLiteral("Start tracking before reloading the model.");
+        emit stateChanged();
+        return false;
+    }
+    pendingModelReload_ = true;
+    requestSessionStop(RuntimeState::Stopped);
+    return true;
+}
+
+bool RuntimeController::startGestureReplay(const QString &filePath)
+{
+    stopGestureReplay();
+    replayError_.clear();
+    replayStatus_.clear();
+    if (pipelineRunning()) {
+        replayError_ = QStringLiteral("Stop tracking before playing a recording.");
+        emit stateChanged();
+        return false;
+    }
+    // Fail closed even if a previously running pipeline left a native button
+    // latched. This replay path never calls OutputService::arm or submit.
+    outputService_.stop();
+    actionMapper_.reset();
+    refreshOutputStatus();
+    if (!replayReader_.open(filePath)) {
+        replayError_ = replayReader_.error();
+        emit stateChanged();
+        return false;
+    }
+    replayEngine_.reset();
+    replayStateManager_.reset();
+    replayFrames_ = 0;
+    replayGestures_ = {QStringLiteral("NONE"), QStringLiteral("NONE")};
+    replayLabels_ = {QStringLiteral("UNLABELED"), QStringLiteral("UNLABELED")};
+    replayStatus_ = QStringLiteral("Rules playback (offline, output disabled)");
+    replayTimer_.start();
+    emit stateChanged();
+    return true;
+}
+
+void RuntimeController::stopGestureReplay()
+{
+    const bool wasPlaying = replayTimer_.isActive();
+    replayTimer_.stop();
+    replayReader_.close();
+    if (wasPlaying)
+        replayStatus_ = QStringLiteral("Playback stopped");
+    // Keep the last result on screen until a new session starts.
+    emit stateChanged();
+}
+
+void RuntimeController::tickGestureReplay()
+{
+    TrackingFrame frame;
+    std::array<QString, kHandCount> labels;
+    if (!replayReader_.next(&frame, &labels)) {
+        const QString failure = replayReader_.error();
+        stopGestureReplay();
+        replayError_ = failure;
+        replayStatus_ = failure.isEmpty()
+            ? QStringLiteral("Playback complete")
+            : QStringLiteral("Playback stopped: invalid recording");
+        emit stateChanged();
+        return;
+    }
+    GestureThresholds thresholds;
+    thresholds.fallbackPercent = recognitionThreshold_.load();
+    for (std::size_t idx = 1; idx < kGestureClassCount; ++idx)
+        thresholds.overrides[idx] = gestureThresholdOverrides_[idx].load();
+    for (std::size_t side = 0; side < kHandCount; ++side) {
+        replayEngine_.setPinchRange(static_cast<HandSide>(side),
+            appliedPinchLow_[side].load(), appliedPinchHigh_[side].load());
+    }
+    const GestureFrame gestures = replayEngine_.update(frame, thresholds);
+    replayStateManager_.update(gestures, {}); // state evolution only; no actions
+    for (std::size_t side = 0; side < kHandCount; ++side) {
+        const auto &prediction = gestures.hands[side];
+        replayGestures_[side] = prediction.ready
+            ? gestureDisplayName(prediction.gesture) : QStringLiteral("NONE");
+    }
+    replayLabels_ = labels;
+    ++replayFrames_;
+    emit stateChanged();
 }
 
 void RuntimeController::updateStats()

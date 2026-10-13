@@ -1,6 +1,7 @@
 import VirtualController.I18n 1.0
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import "../components"
 
@@ -29,6 +30,25 @@ Item {
     readonly property string liveEvent: liveHandIsLeft
         ? uiState.leftGestureEvent
         : uiState.rightGestureEvent
+
+    FileDialog {
+        id: replayFileDialog
+        title: qsTr("Open landmark recording")
+        nameFilters: [qsTr("Gesture recordings (*.jsonl)")]
+        onAccepted: root.uiState.startGestureReplay(selectedFile.toString())
+    }
+
+    function localizedReplayStatus(value) {
+        LanguageManager.language
+        switch (value) {
+        case "Rules playback (offline, output disabled)":
+            return qsTr("Rules playback (offline, output disabled)")
+        case "Playback complete": return qsTr("Playback complete")
+        case "Playback stopped": return qsTr("Playback stopped")
+        case "Playback stopped: invalid recording": return qsTr("Playback stopped: invalid recording")
+        default: return value
+        }
+    }
 
     function localizedFrameCount(count) {
         // Avoid the invalid '1 klatek' / '2 klatek' forms in Polish.
@@ -80,6 +100,7 @@ Item {
                 theme: root.theme
                 placeholderText: qsTr("Search gestures (planned)")
                 implicitWidth: 210
+                visible: root.width >= 1150
                 enabled: false
             }
 
@@ -88,6 +109,7 @@ Item {
                 text: qsTr("New gesture")
                 iconName: "plus"
                 implicitWidth: 120
+                visible: root.width >= 1150
                 enabled: false
             }
         }
@@ -284,8 +306,8 @@ Item {
             }
 
             VcCard {
-                Layout.preferredWidth: 360
-                Layout.minimumWidth: 340
+                Layout.preferredWidth: Math.min(360, Math.max(300, root.width * 0.35))
+                Layout.minimumWidth: 300
                 Layout.fillHeight: true
                 theme: root.theme
 
@@ -652,6 +674,111 @@ Item {
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 10
+                        }
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
+                        Text {
+                            text: qsTr("Gesture Replay (offline)")
+                            color: root.theme.textPrimary
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Replay saved landmark sequences with Rules without a camera or Windows input. Stop tracking first.")
+                            wrapMode: Text.WordWrap
+                            color: root.theme.textMuted
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 10
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            VcButton {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                text: qsTr("Open recording")
+                                iconName: "folder"
+                                enabled: !root.uiState.pipelineRunning && !root.uiState.replayActive
+                                onClicked: replayFileDialog.open()
+                            }
+                            VcButton {
+                                theme: root.theme
+                                text: qsTr("Stop replay")
+                                iconName: "stop"
+                                enabled: root.uiState.replayActive
+                                onClicked: root.uiState.stopGestureReplay()
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.localizedReplayStatus(root.uiState.replayStatus) + " | " + root.localizedFrameCount(root.uiState.replayFrames)
+                            color: root.theme.textSecondary
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 10
+                            wrapMode: Text.WordWrap
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Left") + ": " + root.localizedLabel(root.uiState.replayLeftGesture)
+                                  + " (" + root.uiState.replayLeftLabel + ")   "
+                                  + qsTr("Right") + ": " + root.localizedLabel(root.uiState.replayRightGesture)
+                                  + " (" + root.uiState.replayRightLabel + ")"
+                            color: root.theme.textPrimary
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: root.uiState.replayError !== ""
+                            text: root.uiState.replayError
+                            wrapMode: Text.WordWrap
+                            color: root.theme.error
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 10
+                        }
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
+                        Text {
+                            text: qsTr("Performance Monitor (median / P95)")
+                            color: root.theme.textPrimary
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                        }
+                        Repeater {
+                            model: [
+                                { title: qsTr("Camera frame interval"), p50: root.uiState.cameraIntervalP50Ms, p95: -1 },
+                                { title: qsTr("Frame conversion"), p50: root.uiState.conversionP50Ms, p95: root.uiState.conversionP95Ms },
+                                { title: qsTr("MediaPipe tracking"), p50: root.uiState.mediaPipeP50Ms, p95: root.uiState.inferenceP95Ms },
+                                { title: qsTr("Gesture classification"), p50: root.uiState.gestureP50Ms, p95: root.uiState.gestureP95Ms },
+                                { title: qsTr("Output dispatch"), p50: root.uiState.outputDispatchP50Ms, p95: root.uiState.outputDispatchP95Ms },
+                                { title: qsTr("End-to-end pipeline"), p50: root.uiState.latencyP50Ms, p95: root.uiState.latencyP95Ms }
+                            ]
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: modelData.title
+                                    color: root.theme.textSecondary
+                                    font.family: root.theme.fontFamily
+                                    font.pixelSize: 10
+                                }
+                                Text {
+                                    text: modelData.p50 + " ms" + (modelData.p95 < 0 ? "" : " / " + modelData.p95 + " ms")
+                                    color: root.theme.textPrimary
+                                    font.family: root.theme.fontFamily
+                                    font.pixelSize: 10
+                                }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Camera: inter-frame period; Output: submission time, not physical Windows input latency.")
+                            wrapMode: Text.WordWrap
+                            color: root.theme.textMuted
+                            font.family: root.theme.fontFamily
+                            font.pixelSize: 9
                         }
                         Item { Layout.preferredHeight: 16 }
                     }

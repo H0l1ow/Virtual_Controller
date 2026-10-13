@@ -48,9 +48,13 @@ qt_add_executable(
     src/gestures/GestureTypes.hpp
     src/gestures/GestureDataRecorder.hpp
     src/gestures/GestureDataRecorder.cpp
+    src/gestures/GestureReplayReader.hpp
+    src/gestures/GestureReplayReader.cpp
     src/gestures/GestureTuning.hpp
     src/gestures/GestureCalibrator.hpp
     src/gestures/GestureCalibrator.cpp
+    src/gestures/HandRangeCalibrator.hpp
+    src/gestures/HandRangeCalibrator.cpp
     src/gestures/HandFeatures.hpp
     src/gestures/HandFeatures.cpp
     src/gestures/GestureEngine.hpp

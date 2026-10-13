@@ -7,7 +7,7 @@ Item {
     property string title: qsTr("Setting")
     property string description: ""
     default property alias controlContent: controlHost.data
-    readonly property bool compact: width < 560
+    readonly property bool compact: width < 670
     implicitHeight: compact
         ? Math.max(78, labels.implicitHeight + controlHost.implicitHeight + 18)
         : Math.max(60, labels.implicitHeight + 18)
@@ -45,7 +45,7 @@ Item {
             id: controlHost
             Layout.fillWidth: root.compact
             Layout.minimumWidth: 0
-            Layout.preferredWidth: root.compact ? root.width : Math.min(300, root.width * 0.44)
+            Layout.preferredWidth: root.compact ? root.width : Math.min(340, root.width * 0.46)
             Layout.alignment: root.compact ? Qt.AlignLeft : Qt.AlignVCenter
             spacing: 8
         }

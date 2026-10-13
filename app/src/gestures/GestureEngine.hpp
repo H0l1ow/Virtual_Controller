@@ -31,6 +31,7 @@ public:
         const GestureThresholds &thresholds);
 
     void reset();
+    void setPinchRange(HandSide side, float low, float high);
 
     bool usingModel() const
     {
@@ -64,6 +65,8 @@ private:
         bool initialized);
 
     std::array<HandState, kHandCount> handStates_{};
+    std::array<float, kHandCount> pinchLow_{0.17F, 0.17F};
+    std::array<float, kHandCount> pinchHigh_{0.43F, 0.43F};
     ModelInference modelInference_;
     std::string backendName_;
 };

@@ -36,3 +36,11 @@ ml/runs/
 .DS_Store
 Thumbs.db
 *~
+
+# M6 user recordings and trained model artifacts must remain private/local
+data/
+ml/data/
+*.npz
+models/gesture_model.onnx
+models/model_metadata.json
+models/parity_report.json

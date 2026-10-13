@@ -14,6 +14,14 @@ GestureEngine::GestureEngine(
 {
 }
 
+void GestureEngine::setPinchRange(HandSide side, float low, float high)
+{
+    if (std::isfinite(low) && std::isfinite(high) && low >= 0.02F && high > low + 0.03F) {
+        pinchLow_[handIndex(side)] = low;
+        pinchHigh_[handIndex(side)] = high;
+    }
+}
+
 GestureFrame GestureEngine::update(
     const TrackingFrame &tracking,
     int recognitionThresholdPercent)
@@ -110,7 +118,8 @@ GesturePrediction GestureEngine::updateHand(
         rawScores = modelInference_(state.stream.tensor());
     }
     else {
-        rawScores = ruleGestureScores(geometry);
+        const auto side = handIndex(hand.side);
+        rawScores = ruleGestureScores(geometry, pinchLow_[side], pinchHigh_[side]);
     }
 
     for (auto &score : rawScores) {

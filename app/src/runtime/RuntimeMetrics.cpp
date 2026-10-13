@@ -24,9 +24,12 @@ std::uint64_t RuntimeMetrics::recordFrameReceived(
             std::memory_order_relaxed)
         + 1;
 
-    lastFrameReceivedUs_.store(
-        captureUs,
-        std::memory_order_relaxed);
+    const auto previousUs = lastFrameReceivedUs_.exchange(
+        captureUs, std::memory_order_relaxed);
+    if (previousUs > 0 && captureUs > previousUs) {
+        std::lock_guard lock(samplesMutex_);
+        pushBounded(cameraIntervalUs_, captureUs - previousUs, windowSize_);
+    }
 
     return sequence;
 }
@@ -54,7 +57,8 @@ void RuntimeMetrics::pushBounded(
 void RuntimeMetrics::recordProcessed(
     std::int64_t conversionUs,
     std::int64_t inferenceUs,
-    std::int64_t pipelineLatencyUs)
+    std::int64_t pipelineLatencyUs,
+    std::int64_t gestureUs)
 {
     processedFrames_.fetch_add(
         1,
@@ -82,6 +86,13 @@ void RuntimeMetrics::recordProcessed(
         pipelineLatencyUs_,
         pipelineLatencyUs,
         windowSize_);
+    pushBounded(gestureUs_, gestureUs, windowSize_);
+}
+
+void RuntimeMetrics::recordOutputDispatch(std::int64_t dispatchUs)
+{
+    std::lock_guard lock(samplesMutex_);
+    pushBounded(outputDispatchUs_, dispatchUs, windowSize_);
 }
 
 int RuntimeMetrics::percentileMs(
@@ -186,6 +197,12 @@ RuntimeMetricsSnapshot RuntimeMetrics::snapshot(
             percentileMs(
                 conversionUs_,
                 0.95);
+        result.cameraIntervalP50Ms = percentileMs(cameraIntervalUs_, 0.50);
+        result.mediaPipeP50Ms = percentileMs(inferenceUs_, 0.50);
+        result.gestureP50Ms = percentileMs(gestureUs_, 0.50);
+        result.gestureP95Ms = percentileMs(gestureUs_, 0.95);
+        result.outputDispatchP50Ms = percentileMs(outputDispatchUs_, 0.50);
+        result.outputDispatchP95Ms = percentileMs(outputDispatchUs_, 0.95);
     }
 
     {

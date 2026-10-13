@@ -1,17 +1,22 @@
-# Model files
+# Models used by VirtualController M6.0
 
-`hand_landmarker.task` is the pretrained MediaPipe hand tracker used to obtain
-21 landmarks per hand.
+`hand_landmarker.task` is the MediaPipe tracker for 21 landmarks per hand.
 
-M3 also supports an optional project-specific gesture model:
+A **separately trained** gesture classifier can be deployed as two matching
+files (plus optional evaluation/parity report):
 
 - `gesture_model.onnx`
 - `model_metadata.json`
 
-No fake pretrained gesture model is bundled. If these files are missing, the
-application uses the static geometric Rules recognizer and remains fully usable
-for M3 testing.
+The app defaults to **Rules** unless Qt Creator is configured with
+`VC_WITH_ONNX=ON` and a compatible ONNX Runtime SDK. With an ONNX-enabled
+build, the model is loaded at tracking startup/reload only when both files
+are present and pass metadata/schema/label/shape/SHA256 checks.
 
-The ONNX contract is `vc.hand134.v2`, float32 `[batch,16,134]` -> logits
-`[batch,5]`, labels `NONE,FIST,OPEN_HAND,POINT,PINCH`. Normalization must be
-embedded in the graph. See `ml/README.md` and `docs/M3_GESTURE_RECOGNITION.md`.
+Input schema: `vc.hand134.v2`; float32 `[1,16,134]`, 30 Hz causal window.
+Output: logits `[1,5]` in `NONE,FIST,OPEN_HAND,POINT,PINCH` order. All
+normalization is inside the ONNX graph.
+
+**This source package does not ship a trained TCN.** See `ml/README.md`
+for producing one from real M5.5 JSONL recordings and for a held-out
+comparison against Rules. Invalid models fall back to Rules.

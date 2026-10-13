@@ -370,7 +370,9 @@ std::vector<float> HandFeatureStream::tensor() const
 }
 
 GestureScores ruleGestureScores(
-    const GestureGeometry &geometry)
+    const GestureGeometry &geometry,
+    float pinchLow,
+    float pinchHigh)
 {
     GestureScores scores{};
     scores[gestureIndex(GestureClass::None)] = 1.0F;
@@ -405,8 +407,8 @@ GestureScores ruleGestureScores(
         1.0F
         - linearScore(
             geometry.pinch[0],
-            0.17F,
-            0.43F);
+            pinchLow,
+            pinchHigh);
 
     const float fist =
         linearScore(

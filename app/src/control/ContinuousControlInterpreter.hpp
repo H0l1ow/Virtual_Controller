@@ -15,6 +15,8 @@ struct ContinuousControlConfig {
     bool smoothing{true};
     bool invertX{false};
     bool invertY{false};
+    float movementScaleX{1.0F};
+    float movementScaleY{1.0F};
 
     // One Euro defaults intentionally match the proven cursor behavior from
     // the reference project rather than gesture-model settings.

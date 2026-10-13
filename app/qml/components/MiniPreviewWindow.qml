@@ -40,6 +40,11 @@ Window {
     visible: minimizeActive && enabledByUser && !dismissed
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     transientParent: null
+    screen: AppPreferences.pipScreen
+    onScreenChanged: {
+        placementReady = false
+        Qt.callLater(applySavedPosition)
+    }
     color: "#0C151D"
     title: mini.uiText("Virtual Controller - Mini preview")
 

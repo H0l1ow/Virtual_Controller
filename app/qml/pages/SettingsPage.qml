@@ -295,6 +295,26 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
+                                title: qsTr("Mini preview monitor")
+                                description: qsTr("Choose a display; if disconnected, use the primary display.")
+                                VcComboBox {
+                                    theme: root.theme
+                                    model: [qsTr("Primary monitor")].concat(AppPreferences.pipScreenNames)
+                                    currentIndex: Math.max(0, AppPreferences.pipScreenNames.indexOf(AppPreferences.pipScreenName) + 1)
+                                    implicitWidth: Math.max(210, contentItem.implicitWidth + 35)
+                                    onActivated: function(index) {
+                                        AppPreferences.pipScreenName = index === 0 ? "" : AppPreferences.pipScreenNames[index - 1]
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: root.theme.borderSubtle
+                            }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
                                 title: qsTr("Show landmarks in mini preview")
                                 description: qsTr("Display tracked hands over the camera image in the small window.")
                                 VcSwitch {
@@ -1038,13 +1058,14 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
-                                title: qsTr("Reload model (later)")
-                                description: qsTr("Restart tracking after replacing the model. Hot reload is not enabled yet.")
+                                title: qsTr("Reload model")
+                                description: qsTr("Restart tracking and load the model from disk. System input remains disarmed.")
                                 VcButton {
                                     theme: root.theme
                                     text: qsTr("Reload")
                                     iconName: "reset"
-                                    enabled: false
+                                    enabled: root.uiState.runtimeStateName === "Running"
+                                    onClicked: root.uiState.reloadGestureModel()
                                 }
                             }
                             Item {

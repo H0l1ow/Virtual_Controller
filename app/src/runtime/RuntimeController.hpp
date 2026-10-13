@@ -4,7 +4,10 @@
 #include "control/ControllerState.hpp"
 #include "gestures/GestureTypes.hpp"
 #include "gestures/GestureDataRecorder.hpp"
+#include "gestures/GestureReplayReader.hpp"
+#include "gestures/GestureEngine.hpp"
 #include "gestures/GestureCalibrator.hpp"
+#include "gestures/HandRangeCalibrator.hpp"
 #include "gestures/GestureTuning.hpp"
 #include "control/CursorPlayground.hpp"
 #include "gestures/GestureStateManager.hpp"
@@ -466,6 +469,25 @@ public:
                 NOTIFY stateChanged)
 
     Q_PROPERTY(QVariantList gestureDiagnostics READ gestureDiagnostics NOTIFY stateChanged)
+    Q_PROPERTY(bool rangeCalibrationActive READ rangeCalibrationActive NOTIFY stateChanged)
+    Q_PROPERTY(int rangeCalibrationProgress READ rangeCalibrationProgress NOTIFY stateChanged)
+    Q_PROPERTY(QString rangeCalibrationStatus READ rangeCalibrationStatus NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList rangeCalibrationResults READ rangeCalibrationResults NOTIFY stateChanged)
+    Q_PROPERTY(QVariantMap handCalibration READ handCalibration NOTIFY settingsChanged)
+    Q_PROPERTY(bool replayActive READ replayActive NOTIFY stateChanged)
+    Q_PROPERTY(int replayFrames READ replayFrames NOTIFY stateChanged)
+    Q_PROPERTY(QString replayStatus READ replayStatus NOTIFY stateChanged)
+    Q_PROPERTY(QString replayError READ replayError NOTIFY stateChanged)
+    Q_PROPERTY(QString replayLeftGesture READ replayLeftGesture NOTIFY stateChanged)
+    Q_PROPERTY(QString replayRightGesture READ replayRightGesture NOTIFY stateChanged)
+    Q_PROPERTY(QString replayLeftLabel READ replayLeftLabel NOTIFY stateChanged)
+    Q_PROPERTY(QString replayRightLabel READ replayRightLabel NOTIFY stateChanged)
+    Q_PROPERTY(int cameraIntervalP50Ms READ cameraIntervalP50Ms NOTIFY stateChanged)
+    Q_PROPERTY(int mediaPipeP50Ms READ mediaPipeP50Ms NOTIFY stateChanged)
+    Q_PROPERTY(int gestureP50Ms READ gestureP50Ms NOTIFY stateChanged)
+    Q_PROPERTY(int gestureP95Ms READ gestureP95Ms NOTIFY stateChanged)
+    Q_PROPERTY(int outputDispatchP50Ms READ outputDispatchP50Ms NOTIFY stateChanged)
+    Q_PROPERTY(int outputDispatchP95Ms READ outputDispatchP95Ms NOTIFY stateChanged)
     Q_PROPERTY(int gestureGraceMs READ gestureGraceMs WRITE setGestureGraceMs NOTIFY settingsChanged)
     Q_PROPERTY(int gestureReleaseThreshold READ gestureReleaseThreshold WRITE setGestureReleaseThreshold NOTIFY settingsChanged)
     // M5.3 thresholds inherit the existing global Recognition threshold (-1).
@@ -599,6 +621,12 @@ public:
     {
         return metricsSnapshot_.conversionP95Ms;
     }
+    int cameraIntervalP50Ms() const { return metricsSnapshot_.cameraIntervalP50Ms; }
+    int mediaPipeP50Ms() const { return metricsSnapshot_.mediaPipeP50Ms; }
+    int gestureP50Ms() const { return metricsSnapshot_.gestureP50Ms; }
+    int gestureP95Ms() const { return metricsSnapshot_.gestureP95Ms; }
+    int outputDispatchP50Ms() const { return metricsSnapshot_.outputDispatchP50Ms; }
+    int outputDispatchP95Ms() const { return metricsSnapshot_.outputDispatchP95Ms; }
 
     QString resolution() const
     {
@@ -897,6 +925,27 @@ public:
     int gestureGraceMs() const { return gestureGraceMs_; }
     int gestureReleaseThreshold() const { return gestureReleaseThreshold_; }
     QVariantList gestureDiagnostics() const { return gestureDiagnostics_; }
+    bool rangeCalibrationActive() const { return rangeCalibrator_.capturing(); }
+    int rangeCalibrationProgress() const { return rangeCalibrator_.progress(); }
+    QString rangeCalibrationStatus() const;
+    QVariantList rangeCalibrationResults() const;
+    QVariantMap handCalibration() const;
+    Q_INVOKABLE bool startRangeCalibration(const QString &side, const QString &kind);
+    Q_INVOKABLE void cancelRangeCalibration();
+    Q_INVOKABLE bool applyRangeCalibration(const QString &side, const QString &kind);
+    Q_INVOKABLE void resetRangeCalibration();
+    Q_INVOKABLE void setHandCalibration(const QVariantMap &values);
+    bool replayActive() const { return replayTimer_.isActive(); }
+    int replayFrames() const { return replayFrames_; }
+    QString replayStatus() const { return replayStatus_; }
+    QString replayError() const { return replayError_; }
+    QString replayLeftGesture() const { return replayGestures_[0]; }
+    QString replayRightGesture() const { return replayGestures_[1]; }
+    QString replayLeftLabel() const { return replayLabels_[0]; }
+    QString replayRightLabel() const { return replayLabels_[1]; }
+    Q_INVOKABLE bool startGestureReplay(const QString &filePath);
+    Q_INVOKABLE void stopGestureReplay();
+    Q_INVOKABLE bool reloadGestureModel();
     bool recordingActive() const { return recorder_.active(); }
     int recordedFrames() const { return static_cast<int>(recorder_.frameCount()); }
     QString recordingPath() const { return recordingPath_; }
@@ -1017,6 +1066,7 @@ private:
         std::stop_token stopToken);
 
     void updateStats();
+    void tickGestureReplay();
 
     static QVariantList toVariantLandmarks(
         const HandTrackingState &hand);
@@ -1055,6 +1105,17 @@ private:
     std::jthread worker_;
 
     QTimer statsTimer_;
+    QTimer replayTimer_;
+    GestureReplayReader replayReader_;
+    GestureEngine replayEngine_;
+    GestureStateManager replayStateManager_;
+    int replayFrames_{};
+    QString replayStatus_;
+    QString replayError_;
+    std::array<QString, kHandCount> replayGestures_{QStringLiteral("NONE"), QStringLiteral("NONE")};
+    std::array<QString, kHandCount> replayLabels_{QStringLiteral("UNLABELED"), QStringLiteral("UNLABELED")};
+    bool pendingModelReload_{};
+    bool reloadQueued_{};
     RuntimeMetricsSnapshot metricsSnapshot_;
 
     std::atomic_bool swapHandedness_{};
@@ -1063,6 +1124,11 @@ private:
 
     GestureStateManager gestureStateManager_;
     GestureCalibrator calibrator_;
+    HandRangeCalibrator rangeCalibrator_;
+    std::array<float, kHandCount> appliedMotionX_{1.0F, 1.0F};
+    std::array<float, kHandCount> appliedMotionY_{1.0F, 1.0F};
+    std::array<std::atomic<float>, kHandCount> appliedPinchLow_{};
+    std::array<std::atomic<float>, kHandCount> appliedPinchHigh_{};
     CursorPlayground cursorPlayground_;
     bool playgroundMode_{}; // also remains true after six targets are completed
     std::int64_t playgroundSampleUs_{};

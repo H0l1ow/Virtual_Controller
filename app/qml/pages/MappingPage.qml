@@ -194,7 +194,10 @@ Item {
             spacing: 12
 
             VcCard {
-                Layout.preferredWidth: 210
+                // Preserve the editable mapping table at 100-200% Windows DPI.
+                // The explanatory side card yields space on narrower windows.
+                visible: root.width >= 1180
+                Layout.preferredWidth: visible ? 210 : 0
                 Layout.fillHeight: true
                 theme: root.theme
 
