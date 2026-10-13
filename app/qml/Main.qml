@@ -150,6 +150,10 @@ ApplicationWindow {
                 theme: theme
                 uiState: window.uiState
             }
+            MLPage {
+                theme: theme
+                uiState: window.uiState
+            }
             SettingsPage {
                 theme: theme
                 uiState: window.uiState

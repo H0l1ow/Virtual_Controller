@@ -27,6 +27,13 @@ public:
 
     bool active() const { return stream_.is_open(); }
     std::size_t frameCount() const { return frameCount_; }
+    // 'Usable' means labelled, tracked and numerically valid. It does NOT
+    // verify that the operator chose the correct gesture label.
+    std::size_t usableFrames(HandSide side) const { return usable_[handIndex(side)]; }
+    std::size_t missingFrames(HandSide side) const { return missing_[handIndex(side)]; }
+    bool labelled(HandSide side) const { return labels_[handIndex(side)].has_value(); }
+    std::optional<GestureClass> gestureLabel(HandSide side) const { return labels_[handIndex(side)]; }
+    static constexpr std::size_t kSuggestedFramesPerHand = 150;
     const std::filesystem::path &path() const { return path_; }
     const std::string &error() const { return error_; }
 
@@ -36,6 +43,8 @@ private:
     std::string error_;
     Labels labels_{};
     std::size_t frameCount_{};
+    std::array<std::size_t, kHandCount> usable_{};
+    std::array<std::size_t, kHandCount> missing_{};
 };
 
 } // namespace vc

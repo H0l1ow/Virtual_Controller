@@ -33,7 +33,7 @@ class GestureTuningContracts(unittest.TestCase):
         self.assertIn("calibrator_.capturing()", impl)
         self.assertIn("calibrator_.ingest(gestures)", impl)
         self.assertIn("calibrator_.suggestedThreshold", impl)
-        self.assertIn('CalibrationPanel {', load("app/qml/pages/SettingsPage.qml"))
+        self.assertIn('CalibrationPanel {', load("app/qml/pages/GesturesPage.qml"))
         self.assertIn('kRequiredSamples = 36', load("app/src/gestures/GestureCalibrator.hpp"))
         self.assertIn("dominance < 75", calibrator)
 

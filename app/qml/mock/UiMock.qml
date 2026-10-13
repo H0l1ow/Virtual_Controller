@@ -180,6 +180,26 @@ QtObject {
     property int recordedFrames: 0
     property string recordingPath: ""
     property string recordingError: "Mock mode: no dataset is written"
+    readonly property var recordingQuality: ({
+        target: 150,
+        left: {
+            labelled: false,
+            usable: 0,
+            missing: 0,
+            percent: 0,
+            trackedPercent: 0
+        },
+        right: {
+            labelled: false,
+            usable: 0,
+            missing: 0,
+            percent: 0,
+            trackedPercent: 0
+        }
+    })
+    property string recordingsDirectory: "Mock mode"
+    property var recordings: []
+    property string recordingsError: ""
     property bool replayActive: false
     property int replayFrames: 0
     property string replayStatus: ""
@@ -447,6 +467,14 @@ QtObject {
     function stopGestureReplay() { replayActive = false }
     function reloadGestureModel() { return false }
     function stopGestureRecording() { recordingActive = false }
+    function attachRecordingVideoSink(sink) {}
+    function openRecordingsFolder() {}
+    function setRecordingsDirectory(folder) { return false }
+    function resetRecordingsDirectory() {}
+    function refreshRecordings() {}
+    function openRecordingFile(name) { return false }
+    function deleteRecordingFile(name) { return false }
+    function replayRecordingFile(name) { return false }
     function setActiveProfile(name) { activeProfile = name }
 
     function addMapping() {

@@ -1,7 +1,21 @@
-# Virtual Controller - M6.0 ML Gesture Pipeline (0.14.0)
+# Virtual Controller - M6.2 Guided Dataset Capture (0.14.2)
 
 Qt/QML + C++20 desktop application for two-hand camera tracking, gesture-driven
 mouse/keyboard input, mapping profiles and an in-app Gesture Playground.
+
+M6.2 adds guided landmark recording with an in-app camera/skeleton preview,
+per-hand geometric validity progress, a session library with Open/Replay/
+Recycle Bin actions and an optional user-selected recordings folder. The
+existing JSONL schema and application look are unchanged. See
+**PATCH_M6_2_README.md** for safety, data-quality caveats and Windows tests.
+
+M6.1 reorganizes the existing QML navigation without redesigning the UI.
+The dedicated **ML** tab provides ONNX model status/reload, landmark dataset
+recording, Rules-only replay and offline Python training instructions.
+**Gestures** now groups live classification, thresholds and calibration;
+**Test** contains mapping tests, Cursor Playground and the Performance Monitor.
+**Settings** retains app preferences, camera/PiP, tracking, cursor and desktop
+integration. See **PATCH_M6_1_README.md** for all moves and test instructions.
 
 M6.0 adds a deterministic, session/subject-safe JSONL-to-training dataset
 builder, class-balanced causal TCN training, held-out TCN-vs-Rules comparison,

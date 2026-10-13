@@ -207,6 +207,10 @@ QtObject {
         runtimeBackend.recordingPath
     readonly property string recordingError:
         runtimeBackend.recordingError
+    readonly property var recordingQuality: runtimeBackend.recordingQuality
+    readonly property string recordingsDirectory: runtimeBackend.recordingsDirectory
+    readonly property var recordings: runtimeBackend.recordings
+    readonly property string recordingsError: runtimeBackend.recordingsError
     readonly property bool replayActive: runtimeBackend.replayActive
     readonly property int replayFrames: runtimeBackend.replayFrames
     readonly property string replayStatus: runtimeBackend.replayStatus
@@ -373,6 +377,14 @@ QtObject {
     function stopGestureRecording() {
         runtimeBackend.stopGestureRecording()
     }
+    function attachRecordingVideoSink(sink) { runtimeBackend.attachRecordingVideoSink(sink) }
+    function openRecordingsFolder() { runtimeBackend.openRecordingsFolder() }
+    function setRecordingsDirectory(folder) { return runtimeBackend.setRecordingsDirectory(folder) }
+    function resetRecordingsDirectory() { runtimeBackend.resetRecordingsDirectory() }
+    function refreshRecordings() { runtimeBackend.refreshRecordings() }
+    function openRecordingFile(name) { return runtimeBackend.openRecordingFile(name) }
+    function deleteRecordingFile(name) { return runtimeBackend.deleteRecordingFile(name) }
+    function replayRecordingFile(name) { return runtimeBackend.replayRecordingFile(name) }
     function startGestureReplay(path) { return runtimeBackend.startGestureReplay(path) }
     function stopGestureReplay() { runtimeBackend.stopGestureReplay() }
     function reloadGestureModel() { return runtimeBackend.reloadGestureModel() }

@@ -48,6 +48,10 @@ Rectangle {
             icon: "gamepad"
         },
         {
+            title: qsTr("ML"),
+            icon: "ml"
+        },
+        {
             title: qsTr("Settings"),
             icon: "settings"
         }
@@ -58,7 +62,7 @@ Rectangle {
         spacing: 0
 
         Item {
-            Layout.preferredWidth: root.width < 1100 ? 172 : root.width < 1400 ? 260 : 320
+            Layout.preferredWidth: root.width < 1150 ? 140 : root.width < 1450 ? 240 : 290
             Layout.fillHeight: true
 
             RowLayout {
@@ -110,7 +114,7 @@ Rectangle {
                 required property var modelData
                 required property int index
                 Layout.fillHeight: true
-                Layout.preferredWidth: root.width < 1100 ? 76 : root.width < 1400 ? 106 : 118
+                Layout.preferredWidth: root.width < 1180 ? 60 : root.width < 1500 ? 100 : 116
                 theme: root.theme
                 text: modelData.title
                 iconName: modelData.icon
@@ -147,7 +151,7 @@ Rectangle {
             VcComboBox {
                 id: quickProfile
                 theme: root.theme
-                implicitWidth: root.width < 1100 ? 126 : 148
+                implicitWidth: root.width < 1180 ? 110 : 148
                 implicitHeight: 32
                 model: root.windowRef.uiState.profileNames
                 currentIndex: Math.max(0, root.windowRef.uiState.profileNames.indexOf(

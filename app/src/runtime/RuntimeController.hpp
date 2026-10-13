@@ -32,6 +32,7 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QUrl>
 #include <QVariant>
 #include <QVariantMap>
 #include <QVideoSink>
@@ -505,6 +506,10 @@ public:
     Q_PROPERTY(int recordedFrames READ recordedFrames NOTIFY stateChanged)
     Q_PROPERTY(QString recordingPath READ recordingPath NOTIFY stateChanged)
     Q_PROPERTY(QString recordingError READ recordingError NOTIFY stateChanged)
+    Q_PROPERTY(QVariantMap recordingQuality READ recordingQuality NOTIFY stateChanged)
+    Q_PROPERTY(QString recordingsDirectory READ recordingsDirectory NOTIFY recordingsChanged)
+    Q_PROPERTY(QVariantList recordings READ recordings NOTIFY recordingsChanged)
+    Q_PROPERTY(QString recordingsError READ recordingsError NOTIFY recordingsChanged)
 
 public:
     explicit RuntimeController(
@@ -950,12 +955,24 @@ public:
     int recordedFrames() const { return static_cast<int>(recorder_.frameCount()); }
     QString recordingPath() const { return recordingPath_; }
     QString recordingError() const { return recordingError_; }
+    QVariantMap recordingQuality() const;
+    QString recordingsDirectory() const;
+    QVariantList recordings() const;
+    QString recordingsError() const { return recordingsError_; }
+    Q_INVOKABLE bool setRecordingsDirectory(const QUrl &folder);
+    Q_INVOKABLE void resetRecordingsDirectory();
+    Q_INVOKABLE void openRecordingsFolder();
+    Q_INVOKABLE bool openRecordingFile(const QString &name);
+    Q_INVOKABLE bool deleteRecordingFile(const QString &name);
+    Q_INVOKABLE bool replayRecordingFile(const QString &name);
+    Q_INVOKABLE void refreshRecordings() { emit recordingsChanged(); }
     Q_INVOKABLE bool startGestureRecording(const QString &left, const QString &right);
     Q_INVOKABLE void stopGestureRecording();
     void setActiveProfile(const QString &name);
 
     Q_INVOKABLE void attachVideoOutput(QObject *output);
     Q_INVOKABLE void attachPiPVideoSink(QObject *sink);
+    Q_INVOKABLE void attachRecordingVideoSink(QObject *sink);
     Q_INVOKABLE void setPiPActive(bool active);
     Q_INVOKABLE void selectCamera(int index);
     Q_INVOKABLE void selectFormat(int index);
@@ -984,6 +1001,7 @@ signals:
     void devicesChanged();
     void settingsChanged();
     void mappingChanged();
+    void recordingsChanged();
 
     // First signal lets main.cpp arm its process-level watchdog. The second is
     // emitted only after the current tracking session reached a safe terminal
@@ -1088,6 +1106,11 @@ private:
     bool pipActive_{false};
     QMetaObject::Connection pipFrameConnection_;
     void updatePiPConnection();
+    QPointer<QVideoSink> recordingSink_;
+    QMetaObject::Connection recordingFrameConnection_;
+    void updateRecordingPreviewConnection();
+    QString validatedRecordingPath(const QString &name) const;
+    void setRecordingsError(const QString &message);
 
     QMetaObject::Connection frameConnection_;
     QMetaObject::Connection cameraActiveConnection_;
@@ -1160,6 +1183,7 @@ private:
     GestureDataRecorder recorder_;
     QString recordingPath_;
     QString recordingError_;
+    QString recordingsError_;
 
     int cursorX_{};
     int cursorY_{};

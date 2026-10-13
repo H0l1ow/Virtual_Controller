@@ -165,6 +165,10 @@ qt_add_resources(
         qml/components/GamepadVisual.qml
         qml/components/GestureGlyph.qml
         qml/components/GestureHintRow.qml
+        qml/components/GestureTuningPanel.qml
+        qml/components/PerformancePanel.qml
+        qml/components/RecordingCapturePanel.qml
+        qml/components/RecordingFilesPanel.qml
         qml/components/HandLogo.qml
         qml/components/MetricTile.qml
         qml/components/NavTab.qml
@@ -190,6 +194,7 @@ qt_add_resources(
         qml/pages/GesturesPage.qml
         qml/pages/TestPage.qml
         qml/pages/GamepadPage.qml
+        qml/pages/MLPage.qml
         qml/pages/SettingsPage.qml
 
         i18n/pl.json

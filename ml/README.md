@@ -24,7 +24,7 @@ dynamic gestures require a new feature/model contract.
 
 ## 1. Record a real dataset with the M5.5 application
 
-- `Gestures > Labelled landmark recording`: select the correct label for LEFT
+- `ML > Dataset recording`: select the correct label for LEFT
   and RIGHT; use `UNLABELED` for hands you are *not* supervising. Use `NONE`
   for a tracked hand with no intentional gesture.
 - Keep one ground-truth gesture stable throughout each recorded session;
@@ -40,7 +40,7 @@ dynamic gestures require a new feature/model contract.
   Do not commit/share recordings without participants' consent.
 
 Sessions are under the Windows per-user AppLocalDataLocation `gesture_sessions`
-folder. The path of each recording is displayed in the Gestures page. Copy
+folder. The path of each recording is displayed on the ML page. Copy
 sessions into one folder without renaming them to the same name.
 
 ## 2. Install the offline Python environment
@@ -133,7 +133,7 @@ In Qt Creator:
    to the executable's `models/` directory. When the app is already running,
    `Reload model` rereads the current deployed file but does not perform an
    export or an SDK install.
-4. `Settings > Model` displays `ONNX TCN` on success; invalid or absent model
+4. `ML / Model` displays `ONNX TCN` on success; invalid or absent model
    falls back to Rules. System output remains disarmed after model reload.
 5. Validate basic gestures in `Gestures` and `Test` **without arming system
    input**; enable it deliberately only after evaluating false activations.

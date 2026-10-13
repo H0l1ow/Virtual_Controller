@@ -1,4 +1,5 @@
 #include "gestures/GestureDataRecorder.hpp"
+#include "gestures/HandFeatures.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -46,6 +47,8 @@ bool GestureDataRecorder::start(
     error_.clear();
     path_.clear();
     frameCount_ = 0;
+    usable_.fill(0);
+    missing_.fill(0);
     labels_ = labels;
 
     std::error_code ec;
@@ -100,6 +103,13 @@ bool GestureDataRecorder::append(const TrackingFrame &frame)
             line << ',';
         }
         const auto &hand = frame.hands[side];
+        if (labels_[side]) {
+            // Use the same geometric validity contract as the ML dataset.
+            // A valid hand is still NOT proof that its manual label is correct.
+            const bool valid = hand.tracked && hand.trackId != 0
+                && extractGestureGeometry(hand, frame.width, frame.height).valid;
+            (valid ? usable_[side] : missing_[side])++;
+        }
         line << "{\"side\":\""
              << handName(static_cast<HandSide>(side))
              << "\",\"reported_side\":\""

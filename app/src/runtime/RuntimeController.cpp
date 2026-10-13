@@ -6,7 +6,11 @@
 #include "tracking/MediaPipeTracker.hpp"
 
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QDir>
+#include <QFile>
+#include <QSettings>
+#include <QUrl>
 #include <QDebug>
 #include <QDateTime>
 #include <QGuiApplication>
@@ -16,7 +20,6 @@
 #include <QScreen>
 #include <QStandardPaths>
 #include <QVariantMap>
-#include <QFileInfo>
 #include <QVideoFrameFormat>
 #include <QVideoSink>
 #include <QtGlobal>
@@ -918,7 +921,8 @@ void RuntimeController::setOutputArmed(
         }
         // Cursor Playground is an isolated test mode: fail closed even if an
         // unrelated QML control attempts to arm Windows input.
-        if (playgroundMode_ || calibrator_.capturing() || rangeCalibrator_.capturing()
+        if (playgroundMode_ || recorder_.active()
+            || calibrator_.capturing() || rangeCalibrator_.capturing()
             || runtimeState_ != RuntimeState::Running
             || !outputSnapshot_.ready) {
             emit stateChanged();
@@ -1241,6 +1245,180 @@ void RuntimeController::setGestureReleaseThreshold(int value)
     emit settingsChanged();
 }
 
+QString RuntimeController::recordingsDirectory() const
+{
+    const QString custom = QSettings().value(
+        QStringLiteral("recording/directory")).toString();
+    if (!custom.isEmpty())
+        return QDir::cleanPath(custom);
+    return QDir::cleanPath(QStandardPaths::writableLocation(
+        QStandardPaths::AppLocalDataLocation) + QStringLiteral("/gesture_sessions"));
+}
+
+QVariantMap RuntimeController::recordingQuality() const
+{
+    const auto metrics = [this](HandSide side) {
+        QVariantMap item;
+        const auto valid = recorder_.usableFrames(side);
+        const auto lost = recorder_.missingFrames(side);
+        item.insert(QStringLiteral("labelled"), recorder_.labelled(side));
+        item.insert(QStringLiteral("label"), recorder_.gestureLabel(side)
+            ? QString::fromLatin1(gestureCanonicalName(*recorder_.gestureLabel(side)))
+            : QStringLiteral("UNLABELED"));
+        item.insert(QStringLiteral("usable"), static_cast<int>(valid));
+        item.insert(QStringLiteral("missing"), static_cast<int>(lost));
+        item.insert(QStringLiteral("percent"), static_cast<int>(
+            std::min<std::size_t>(100, 100 * valid /
+                GestureDataRecorder::kSuggestedFramesPerHand)));
+        item.insert(QStringLiteral("trackedPercent"),
+            valid + lost ? static_cast<int>(100 * valid / (valid + lost)) : 0);
+        return item;
+    };
+    return {{QStringLiteral("target"),
+             static_cast<int>(GestureDataRecorder::kSuggestedFramesPerHand)},
+            {QStringLiteral("left"), metrics(HandSide::Left)},
+            {QStringLiteral("right"), metrics(HandSide::Right)}};
+}
+
+void RuntimeController::setRecordingsError(const QString &message)
+{
+    recordingsError_ = message;
+    emit recordingsChanged();
+}
+
+bool RuntimeController::setRecordingsDirectory(const QUrl &folder)
+{
+    if (recorder_.active()) {
+        setRecordingsError(QStringLiteral("Stop recording before changing the folder."));
+        return false;
+    }
+    if (!folder.isLocalFile() || folder.toLocalFile().isEmpty()) {
+        setRecordingsError(QStringLiteral("Choose a local folder."));
+        return false;
+    }
+    QDir dir(QDir::cleanPath(folder.toLocalFile()));
+    if (!dir.isAbsolute() || !dir.exists()
+        || !QFileInfo(dir.absolutePath()).isWritable()) {
+        setRecordingsError(QStringLiteral("Selected folder is not writable."));
+        return false;
+    }
+    QSettings().setValue(QStringLiteral("recording/directory"), dir.absolutePath());
+    setRecordingsError(QString{});
+    return true;
+}
+
+void RuntimeController::resetRecordingsDirectory()
+{
+    if (recorder_.active()) {
+        setRecordingsError(QStringLiteral("Stop recording before changing the folder."));
+        return;
+    }
+    QSettings().remove(QStringLiteral("recording/directory"));
+    setRecordingsError(QString{});
+}
+
+QVariantList RuntimeController::recordings() const
+{
+    QVariantList entries;
+    QDir dir(recordingsDirectory());
+    if (!dir.exists())
+        return entries;
+    const auto files = dir.entryInfoList(
+        QStringList{QStringLiteral("gesture_session_*.jsonl")},
+        QDir::Files | QDir::Readable | QDir::NoSymLinks,
+        QDir::Time);
+    for (const auto &file : files) {
+        if (entries.size() >= 100)
+            break;
+        QVariantMap entry;
+        entry.insert(QStringLiteral("name"), file.fileName());
+        entry.insert(QStringLiteral("path"), file.absoluteFilePath());
+        entry.insert(QStringLiteral("size"), file.size());
+        entry.insert(QStringLiteral("modified"),
+                     file.lastModified().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+        entry.insert(QStringLiteral("active"), recorder_.active()
+            && QDir::cleanPath(file.absoluteFilePath()) == QDir::cleanPath(recordingPath_));
+        entries.append(entry);
+    }
+    return entries;
+}
+
+QString RuntimeController::validatedRecordingPath(const QString &name) const
+{
+    // Only the session filenames produced by this application may be managed.
+    // A caller cannot escape the selected directory via '../' or symlinks.
+    if (!name.startsWith(QStringLiteral("gesture_session_"))
+        || !name.endsWith(QStringLiteral(".jsonl"))
+        || name != QFileInfo(name).fileName()
+        || name.contains(QLatin1Char('/'))
+        || name.contains(QLatin1Char('\\')))
+        return {};
+    const QFileInfo info(QDir(recordingsDirectory()).filePath(name));
+    if (!info.isFile() || info.isSymLink())
+        return {};
+    return info.absoluteFilePath();
+}
+
+void RuntimeController::openRecordingsFolder()
+{
+    QDir dir(recordingsDirectory());
+    if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
+        setRecordingsError(QStringLiteral("Cannot create the recordings folder."));
+        return;
+    }
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(dir.absolutePath()))) {
+        setRecordingsError(QStringLiteral("Could not open the recordings folder."));
+        return;
+    }
+    setRecordingsError(QString{});
+}
+
+bool RuntimeController::openRecordingFile(const QString &name)
+{
+    const QString path = validatedRecordingPath(name);
+    if (path.isEmpty() || !QDesktopServices::openUrl(QUrl::fromLocalFile(path))) {
+        setRecordingsError(QStringLiteral("Cannot open the selected recording."));
+        return false;
+    }
+    setRecordingsError(QString{});
+    return true;
+}
+
+bool RuntimeController::deleteRecordingFile(const QString &name)
+{
+    if (recorder_.active() || replayTimer_.isActive()) {
+        setRecordingsError(QStringLiteral("Stop recording or replay before deleting files."));
+        return false;
+    }
+    const QString path = validatedRecordingPath(name);
+    if (path.isEmpty()) {
+        setRecordingsError(QStringLiteral("Recording not found."));
+        return false;
+    }
+    QFile file(path);
+    if (!file.moveToTrash()) {
+        setRecordingsError(QStringLiteral("Cannot move the recording to Recycle Bin: %1")
+                           .arg(file.errorString()));
+        return false;
+    }
+    if (QDir::cleanPath(recordingPath_) == QDir::cleanPath(path))
+        recordingPath_.clear();
+    setRecordingsError(QString{});
+    emit stateChanged();
+    return true;
+}
+
+bool RuntimeController::replayRecordingFile(const QString &name)
+{
+    const QString path = validatedRecordingPath(name);
+    if (path.isEmpty()) {
+        setRecordingsError(QStringLiteral("Recording not found."));
+        return false;
+    }
+    setRecordingsError(QString{});
+    return startGestureReplay(path);
+}
+
 bool RuntimeController::startGestureRecording(
     const QString &left, const QString &right)
 {
@@ -1262,9 +1440,16 @@ bool RuntimeController::startGestureRecording(
         }
     }
 
-    const QString directory = QStandardPaths::writableLocation(
-        QStandardPaths::AppLocalDataLocation)
-        + QStringLiteral("/gesture_sessions");
+    if (!labels[0] && !labels[1]) {
+        recordingError_ = QStringLiteral("Select at least one labelled hand.");
+        emit stateChanged();
+        return false;
+    }
+    // Dataset capture never generates system input, even with an armed profile.
+    outputService_.stop();
+    refreshOutputStatus();
+    resetGestureActions();
+    const QString directory = recordingsDirectory();
     const QByteArray utf8 = directory.toUtf8();
     if (!recorder_.start(std::filesystem::u8path(utf8.constData()), labels)) {
         recordingError_ = QString::fromStdString(recorder_.error());
@@ -1273,6 +1458,7 @@ bool RuntimeController::startGestureRecording(
     }
     recordingPath_ = filePathDisplay(recorder_.path());
     recordingError_.clear();
+    emit recordingsChanged();
     emit stateChanged();
     return true;
 }
@@ -1282,6 +1468,7 @@ void RuntimeController::stopGestureRecording()
     if (!recorder_.active()) return;
     recorder_.stop();
     recordingError_ = QString::fromStdString(recorder_.error());
+    emit recordingsChanged();
     emit stateChanged();
 }
 
@@ -1459,6 +1646,7 @@ void RuntimeController::attachVideoOutput(
         videoOutput_.clear();
         captureSession_.setVideoOutput(nullptr);
         updatePiPConnection();
+        updateRecordingPreviewConnection();
         return;
     }
 
@@ -1477,6 +1665,7 @@ void RuntimeController::attachVideoOutput(
     videoOutput_ = output;
     captureSession_.setVideoOutput(output);
     updatePiPConnection();
+    updateRecordingPreviewConnection();
 }
 
 void RuntimeController::attachPiPVideoSink(QObject *sink)
@@ -1509,6 +1698,30 @@ void RuntimeController::updatePiPConnection()
     // thread. No second QCamera or MediaPipe instance is created.
     pipFrameConnection_ = connect(
         source, &QVideoSink::videoFrameChanged, pipSink_,
+        [destination](const QVideoFrame &frame) {
+            if (destination && frame.isValid())
+                destination->setVideoFrame(frame);
+        });
+}
+
+void RuntimeController::attachRecordingVideoSink(QObject *sink)
+{
+    recordingSink_ = qobject_cast<QVideoSink *>(sink);
+    if (sink && !recordingSink_)
+        qWarning() << "[recording preview] Expected a QVideoSink";
+    updateRecordingPreviewConnection();
+}
+
+void RuntimeController::updateRecordingPreviewConnection()
+{
+    QObject::disconnect(recordingFrameConnection_);
+    recordingFrameConnection_ = {};
+    auto *source = captureSession_.videoSink();
+    if (!source || !recordingSink_ || recordingSink_ == source)
+        return;
+    const QPointer<QVideoSink> destination(recordingSink_);
+    recordingFrameConnection_ = connect(
+        source, &QVideoSink::videoFrameChanged, recordingSink_,
         [destination](const QVideoFrame &frame) {
             if (destination && frame.isValid())
                 destination->setVideoFrame(frame);
@@ -2560,6 +2773,7 @@ void RuntimeController::applyTrackingFrame(
 
     if (recorder_.active() && !recorder_.append(frame)) {
         recordingError_ = QString::fromStdString(recorder_.error());
+        emit recordingsChanged();
     }
 
     const auto outputStartUs = nowUs();

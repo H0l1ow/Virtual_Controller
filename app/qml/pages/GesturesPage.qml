@@ -1,7 +1,6 @@
 import VirtualController.I18n 1.0
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import "../components"
 
@@ -11,9 +10,9 @@ Item {
     required property QtObject theme
     required property QtObject uiState
 
+    property int gestureViewIndex: 0
+    property string libraryFilter: "All"
     property int liveHandIndex: 1
-    property string leftRecordLabel: "UNLABELED"
-    property string rightRecordLabel: "UNLABELED"
     readonly property var liveDiagnostics: uiState.gestureDiagnostics
         && uiState.gestureDiagnostics.length > liveHandIndex
         ? uiState.gestureDiagnostics[liveHandIndex] : ({})
@@ -31,35 +30,6 @@ Item {
         ? uiState.leftGestureEvent
         : uiState.rightGestureEvent
 
-    FileDialog {
-        id: replayFileDialog
-        title: qsTr("Open landmark recording")
-        nameFilters: [qsTr("Gesture recordings (*.jsonl)")]
-        onAccepted: root.uiState.startGestureReplay(selectedFile.toString())
-    }
-
-    function localizedReplayStatus(value) {
-        LanguageManager.language
-        switch (value) {
-        case "Rules playback (offline, output disabled)":
-            return qsTr("Rules playback (offline, output disabled)")
-        case "Playback complete": return qsTr("Playback complete")
-        case "Playback stopped": return qsTr("Playback stopped")
-        case "Playback stopped: invalid recording": return qsTr("Playback stopped: invalid recording")
-        default: return value
-        }
-    }
-
-    function localizedFrameCount(count) {
-        // Avoid the invalid '1 klatek' / '2 klatek' forms in Polish.
-        const n = Math.max(0, Math.floor(Number(count) || 0))
-        if (LanguageManager.language === "pl") {
-            const few = n % 10 >= 2 && n % 10 <= 4
-                && (n % 100 < 12 || n % 100 > 14)
-            return n + (n === 1 ? " klatka" : few ? " klatki" : " klatek")
-        }
-        return n + (n === 1 ? " frame" : " frames")
-    }
 
     function localizedLabel(value) {
         LanguageManager.language
@@ -94,27 +64,50 @@ Item {
             Layout.fillWidth: true
             theme: root.theme
             title: qsTr("Gestures")
-            subtitle: qsTr("M5 gesture reliability, classifier diagnostics and labelled landmark capture.")
+            subtitle: qsTr("Gesture library, live recognition, tuning and hand calibration.")
 
-            VcTextField {
-                theme: root.theme
-                placeholderText: qsTr("Search gestures (planned)")
-                implicitWidth: 210
-                visible: root.width >= 1150
-                enabled: false
-            }
 
-            VcButton {
-                theme: root.theme
-                text: qsTr("New gesture")
-                iconName: "plus"
-                implicitWidth: 120
-                visible: root.width >= 1150
-                enabled: false
-            }
         }
 
+
         RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            VcButton {
+                theme: root.theme
+                text: qsTr("Live gestures")
+                variant: root.gestureViewIndex === 0 ? "primary" : "ghost"
+                onClicked: root.gestureViewIndex = 0
+            }
+            VcButton {
+                theme: root.theme
+                text: qsTr("Thresholds & timing")
+                variant: root.gestureViewIndex === 1 ? "primary" : "ghost"
+                onClicked: root.gestureViewIndex = 1
+            }
+            VcButton {
+                theme: root.theme
+                text: qsTr("Hand calibration")
+                variant: root.gestureViewIndex === 2 ? "primary" : "ghost"
+                onClicked: root.gestureViewIndex = 2
+            }
+            Item { Layout.fillWidth: true }
+            Text {
+                text: root.uiState.hasUnsavedSettings ? qsTr("Unsaved changes") : ""
+                color: root.theme.warning
+                font.family: root.theme.fontFamily
+                font.pixelSize: 11
+            }
+            VcButton {
+                theme: root.theme
+                text: qsTr("Save")
+                iconName: "save"
+                enabled: root.uiState.hasUnsavedSettings
+                onClicked: root.uiState.saveSettings()
+            }
+        }
+        RowLayout {
+            visible: root.gestureViewIndex === 0
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 12
@@ -145,18 +138,18 @@ Item {
                         }
 
                         Repeater {
-                            model: [qsTr("All"), qsTr("Static"), qsTr("Dynamic"), qsTr("Two-hand")]
+                            model: ["All", "Static", "Dynamic", "Two-hand"]
 
                             delegate: Rectangle {
                                 required property string modelData
 
                                 width: chipText.implicitWidth + 18
                                 height: 30
-                                color: modelData === qsTr("All")
+                                color: modelData === root.libraryFilter
                                     ? root.theme.surfaceHover
                                     : "transparent"
                                 border.width: 1
-                                border.color: modelData === qsTr("All")
+                                border.color: modelData === root.libraryFilter
                                     ? root.theme.borderStrong
                                     : root.theme.border
                                 radius: root.theme.controlRadius
@@ -165,11 +158,16 @@ Item {
                                     id: chipText
 
                                     anchors.centerIn: parent
-                                    text: modelData
+                                    text: qsTr(modelData)
                                     color: root.theme.textSecondary
                                     font.family: root.theme.fontFamily
                                     font.pixelSize: 10
                                     font.weight: Font.DemiBold
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.libraryFilter = modelData
                                 }
                             }
                         }
@@ -205,7 +203,9 @@ Item {
                                 rowSpacing: 10
 
                                 Repeater {
-                                    model: root.uiState.gestureLibrary
+                                    model: root.libraryFilter === "All"
+                                        ? root.uiState.gestureLibrary
+                                        : root.uiState.gestureLibrary.filter(function(row) { return row.category === root.libraryFilter })
 
                                     delegate: Rectangle {
                                         required property var modelData
@@ -585,206 +585,34 @@ Item {
                             Layout.preferredHeight: 1
                             color: root.theme.borderSubtle
                         }
-                        Text {
-                            text: qsTr("Labelled landmark recording")
-                            color: root.theme.textPrimary
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("Set the actual gesture for each hand before recording. No camera images are saved.")
-                            wrapMode: Text.WordWrap
-                            color: root.theme.textMuted
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 10
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 6
-                            VcComboBox {
-                                Layout.fillWidth: true
-                                theme: root.theme
-                                model: ["UNLABELED", "NONE", "FIST", "OPEN_HAND", "POINT", "PINCH"]
-                                enabled: !root.uiState.recordingActive
-                                onActivated: root.leftRecordLabel = currentText
-                            }
-                            VcComboBox {
-                                Layout.fillWidth: true
-                                theme: root.theme
-                                model: ["UNLABELED", "NONE", "FIST", "OPEN_HAND", "POINT", "PINCH"]
-                                enabled: !root.uiState.recordingActive
-                                onActivated: root.rightRecordLabel = currentText
-                            }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Text {
-                                Layout.fillWidth: true
-                                text: qsTr("LEFT label")
-                                color: root.theme.textMuted
-                                font.family: root.theme.fontFamily
-                                font.pixelSize: 9
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: qsTr("RIGHT label")
-                                color: root.theme.textMuted
-                                font.family: root.theme.fontFamily
-                                font.pixelSize: 9
-                            }
-                        }
-                        VcButton {
-                            Layout.fillWidth: true
-                            theme: root.theme
-                            text: root.uiState.recordingActive ? qsTr("Stop recording") : qsTr("Record samples")
-                            iconName: "camera"
-                            enabled: root.uiState.recordingActive || root.uiState.pipelineRunning
-                            onClicked: {
-                                if (root.uiState.recordingActive)
-                                    root.uiState.stopGestureRecording()
-                                else
-                                    root.uiState.startGestureRecording(root.leftRecordLabel, root.rightRecordLabel)
-                            }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.uiState.recordingActive
-                                ? qsTr("Recording: ") + root.localizedFrameCount(root.uiState.recordedFrames)
-                                : qsTr("Last session: ") + root.localizedFrameCount(root.uiState.recordedFrames)
-                            color: root.theme.textSecondary
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 10
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            visible: root.uiState.recordingPath !== ""
-                            text: root.uiState.recordingPath
-                            wrapMode: Text.WrapAnywhere
-                            color: root.theme.textMuted
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 9
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            visible: root.uiState.recordingError !== ""
-                            text: root.uiState.recordingError
-                            wrapMode: Text.WordWrap
-                            color: root.theme.textPrimary
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 10
-                        }
-                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
-                        Text {
-                            text: qsTr("Gesture Replay (offline)")
-                            color: root.theme.textPrimary
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("Replay saved landmark sequences with Rules without a camera or Windows input. Stop tracking first.")
-                            wrapMode: Text.WordWrap
-                            color: root.theme.textMuted
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 10
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            VcButton {
-                                Layout.fillWidth: true
-                                theme: root.theme
-                                text: qsTr("Open recording")
-                                iconName: "folder"
-                                enabled: !root.uiState.pipelineRunning && !root.uiState.replayActive
-                                onClicked: replayFileDialog.open()
-                            }
-                            VcButton {
-                                theme: root.theme
-                                text: qsTr("Stop replay")
-                                iconName: "stop"
-                                enabled: root.uiState.replayActive
-                                onClicked: root.uiState.stopGestureReplay()
-                            }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: root.localizedReplayStatus(root.uiState.replayStatus) + " | " + root.localizedFrameCount(root.uiState.replayFrames)
-                            color: root.theme.textSecondary
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 10
-                            wrapMode: Text.WordWrap
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("Left") + ": " + root.localizedLabel(root.uiState.replayLeftGesture)
-                                  + " (" + root.uiState.replayLeftLabel + ")   "
-                                  + qsTr("Right") + ": " + root.localizedLabel(root.uiState.replayRightGesture)
-                                  + " (" + root.uiState.replayRightLabel + ")"
-                            color: root.theme.textPrimary
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 11
-                            wrapMode: Text.WordWrap
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            visible: root.uiState.replayError !== ""
-                            text: root.uiState.replayError
-                            wrapMode: Text.WordWrap
-                            color: root.theme.error
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 10
-                        }
-                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
-                        Text {
-                            text: qsTr("Performance Monitor (median / P95)")
-                            color: root.theme.textPrimary
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                        }
-                        Repeater {
-                            model: [
-                                { title: qsTr("Camera frame interval"), p50: root.uiState.cameraIntervalP50Ms, p95: -1 },
-                                { title: qsTr("Frame conversion"), p50: root.uiState.conversionP50Ms, p95: root.uiState.conversionP95Ms },
-                                { title: qsTr("MediaPipe tracking"), p50: root.uiState.mediaPipeP50Ms, p95: root.uiState.inferenceP95Ms },
-                                { title: qsTr("Gesture classification"), p50: root.uiState.gestureP50Ms, p95: root.uiState.gestureP95Ms },
-                                { title: qsTr("Output dispatch"), p50: root.uiState.outputDispatchP50Ms, p95: root.uiState.outputDispatchP95Ms },
-                                { title: qsTr("End-to-end pipeline"), p50: root.uiState.latencyP50Ms, p95: root.uiState.latencyP95Ms }
-                            ]
-                            delegate: RowLayout {
-                                required property var modelData
-                                Layout.fillWidth: true
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: modelData.title
-                                    color: root.theme.textSecondary
-                                    font.family: root.theme.fontFamily
-                                    font.pixelSize: 10
-                                }
-                                Text {
-                                    text: modelData.p50 + " ms" + (modelData.p95 < 0 ? "" : " / " + modelData.p95 + " ms")
-                                    color: root.theme.textPrimary
-                                    font.family: root.theme.fontFamily
-                                    font.pixelSize: 10
-                                }
-                            }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("Camera: inter-frame period; Output: submission time, not physical Windows input latency.")
-                            wrapMode: Text.WordWrap
-                            color: root.theme.textMuted
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 9
-                        }
                         Item { Layout.preferredHeight: 16 }
                     }
                     }
                 }
             }
         }
-    }
+
+        VcCard {
+            visible: root.gestureViewIndex === 1
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            theme: root.theme
+            GestureTuningPanel {
+                anchors.fill: parent
+                theme: root.theme
+                uiState: root.uiState
+            }
+        }
+        VcCard {
+            visible: root.gestureViewIndex === 2
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            theme: root.theme
+            CalibrationPanel {
+                anchors.fill: parent
+                theme: root.theme
+                uiState: root.uiState
+            }
+        }
+}
 }

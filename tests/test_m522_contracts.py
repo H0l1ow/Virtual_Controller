@@ -67,7 +67,7 @@ class StabilityAndPiPTests(unittest.TestCase):
         top = get('app/qml/components/AppTopBar.qml')
         nav = get('app/qml/components/NavTab.qml')
         settingsRow = get('app/qml/components/SettingsRow.qml')
-        self.assertIn('root.width < 1100 ? 76', top)
+        self.assertIn('root.width < 1180 ? 60', top)
         self.assertIn('visible: root.width >= 90', nav)
         self.assertIn('ToolTip.text: root.text', nav)
         self.assertIn('columns: root.compact ? 1 : 2', settingsRow)

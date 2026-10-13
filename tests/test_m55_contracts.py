@@ -77,7 +77,7 @@ class PreMlReadiness(unittest.TestCase):
         self.assertIn('pendingModelReload_ = true;', backend)
         self.assertIn('requestSessionStop(RuntimeState::Stopped);', backend)
         self.assertIn('reloadQueued_ = true;', backend)
-        self.assertIn('onClicked: root.uiState.reloadGestureModel()', src('app/qml/pages/SettingsPage.qml'))
+        self.assertIn('onClicked: root.uiState.reloadGestureModel()', src('app/qml/pages/MLPage.qml'))
 
     def test_distinct_performance_measurements(self):
         backend = src('app/src/runtime/RuntimeController.cpp')
@@ -96,7 +96,7 @@ class PreMlReadiness(unittest.TestCase):
         stop = backend.split('void RuntimeController::stop()')[1].split('void RuntimeController::togglePipeline()')[0]
         self.assertIn('stopGestureReplay();', stop)
         self.assertIn('GestureReplayReader', src('app/CMakeLists.txt'))
-        self.assertIn('QtQuick.Dialogs', src('app/qml/pages/GesturesPage.qml'))
+        self.assertIn('QtQuick.Dialogs', src('app/qml/pages/MLPage.qml'))
 
     def test_translations(self):
         d = json.loads(src('app/i18n/pl.json'))

@@ -182,6 +182,7 @@ add_test(
 add_executable(vc_gesture_recorder_tests
     GestureDataRecorderTests.cpp
     ../app/src/gestures/GestureDataRecorder.cpp
+    ../app/src/gestures/HandFeatures.cpp
 )
 target_include_directories(vc_gesture_recorder_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
 target_compile_features(vc_gesture_recorder_tests PRIVATE cxx_std_20)
@@ -233,3 +234,14 @@ add_executable(vc_m6_feature_contract_tests
 target_include_directories(vc_m6_feature_contract_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
 target_compile_features(vc_m6_feature_contract_tests PRIVATE cxx_std_20)
 add_test(NAME vc_m6_feature_contract_tests COMMAND vc_m6_feature_contract_tests)
+
+# M6.2 dataset recording progress: count only tracked, numerically valid
+# frames for the explicitly labelled hand. No Qt dependency.
+add_executable(vc_recording_quality_tests
+    GestureRecordingQualityTests.cpp
+    ../app/src/gestures/GestureDataRecorder.cpp
+    ../app/src/gestures/HandFeatures.cpp
+)
+target_include_directories(vc_recording_quality_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
+target_compile_features(vc_recording_quality_tests PRIVATE cxx_std_20)
+add_test(NAME vc_recording_quality_tests COMMAND vc_recording_quality_tests)

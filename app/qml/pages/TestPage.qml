@@ -11,6 +11,7 @@ Item {
     required property QtObject uiState
 
     property bool cursorMode: false
+    property bool diagnosticsMode: false
     onVisibleChanged: {
         if (!visible && cursorMode) {
             uiState.stopCursorPlayground()
@@ -531,7 +532,7 @@ Item {
     }
 
     ColumnLayout {
-        visible: !root.cursorMode
+        visible: !root.cursorMode && !root.diagnosticsMode
         anchors.fill: parent
         anchors.margins: root.theme.pageMargin
         spacing: 12
@@ -542,6 +543,16 @@ Item {
             title: qsTr("Gesture Playground")
             subtitle: qsTr("Test enabled Mapping rules inside the app before relying on Windows output.")
 
+            VcButton {
+                theme: root.theme
+                text: qsTr("Performance")
+                iconName: "monitor"
+                onClicked: {
+                    root.cancelRunAll()
+                    root.stopTest()
+                    root.diagnosticsMode = true
+                }
+            }
             VcButton {
                 theme: root.theme
                 text: qsTr("Cursor Playground")
@@ -1230,6 +1241,14 @@ Item {
             }
         }
     }
+    PerformancePanel {
+        anchors.fill: parent
+        visible: root.diagnosticsMode
+        theme: root.theme
+        uiState: root.uiState
+        onBackRequested: root.diagnosticsMode = false
+    }
+
     CursorPlaygroundPage {
         anchors.fill: parent
         visible: root.cursorMode
