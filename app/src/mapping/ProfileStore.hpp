@@ -27,6 +27,9 @@ public:
         const MappingProfile &profile,
         QString *error = nullptr) const;
 
+    bool remove(const QString &name, QString *error = nullptr) const;
+    static bool validName(const QString &name);
+
     QString writableDirectory() const { return writableDirectory_; }
 
 private:

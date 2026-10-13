@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtMultimedia
 import VirtualController.I18n 1.0
+import VirtualController.Preferences 1.0
 
 // A real independent tool window: it remains visible when the main window is
 // minimized. The secondary QVideoSink receives the same capture frames used
@@ -26,32 +27,63 @@ Window {
         return qsTr(source)
     }
 
-    width: 352
-    height: 250
+    // Size preset is independent of camera capture resolution and tracking.
+    width: AppPreferences.pipSizeMode === "small" ? 304
+        : AppPreferences.pipSizeMode === "large" ? 480 : 352
+    height: AppPreferences.pipSizeMode === "small" ? 216
+        : AppPreferences.pipSizeMode === "large" ? 340 : 250
     minimumWidth: 300
-    minimumHeight: 212
+    minimumHeight: 210
     maximumWidth: 560
     maximumHeight: 400
+    property bool placementReady: false
     visible: minimizeActive && enabledByUser && !dismissed
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     transientParent: null
     color: "#0C151D"
     title: mini.uiText("Virtual Controller - Mini preview")
 
-    function moveToBottomRight() {
-        if (!mini.screen)
+    function applySavedPosition() {
+        if (!mini.visible || !mini.screen)
             return
-        const geometry = mini.screen.availableGeometry
-        if (!geometry)
+        const bounds = mini.screen.availableGeometry
+        if (!bounds)
             return
-        mini.x = Math.round(geometry.x + geometry.width - mini.width - 20)
-        mini.y = Math.round(geometry.y + geometry.height - mini.height - 20)
+        const useSaved = AppPreferences.pipX !== -1 && AppPreferences.pipY !== -1
+        const proposedX = useSaved ? AppPreferences.pipX : bounds.x + bounds.width - mini.width - 20
+        const proposedY = useSaved ? AppPreferences.pipY : bounds.y + bounds.height - mini.height - 20
+        // A monitor can be unplugged or its work area can shrink.
+        mini.x = Math.max(bounds.x, Math.min(Math.round(proposedX),
+                     bounds.x + Math.max(0, bounds.width - mini.width)))
+        mini.y = Math.max(bounds.y, Math.min(Math.round(proposedY),
+                     bounds.y + Math.max(0, bounds.height - mini.height)))
+        mini.placementReady = true
     }
 
     onVisibleChanged: {
         uiState.setPiPActive(visible)
+        if (visible) {
+            placementReady = false
+            Qt.callLater(applySavedPosition)
+        } else {
+            placementReady = false
+        }
+    }
+    onXChanged: {
+        if (visible && placementReady)
+            AppPreferences.setPipPosition(mini.x, mini.y)
+    }
+    onYChanged: {
+        if (visible && placementReady)
+            AppPreferences.setPipPosition(mini.x, mini.y)
+    }
+    onWidthChanged: {
         if (visible)
-            Qt.callLater(moveToBottomRight)
+            Qt.callLater(applySavedPosition)
+    }
+    onHeightChanged: {
+        if (visible)
+            Qt.callLater(applySavedPosition)
     }
     onMinimizeActiveChanged: {
         if (!minimizeActive)
@@ -162,6 +194,7 @@ Window {
             id: skeleton
             anchors.fill: parent
             visible: mini.uiState.cameraRunning && mini.uiState.showLandmarks
+                     && AppPreferences.pipShowLandmarks
             readonly property var bones: [
                 [0,1],[1,2],[2,3],[3,4],
                 [0,5],[5,6],[6,7],[7,8],

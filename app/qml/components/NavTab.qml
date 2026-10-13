@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 
 Item {
     id: root
@@ -40,6 +41,7 @@ Item {
         }
 
         Text {
+            visible: root.width >= 90
             text: root.text
             color: root.selected
                 ? root.theme.textPrimary
@@ -61,6 +63,10 @@ Item {
         radius: 1
         color: root.theme.textSecondary
     }
+
+    ToolTip.visible: mouse.containsMouse && root.width < 90
+    ToolTip.text: root.text
+    ToolTip.delay: 450
 
     MouseArea {
         id: mouse

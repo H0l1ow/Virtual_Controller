@@ -18,6 +18,15 @@ GestureFrame GestureEngine::update(
     const TrackingFrame &tracking,
     int recognitionThresholdPercent)
 {
+    GestureThresholds thresholds;
+    thresholds.fallbackPercent = recognitionThresholdPercent;
+    return update(tracking, thresholds);
+}
+
+GestureFrame GestureEngine::update(
+    const TrackingFrame &tracking,
+    const GestureThresholds &thresholds)
+{
     GestureFrame result;
     result.timestampUs = tracking.captureUs;
     result.sequence = tracking.sequence;
@@ -32,7 +41,7 @@ GestureFrame GestureEngine::update(
                 tracking.width,
                 tracking.height,
                 tracking.captureUs,
-                recognitionThresholdPercent);
+                thresholds);
     }
 
     return result;
@@ -54,7 +63,7 @@ GesturePrediction GestureEngine::updateHand(
     int frameWidth,
     int frameHeight,
     std::int64_t timestampUs,
-    int recognitionThresholdPercent)
+    const GestureThresholds &thresholds)
 {
     GesturePrediction prediction;
     prediction.trackId = hand.trackId;
@@ -130,13 +139,9 @@ GesturePrediction GestureEngine::updateHand(
                 state.smoothed.begin(),
                 best));
 
+    const auto bestClass = static_cast<GestureClass>(bestIndex);
     const float threshold =
-        static_cast<float>(
-            std::clamp(
-                recognitionThresholdPercent,
-                0,
-                100))
-        / 100.0F;
+        static_cast<float>(thresholds.forClass(bestClass)) / 100.0F;
 
     const float noneScore =
         state.smoothed[

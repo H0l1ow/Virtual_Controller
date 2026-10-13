@@ -4,17 +4,23 @@
 #include "control/ControllerState.hpp"
 #include "gestures/GestureTypes.hpp"
 #include "gestures/GestureDataRecorder.hpp"
+#include "gestures/GestureCalibrator.hpp"
+#include "gestures/GestureTuning.hpp"
+#include "control/CursorPlayground.hpp"
 #include "gestures/GestureStateManager.hpp"
 #include "mapping/ActionMapper.hpp"
 #include "mapping/ProfileStore.hpp"
+#include "mapping/MappingValidator.hpp"
 #include "input/OutputService.hpp"
 #include "runtime/LatestFrameSlot.hpp"
 #include "runtime/RuntimeMetrics.hpp"
+#include "runtime/CameraReconnectPolicy.hpp"
 #include "tracking/TrackingTypes.hpp"
 
 #include <QCamera>
 #include <QCameraDevice>
 #include <QCameraFormat>
+#include <QByteArray>
 #include <QMediaCaptureSession>
 #include <QMediaDevices>
 #include <QMetaObject>
@@ -24,6 +30,7 @@
 #include <QStringList>
 #include <QTimer>
 #include <QVariant>
+#include <QVariantMap>
 #include <QVideoSink>
 
 #include <atomic>
@@ -182,6 +189,9 @@ public:
         QString errorMessage
             READ errorMessage
                 NOTIFY stateChanged)
+
+    Q_PROPERTY(bool autoRecoverCamera READ autoRecoverCamera WRITE setAutoRecoverCamera NOTIFY settingsChanged)
+    Q_PROPERTY(QString cameraRecoveryStatus READ cameraRecoveryStatus NOTIFY stateChanged)
 
     Q_PROPERTY(
         bool leftTracked
@@ -427,6 +437,9 @@ public:
             READ mappingRows
                 NOTIFY mappingChanged)
 
+    Q_PROPERTY(QVariantList mappingIssues READ mappingIssues NOTIFY mappingChanged)
+    Q_PROPERTY(bool canDeleteActiveProfile READ canDeleteActiveProfile NOTIFY mappingChanged)
+
     Q_PROPERTY(
         QString mappingError
             READ mappingError
@@ -455,6 +468,17 @@ public:
     Q_PROPERTY(QVariantList gestureDiagnostics READ gestureDiagnostics NOTIFY stateChanged)
     Q_PROPERTY(int gestureGraceMs READ gestureGraceMs WRITE setGestureGraceMs NOTIFY settingsChanged)
     Q_PROPERTY(int gestureReleaseThreshold READ gestureReleaseThreshold WRITE setGestureReleaseThreshold NOTIFY settingsChanged)
+    // M5.3 thresholds inherit the existing global Recognition threshold (-1).
+    Q_PROPERTY(QVariantMap gestureThresholds READ gestureThresholds NOTIFY settingsChanged)
+    Q_PROPERTY(QVariantMap gestureThresholdOverrides READ gestureThresholdOverrides NOTIFY settingsChanged)
+    Q_PROPERTY(bool calibrationActive READ calibrationActive NOTIFY stateChanged)
+    Q_PROPERTY(QString calibrationStatus READ calibrationStatus NOTIFY stateChanged)
+    Q_PROPERTY(int calibrationProgress READ calibrationProgress NOTIFY stateChanged)
+    Q_PROPERTY(QString calibrationGesture READ calibrationGesture NOTIFY stateChanged)
+    Q_PROPERTY(QString calibrationHand READ calibrationHand NOTIFY stateChanged)
+    Q_PROPERTY(QVariantList calibrationResults READ calibrationResults NOTIFY stateChanged)
+    Q_PROPERTY(bool cursorPlaygroundActive READ cursorPlaygroundActive NOTIFY stateChanged)
+    Q_PROPERTY(QVariantMap cursorPlaygroundState READ cursorPlaygroundState NOTIFY stateChanged)
     Q_PROPERTY(bool recordingActive READ recordingActive NOTIFY stateChanged)
     Q_PROPERTY(int recordedFrames READ recordedFrames NOTIFY stateChanged)
     Q_PROPERTY(QString recordingPath READ recordingPath NOTIFY stateChanged)
@@ -587,6 +611,10 @@ public:
     {
         return errorMessage_;
     }
+
+    bool autoRecoverCamera() const { return autoRecoverCamera_; }
+    QString cameraRecoveryStatus() const { return cameraRecoveryStatus_; }
+    void setAutoRecoverCamera(bool enabled);
 
     bool leftTracked() const
     {
@@ -814,6 +842,8 @@ public:
     }
 
     QString mappingProfileDirectory() const;
+    QVariantList mappingIssues() const;
+    bool canDeleteActiveProfile() const;
 
     QString gestureBackendName() const
     {
@@ -846,6 +876,24 @@ public:
     void setRequireRelease(bool value);
     void setGestureGraceMs(int value);
     void setGestureReleaseThreshold(int value);
+    QVariantMap gestureThresholds() const;
+    QVariantMap gestureThresholdOverrides() const;
+    Q_INVOKABLE void setGestureThreshold(const QString &gesture, int value);
+    Q_INVOKABLE void resetGestureThresholds();
+    bool calibrationActive() const { return calibrator_.capturing(); }
+    QString calibrationStatus() const;
+    int calibrationProgress() const { return calibrator_.progressPercent(); }
+    QString calibrationGesture() const;
+    QString calibrationHand() const;
+    QVariantList calibrationResults() const;
+    Q_INVOKABLE bool startGestureCalibration(const QString &hand, const QString &gesture);
+    Q_INVOKABLE void cancelGestureCalibration();
+    Q_INVOKABLE bool applyGestureCalibration(const QString &gesture);
+    Q_INVOKABLE void clearGestureCalibration();
+    bool cursorPlaygroundActive() const { return playgroundMode_; }
+    QVariantMap cursorPlaygroundState() const;
+    Q_INVOKABLE bool startCursorPlayground();
+    Q_INVOKABLE void stopCursorPlayground();
     int gestureGraceMs() const { return gestureGraceMs_; }
     int gestureReleaseThreshold() const { return gestureReleaseThreshold_; }
     QVariantList gestureDiagnostics() const { return gestureDiagnostics_; }
@@ -879,6 +927,8 @@ public:
         bool enabled);
     Q_INVOKABLE bool saveActiveProfile();
     Q_INVOKABLE bool reloadActiveProfile();
+    Q_INVOKABLE bool duplicateActiveProfile(const QString &newName);
+    Q_INVOKABLE bool deleteProfile(const QString &name);
 
 signals:
     void stateChanged();
@@ -931,6 +981,9 @@ private:
 
     void refreshDevices();
     void refreshFormats();
+    void scheduleCameraRecovery(const QByteArray &deviceId);
+    void cancelCameraRecovery();
+    void pollCameraRecovery();
 
     QString mediaPipeLibraryPath() const;
     QString handLandmarkerModelPath() const;
@@ -969,6 +1022,10 @@ private:
         const HandTrackingState &hand);
 
     QMediaDevices mediaDevices_;
+    QTimer cameraRecoveryTimer_;
+    CameraReconnectPolicy cameraReconnectPolicy_;
+    bool autoRecoverCamera_{true};
+    QString cameraRecoveryStatus_;
     QList<QCameraDevice> cameras_;
     QList<QCameraFormat> formats_;
 
@@ -1002,8 +1059,13 @@ private:
 
     std::atomic_bool swapHandedness_{};
     std::atomic_int recognitionThreshold_{80};
+    std::array<std::atomic_int, kGestureClassCount> gestureThresholdOverrides_{};
 
     GestureStateManager gestureStateManager_;
+    GestureCalibrator calibrator_;
+    CursorPlayground cursorPlayground_;
+    bool playgroundMode_{}; // also remains true after six targets are completed
+    std::int64_t playgroundSampleUs_{};
     ActionMapper actionMapper_;
     std::unique_ptr<ProfileStore> profileStore_;
     MappingProfile activeMappingProfile_;

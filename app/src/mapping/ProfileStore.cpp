@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <QRegularExpression>
 
 #include <algorithm>
 #include <utility>
@@ -144,6 +145,33 @@ bool ProfileStore::initialize(QString *error)
     return true;
 }
 
+bool ProfileStore::validName(const QString &name)
+{
+    // No path separators, dot segments, reserved Windows filename characters,
+    // or huge filenames. Unicode letters/numbers are supported.
+    static const QRegularExpression pattern(
+        QStringLiteral(R"(\A[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,63}\z)"));
+    static const QRegularExpression reserved(
+        QStringLiteral(R"(\A(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?\z)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return pattern.match(name).hasMatch() && name == name.trimmed()
+        && !name.endsWith(QLatin1Char('.')) && !name.contains(QStringLiteral(".."))
+        && !reserved.match(name).hasMatch();
+}
+
+bool ProfileStore::remove(const QString &name, QString *error) const
+{
+    if (!validName(name)) {
+        if (error) *error = QStringLiteral("Invalid profile name.");
+        return false;
+    }
+    if (!QFile::remove(QDir(writableDirectory_).filePath(name + QStringLiteral(".json")))) {
+        if (error) *error = QStringLiteral("Could not delete profile: %1").arg(name);
+        return false;
+    }
+    return true;
+}
+
 QStringList ProfileStore::profileNames() const
 {
     QDir directory(writableDirectory_);
@@ -152,7 +180,9 @@ QStringList ProfileStore::profileNames() const
              {QStringLiteral("*.json")},
              QDir::Files,
              QDir::Name)) {
-        result.append(QFileInfo(fileName).completeBaseName());
+        const QString name = QFileInfo(fileName).completeBaseName();
+        if (validName(name))
+            result.append(name);
     }
     return result;
 }
@@ -167,6 +197,10 @@ bool ProfileStore::load(
         return false;
     }
 
+    if (!validName(name)) {
+        if (error) *error = QStringLiteral("Invalid profile name.");
+        return false;
+    }
     QFile file(QDir(writableDirectory_).filePath(name + QStringLiteral(".json")));
     if (!file.open(QIODevice::ReadOnly)) {
         if (error) {
@@ -183,8 +217,8 @@ bool ProfileStore::save(
     QString *error) const
 {
     const QString name = QString::fromStdString(profile.name).trimmed();
-    if (name.isEmpty()) {
-        if (error) *error = QStringLiteral("Profile name cannot be empty.");
+    if (!validName(name)) {
+        if (error) *error = QStringLiteral("Invalid profile name (max 64 safe filename characters).");
         return false;
     }
 

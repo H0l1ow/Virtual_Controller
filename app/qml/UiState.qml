@@ -52,6 +52,8 @@ QtObject {
         runtimeBackend.formatIndex
     readonly property string errorMessage:
         runtimeBackend.errorMessage
+    readonly property bool autoRecoverCamera: runtimeBackend.autoRecoverCamera
+    readonly property string cameraRecoveryStatus: runtimeBackend.cameraRecoveryStatus
 
     readonly property string activeProfile:
         runtimeBackend.activeProfile
@@ -59,6 +61,8 @@ QtObject {
         runtimeBackend.mappingProfileNames
     readonly property string mappingError:
         runtimeBackend.mappingError
+    readonly property var mappingIssues: runtimeBackend.mappingIssues
+    readonly property bool canDeleteActiveProfile: runtimeBackend.canDeleteActiveProfile
     readonly property string mappingProfileDirectory:
         runtimeBackend.mappingProfileDirectory
     property string outputMode: "Mouse / Keyboard"
@@ -88,6 +92,16 @@ QtObject {
 
     readonly property int recognitionThreshold:
         runtimeBackend.recognitionThreshold
+    readonly property var gestureThresholds: runtimeBackend.gestureThresholds
+    readonly property var gestureThresholdOverrides: runtimeBackend.gestureThresholdOverrides
+    readonly property bool calibrationActive: runtimeBackend.calibrationActive
+    readonly property string calibrationStatus: runtimeBackend.calibrationStatus
+    readonly property int calibrationProgress: runtimeBackend.calibrationProgress
+    readonly property string calibrationGesture: runtimeBackend.calibrationGesture
+    readonly property string calibrationHand: runtimeBackend.calibrationHand
+    readonly property var calibrationResults: runtimeBackend.calibrationResults
+    readonly property bool cursorPlaygroundActive: runtimeBackend.cursorPlaygroundActive
+    readonly property var cursorPlaygroundState: runtimeBackend.cursorPlaygroundState
     readonly property int debounceMs:
         runtimeBackend.debounceMs
     readonly property int cooldownMs:
@@ -258,6 +272,10 @@ QtObject {
         runtimeBackend.swapHandedness = value
     }
 
+    function setAutoRecoverCamera(value) {
+        runtimeBackend.autoRecoverCamera = value
+    }
+
     function setOutputArmed(value) {
         runtimeBackend.outputArmed = value
     }
@@ -289,6 +307,21 @@ QtObject {
     function setRecognitionThreshold(value) {
         runtimeBackend.recognitionThreshold = Math.round(value)
     }
+
+    function setGestureThreshold(gesture, value) {
+        runtimeBackend.setGestureThreshold(gesture, Math.round(value))
+    }
+    function resetGestureThresholds() { runtimeBackend.resetGestureThresholds() }
+    function startGestureCalibration(hand, gesture) {
+        return runtimeBackend.startGestureCalibration(hand, gesture)
+    }
+    function cancelGestureCalibration() { runtimeBackend.cancelGestureCalibration() }
+    function applyGestureCalibration(gesture) {
+        return runtimeBackend.applyGestureCalibration(gesture)
+    }
+    function clearGestureCalibration() { runtimeBackend.clearGestureCalibration() }
+    function startCursorPlayground() { return runtimeBackend.startCursorPlayground() }
+    function stopCursorPlayground() { runtimeBackend.stopCursorPlayground() }
 
     function setDebounceMs(value) {
         runtimeBackend.debounceMs = Math.round(value)
@@ -342,6 +375,14 @@ QtObject {
         return runtimeBackend.reloadActiveProfile()
     }
 
+    function duplicateActiveProfile(name) {
+        return runtimeBackend.duplicateActiveProfile(name)
+    }
+
+    function deleteProfile(name) {
+        return runtimeBackend.deleteProfile(name)
+    }
+
     function setPipelineRunning(enabled) {
         if (enabled && canStart)
             runtimeBackend.start()
@@ -356,7 +397,15 @@ QtObject {
     function settingsSnapshot() {
         return {
             themeMode: AppPreferences.themeMode,
+            shortcutTracking: AppPreferences.shortcutTracking,
+            shortcutStop: AppPreferences.shortcutStop,
+            shortcutNextProfile: AppPreferences.shortcutNextProfile,
             pipEnabled: AppPreferences.pipEnabled,
+            pipSizeMode: AppPreferences.pipSizeMode,
+            pipShowLandmarks: AppPreferences.pipShowLandmarks,
+            pipX: AppPreferences.pipX,
+            pipY: AppPreferences.pipY,
+            autoRecoverCamera: autoRecoverCamera,
             cameraName: cameraNames[cameraIndex] || "",
             formatName: formatNames[formatIndex] || "",
             sensitivity: sensitivity,
@@ -369,6 +418,7 @@ QtObject {
             trackingConfidence: trackingConfidence,
             swapHandedness: swapHandedness,
             recognitionThreshold: recognitionThreshold,
+            gestureThresholdOverrides: gestureThresholdOverrides,
             debounceMs: debounceMs,
             cooldownMs: cooldownMs,
             requireRelease: requireRelease,
@@ -395,6 +445,13 @@ QtObject {
         if (has("trackingConfidence")) setTrackingConfidence(saved.trackingConfidence)
         if (has("swapHandedness")) setSwapHandedness(saved.swapHandedness)
         if (has("recognitionThreshold")) setRecognitionThreshold(saved.recognitionThreshold)
+        if (has("gestureThresholdOverrides")) {
+            const overrides = saved.gestureThresholdOverrides
+            for (const klass of ["FIST", "OPEN_HAND", "POINT", "PINCH"]) {
+                if (overrides && Object.prototype.hasOwnProperty.call(overrides, klass))
+                    setGestureThreshold(klass, overrides[klass])
+            }
+        }
         if (has("debounceMs")) setDebounceMs(saved.debounceMs)
         if (has("cooldownMs")) setCooldownMs(saved.cooldownMs)
         if (has("requireRelease")) setRequireRelease(saved.requireRelease)
@@ -402,6 +459,7 @@ QtObject {
         if (has("gestureReleaseThreshold")) setGestureReleaseThreshold(saved.gestureReleaseThreshold)
         if (has("showLandmarks")) showLandmarks = saved.showLandmarks
         if (has("mirrorPreview")) mirrorPreview = saved.mirrorPreview
+        if (has("autoRecoverCamera")) setAutoRecoverCamera(saved.autoRecoverCamera)
 
         // Camera order may change across reboots. Match labels, never indices.
         if (has("cameraName")) {
@@ -444,6 +502,7 @@ QtObject {
         setDetectionConfidence(60)
         setTrackingConfidence(55)
         setRecognitionThreshold(80)
+        resetGestureThresholds()
         setDebounceMs(120)
         setCooldownMs(250)
         setRequireRelease(true)
@@ -455,7 +514,14 @@ QtObject {
         setActiveProfile("Default")
         setOutputArmed(false)
         AppPreferences.themeMode = "dark"
+        AppPreferences.shortcutTracking = "Ctrl+Alt+F9"
+        AppPreferences.shortcutStop = "Ctrl+Alt+F10"
+        AppPreferences.shortcutNextProfile = "Ctrl+Alt+F11"
         AppPreferences.pipEnabled = true
+        AppPreferences.pipSizeMode = "medium"
+        AppPreferences.pipShowLandmarks = true
+        AppPreferences.setPipPosition(-1, -1)
+        setAutoRecoverCamera(true)
         // Reset is a preview until the user clicks Save.
     }
 

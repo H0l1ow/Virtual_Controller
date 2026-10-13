@@ -13,8 +13,8 @@ ApplicationWindow {
 
     width: 1440
     height: 900
-    minimumWidth: 1220
-    minimumHeight: 760
+    minimumWidth: 960
+    minimumHeight: 680
     visibility: Window.FullScreen
     title: "Virtual Controller"
     color: theme.background

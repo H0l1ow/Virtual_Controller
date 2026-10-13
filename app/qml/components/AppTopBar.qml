@@ -58,7 +58,7 @@ Rectangle {
         spacing: 0
 
         Item {
-            Layout.preferredWidth: root.width < 1400 ? 260 : 320
+            Layout.preferredWidth: root.width < 1100 ? 172 : root.width < 1400 ? 260 : 320
             Layout.fillHeight: true
 
             RowLayout {
@@ -68,21 +68,22 @@ Rectangle {
                 spacing: 12
 
                 HandLogo {
-                    Layout.preferredWidth: 38
-                    Layout.preferredHeight: 38
+                    Layout.preferredWidth: root.width < 1100 ? 30 : 38
+                    Layout.preferredHeight: root.width < 1100 ? 30 : 38
                     color: root.theme.textPrimary
                 }
 
                 Row {
                     spacing: 0
                     Text {
-                        text: "Virtual"
+                        text: root.width < 1100 ? "VC" : "Virtual"
                         color: root.theme.textPrimary
                         font.family: root.theme.fontFamily
                         font.pixelSize: 25
                         font.weight: Font.Bold
                     }
                     Text {
+                        visible: root.width >= 1100
                         text: "Controller"
                         color: root.theme.textSecondary
                         font.family: root.theme.fontFamily
@@ -109,7 +110,7 @@ Rectangle {
                 required property var modelData
                 required property int index
                 Layout.fillHeight: true
-                Layout.preferredWidth: root.width < 1400 ? 106 : 118
+                Layout.preferredWidth: root.width < 1100 ? 76 : root.width < 1400 ? 106 : 118
                 theme: root.theme
                 text: modelData.title
                 iconName: modelData.icon
@@ -146,7 +147,7 @@ Rectangle {
             VcComboBox {
                 id: quickProfile
                 theme: root.theme
-                implicitWidth: 148
+                implicitWidth: root.width < 1100 ? 126 : 148
                 implicitHeight: 32
                 model: root.windowRef.uiState.profileNames
                 currentIndex: Math.max(0, root.windowRef.uiState.profileNames.indexOf(
@@ -160,12 +161,14 @@ Rectangle {
 
         WindowControlButton {
             Layout.fillHeight: true
+            Layout.preferredWidth: root.width < 1100 ? 40 : 48
             theme: root.theme
             symbol: "—"
             onClicked: root.windowRef.showMinimized()
         }
         WindowControlButton {
             Layout.fillHeight: true
+            Layout.preferredWidth: root.width < 1100 ? 40 : 48
             theme: root.theme
             symbol: (root.windowRef.controllerFullscreen
                 || root.windowRef.visibility === Window.Maximized) ? "❐" : "□"
@@ -173,6 +176,7 @@ Rectangle {
         }
         WindowControlButton {
             Layout.fillHeight: true
+            Layout.preferredWidth: root.width < 1100 ? 40 : 48
             theme: root.theme
             symbol: "×"
             danger: true

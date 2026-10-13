@@ -188,9 +188,12 @@ RuntimeController::RuntimeController(
     QObject *parent)
     : QObject(parent)
     , mediaDevices_(this)
+    , cameraRecoveryTimer_(this)
     , captureSession_(this)
     , statsTimer_(this)
 {
+    for (auto &threshold : gestureThresholdOverrides_)
+        threshold.store(-1);
     refreshDevices();
     updateCursorGeometry();
     cursorX_ = cursorScreenWidth_ / 2;
@@ -200,18 +203,29 @@ RuntimeController::RuntimeController(
 
     initializeProfiles();
 
-    connect(
-        &mediaDevices_,
-        &QMediaDevices::videoInputsChanged,
-        this,
-        [this] {
-            if (pipelineRunning()) {
-                requestSessionStop(
-                    RuntimeState::Stopped);
-            }
+    cameraRecoveryTimer_.setInterval(1000);
+    connect(&cameraRecoveryTimer_, &QTimer::timeout,
+            this, &RuntimeController::pollCameraRecovery);
 
-            refreshDevices();
-        });
+    connect(&mediaDevices_, &QMediaDevices::videoInputsChanged,
+            this, [this] {
+        // Only restart automatically when the *selected* physical device was
+        // removed during an active session. Never switch to another camera.
+        if (runtimeState_ == RuntimeState::Running
+            || runtimeState_ == RuntimeState::Starting) {
+            const QByteArray selectedId = cameras_.isEmpty() ? QByteArray{} :
+                cameras_[std::clamp(cameraIndex_, 0, static_cast<int>(cameras_.size()) - 1)].id();
+            const auto connected = QMediaDevices::videoInputs();
+            const bool disappeared = std::none_of(connected.begin(), connected.end(),
+                [&selectedId](const QCameraDevice &device) {
+                    return device.id() == selectedId;
+                });
+            if (autoRecoverCamera_ && disappeared)
+                scheduleCameraRecovery(selectedId);
+            requestSessionStop(RuntimeState::Stopped);
+        }
+        refreshDevices();
+    });
 
     statsTimer_.setInterval(250);
 
@@ -419,6 +433,29 @@ QString RuntimeController::mappingProfileDirectory() const
     return profileStore_
         ? profileStore_->writableDirectory()
         : QString{};
+}
+
+QVariantList RuntimeController::mappingIssues() const
+{
+    QVariantList result;
+    for (const auto &issue : validateMappings(activeMappingProfile_)) {
+        QVariantMap item;
+        item.insert(QStringLiteral("code"), QString::fromStdString(issue.code));
+        item.insert(QStringLiteral("severity"), issue.severity == MappingIssue::Severity::Error
+                        ? QStringLiteral("error") : QStringLiteral("warning"));
+        item.insert(QStringLiteral("first"), issue.first);
+        item.insert(QStringLiteral("second"), issue.second);
+        result.append(item);
+    }
+    return result;
+}
+
+bool RuntimeController::canDeleteActiveProfile() const
+{
+    // Bundled profiles are seeded again at startup; don't offer delete for them.
+    static const QStringList bundled{QStringLiteral("Default"), QStringLiteral("Desktop"),
+                                     QStringLiteral("Game"), QStringLiteral("Presentation")};
+    return !bundled.contains(activeProfile_, Qt::CaseInsensitive);
 }
 
 void RuntimeController::initializeProfiles()
@@ -657,6 +694,69 @@ bool RuntimeController::reloadActiveProfile()
     return loadProfile(activeProfile_);
 }
 
+bool RuntimeController::duplicateActiveProfile(const QString &newName)
+{
+    const QString name = newName.trimmed();
+    if (!profileStore_ || !ProfileStore::validName(name)) {
+        mappingError_ = QStringLiteral("Invalid new profile name. Use 1-64 filename-safe characters.");
+        emit mappingChanged();
+        return false;
+    }
+    for (const auto &existing : mappingProfileNames_) {
+        if (existing.compare(name, Qt::CaseInsensitive) == 0) {
+            mappingError_ = QStringLiteral("A profile with that name already exists.");
+            emit mappingChanged();
+            return false;
+        }
+    }
+    MappingProfile copy = activeMappingProfile_;
+    copy.name = name.toStdString();
+    QString error;
+    if (!profileStore_->save(copy, &error)) {
+        mappingError_ = error;
+        emit mappingChanged();
+        return false;
+    }
+    // Selecting another profile automatically disarms output and resets held keys.
+    mappingProfileNames_ = profileStore_->profileNames();
+    if (mappingProfileNames_.removeAll(QStringLiteral("Default")) > 0)
+        mappingProfileNames_.prepend(QStringLiteral("Default"));
+    return loadProfile(name);
+}
+
+bool RuntimeController::deleteProfile(const QString &name)
+{
+    const QString normalized = name.trimmed();
+    static const QStringList bundled{QStringLiteral("Default"), QStringLiteral("Desktop"),
+                                     QStringLiteral("Game"), QStringLiteral("Presentation")};
+    if (!profileStore_ || bundled.contains(normalized, Qt::CaseInsensitive)
+        || !ProfileStore::validName(normalized)) {
+        mappingError_ = QStringLiteral("Built-in or invalid profiles cannot be deleted.");
+        emit mappingChanged();
+        return false;
+    }
+    if (!mappingProfileNames_.contains(normalized, Qt::CaseInsensitive)) {
+        mappingError_ = QStringLiteral("Profile does not exist.");
+        emit mappingChanged();
+        return false;
+    }
+    // Always switch away before deleting active data. loadProfile disarms input.
+    if (activeProfile_ == normalized && !loadProfile(QStringLiteral("Default")))
+        return false;
+    QString error;
+    if (!profileStore_->remove(normalized, &error)) {
+        mappingError_ = error;
+        emit mappingChanged();
+        return false;
+    }
+    mappingProfileNames_ = profileStore_->profileNames();
+    if (mappingProfileNames_.removeAll(QStringLiteral("Default")) > 0)
+        mappingProfileNames_.prepend(QStringLiteral("Default"));
+    mappingError_.clear();
+    emit mappingChanged();
+    return true;
+}
+
 QString RuntimeController::runtimeStateName() const
 {
     switch (runtimeState_) {
@@ -801,7 +901,17 @@ void RuntimeController::setOutputArmed(
     }
 
     if (value) {
-        if (runtimeState_ != RuntimeState::Running
+        if (hasBlockingMappingIssues(activeMappingProfile_)) {
+            mappingError_ = QStringLiteral(
+                "Profile contains invalid mappings. Fix errors before enabling system input.");
+            emit mappingChanged();
+            emit stateChanged();
+            return;
+        }
+        // Cursor Playground is an isolated test mode: fail closed even if an
+        // unrelated QML control attempts to arm Windows input.
+        if (playgroundMode_ || calibrator_.capturing()
+            || runtimeState_ != RuntimeState::Running
             || !outputSnapshot_.ready) {
             emit stateChanged();
             return;
@@ -907,6 +1017,176 @@ void RuntimeController::setRecognitionThreshold(
     emit settingsChanged();
 }
 
+QVariantMap RuntimeController::gestureThresholdOverrides() const
+{
+    QVariantMap values;
+    for (std::size_t idx = 1; idx < kGestureClassCount; ++idx) {
+        values.insert(QString::fromLatin1(kGestureCanonicalNames[idx]),
+                      gestureThresholdOverrides_[idx].load());
+    }
+    return values;
+}
+
+QVariantMap RuntimeController::gestureThresholds() const
+{
+    QVariantMap values;
+    const int global = recognitionThreshold_.load();
+    for (std::size_t idx = 1; idx < kGestureClassCount; ++idx) {
+        const int custom = gestureThresholdOverrides_[idx].load();
+        values.insert(QString::fromLatin1(kGestureCanonicalNames[idx]),
+                      custom < 0 ? global : custom);
+    }
+    return values;
+}
+
+void RuntimeController::setGestureThreshold(const QString &name, int value)
+{
+    const auto gesture = parseGestureName(name);
+    if (!gesture || *gesture == GestureClass::None)
+        return;
+    // -1 means inherit global; any explicit override has a conservative floor.
+    value = value < 0 ? -1 : std::clamp(value, 60, 100);
+    if (gestureThresholdOverrides_[gestureIndex(*gesture)].exchange(value) != value)
+        emit settingsChanged();
+}
+
+void RuntimeController::resetGestureThresholds()
+{
+    bool changed = false;
+    for (std::size_t idx = 1; idx < kGestureClassCount; ++idx)
+        changed |= gestureThresholdOverrides_[idx].exchange(-1) != -1;
+    if (changed) emit settingsChanged();
+}
+
+QString RuntimeController::calibrationStatus() const
+{
+    switch (calibrator_.status()) {
+    case GestureCalibrator::Status::Capturing: return QStringLiteral("CAPTURING");
+    case GestureCalibrator::Status::Ready: return QStringLiteral("READY");
+    case GestureCalibrator::Status::WeakSignal: return QStringLiteral("WEAK_SIGNAL");
+    case GestureCalibrator::Status::Ambiguous: return QStringLiteral("AMBIGUOUS");
+    case GestureCalibrator::Status::Cancelled: return QStringLiteral("CANCELLED");
+    default: return QStringLiteral("IDLE");
+    }
+}
+
+QString RuntimeController::calibrationGesture() const
+{
+    return QString::fromLatin1(gestureCanonicalName(calibrator_.selectedGesture()));
+}
+
+QString RuntimeController::calibrationHand() const
+{
+    return calibrator_.selectedSide() == HandSide::Left
+        ? QStringLiteral("Left") : QStringLiteral("Right");
+}
+
+QVariantList RuntimeController::calibrationResults() const
+{
+    QVariantList results;
+    for (std::size_t side = 0; side < kHandCount; ++side) {
+        for (std::size_t idx = 1; idx < kGestureClassCount; ++idx) {
+            const auto gesture = static_cast<GestureClass>(idx);
+            const auto r = calibrator_.result(static_cast<HandSide>(side), gesture);
+            QVariantMap item;
+            item.insert(QStringLiteral("hand"), side == 0 ? QStringLiteral("Left") : QStringLiteral("Right"));
+            item.insert(QStringLiteral("gesture"), QString::fromLatin1(kGestureCanonicalNames[idx]));
+            item.insert(QStringLiteral("valid"), r.valid);
+            item.insert(QStringLiteral("threshold"), r.threshold);
+            item.insert(QStringLiteral("samples"), r.samples);
+            item.insert(QStringLiteral("dominance"), r.dominantPercent);
+            item.insert(QStringLiteral("suggested"), calibrator_.suggestedThreshold(gesture));
+            results.append(item);
+        }
+    }
+    return results;
+}
+
+bool RuntimeController::startGestureCalibration(const QString &hand, const QString &name)
+{
+    const auto gesture = parseGestureName(name);
+    if (!gesture || *gesture == GestureClass::None || runtimeState_ != RuntimeState::Running)
+        return false;
+    const HandSide side = hand.compare(QStringLiteral("Left"), Qt::CaseInsensitive) == 0
+        ? HandSide::Left : HandSide::Right;
+    if (hand.compare(QStringLiteral("Left"), Qt::CaseInsensitive) != 0
+        && hand.compare(QStringLiteral("Right"), Qt::CaseInsensitive) != 0)
+        return false;
+    stopCursorPlayground();
+    setOutputArmed(false);
+    calibrator_.start(side, *gesture);
+    emit stateChanged();
+    return true;
+}
+
+void RuntimeController::cancelGestureCalibration()
+{
+    calibrator_.cancel();
+    emit stateChanged();
+}
+
+bool RuntimeController::applyGestureCalibration(const QString &gesture)
+{
+    const auto klass = parseGestureName(gesture);
+    if (!klass || *klass == GestureClass::None || calibrator_.capturing())
+        return false;
+    const int recommended = calibrator_.suggestedThreshold(*klass);
+    if (recommended < 0) return false;
+    setGestureThreshold(gesture, recommended);
+    return true;
+}
+
+void RuntimeController::clearGestureCalibration()
+{
+    calibrator_.clearResults();
+    emit stateChanged();
+}
+
+QVariantMap RuntimeController::cursorPlaygroundState() const
+{
+    QVariantMap state;
+    const auto point = cursorPlayground_.cursor();
+    const auto goal = cursorPlayground_.target();
+    state.insert(QStringLiteral("active"), cursorPlayground_.active());
+    state.insert(QStringLiteral("complete"), cursorPlayground_.complete());
+    state.insert(QStringLiteral("tracked"), cursorPlayground_.tracked());
+    state.insert(QStringLiteral("x"), point.x);
+    state.insert(QStringLiteral("y"), point.y);
+    state.insert(QStringLiteral("targetX"), goal.x);
+    state.insert(QStringLiteral("targetY"), goal.y);
+    state.insert(QStringLiteral("targetIndex"), cursorPlayground_.targetIndex());
+    state.insert(QStringLiteral("targetCount"), cursorPlayground_.totalTargets());
+    state.insert(QStringLiteral("dwellPercent"), cursorPlayground_.dwellPercent(playgroundSampleUs_));
+    state.insert(QStringLiteral("averageMs"), cursorPlayground_.averageAcquisitionMs());
+    state.insert(QStringLiteral("averageErrorPx"), cursorPlayground_.averageErrorPx());
+    state.insert(QStringLiteral("jitterPx"), cursorPlayground_.averageJitterPx());
+    state.insert(QStringLiteral("missedClicks"), cursorPlayground_.missedClicks());
+    return state;
+}
+
+bool RuntimeController::startCursorPlayground()
+{
+    if (runtimeState_ != RuntimeState::Running)
+        return false;
+    cancelGestureCalibration();
+    setOutputArmed(false);
+    resetContinuousControl();
+    playgroundSampleUs_ = nowUs();
+    cursorPlayground_.start(playgroundSampleUs_);
+    playgroundMode_ = true;
+    emit stateChanged();
+    return true;
+}
+
+void RuntimeController::stopCursorPlayground()
+{
+    if (playgroundMode_) {
+        playgroundMode_ = false;
+        cursorPlayground_.stop();
+        emit stateChanged();
+    }
+}
+
 void RuntimeController::setDebounceMs(int value)
 {
     value = std::clamp(value, 0, 1000);
@@ -993,6 +1273,85 @@ void RuntimeController::stopGestureRecording()
     recorder_.stop();
     recordingError_ = QString::fromStdString(recorder_.error());
     emit stateChanged();
+}
+
+void RuntimeController::setAutoRecoverCamera(bool enabled)
+{
+    if (autoRecoverCamera_ == enabled)
+        return;
+    autoRecoverCamera_ = enabled;
+    if (!enabled)
+        cancelCameraRecovery();
+    emit settingsChanged();
+}
+
+void RuntimeController::scheduleCameraRecovery(const QByteArray &deviceId)
+{
+    if (!autoRecoverCamera_ || deviceId.isEmpty())
+        return;
+    if (!cameraReconnectPolicy_.begin(deviceId.toStdString(), 30))
+        return;
+    cameraRecoveryStatus_ = QStringLiteral("Waiting for camera reconnection");
+    // System output is neutralized by requestSessionStop before any restart.
+    cameraRecoveryTimer_.start();
+    emit stateChanged();
+}
+
+void RuntimeController::cancelCameraRecovery()
+{
+    cameraRecoveryTimer_.stop();
+    cameraReconnectPolicy_.cancel();
+    if (!cameraRecoveryStatus_.isEmpty()) {
+        cameraRecoveryStatus_.clear();
+        emit stateChanged();
+    }
+}
+
+void RuntimeController::pollCameraRecovery()
+{
+    if (!autoRecoverCamera_ || !cameraReconnectPolicy_.pending()) {
+        cancelCameraRecovery();
+        return;
+    }
+    // Do not spawn sessions during teardown or application shutdown.
+    if (exitRequested_) {
+        cancelCameraRecovery();
+        return;
+    }
+    const auto connected = QMediaDevices::videoInputs();
+    const std::string wanted = cameraReconnectPolicy_.deviceId();
+    auto found = std::find_if(connected.begin(), connected.end(),
+        [&wanted](const QCameraDevice &device) {
+            return device.id().toStdString() == wanted;
+        });
+    const bool stopped = canStart() && !pipelineRunning();
+    const auto decision = cameraReconnectPolicy_.poll(found != connected.end(), stopped);
+    if (decision == CameraReconnectPolicy::Decision::TimedOut) {
+        cameraRecoveryTimer_.stop();
+        cameraRecoveryStatus_ = QStringLiteral("Camera reconnection timed out");
+        emit stateChanged();
+        return;
+    }
+    if (decision != CameraReconnectPolicy::Decision::Restart)
+        return;
+
+    cameraRecoveryTimer_.stop();
+    refreshDevices();
+    const auto it = std::find_if(cameras_.begin(), cameras_.end(),
+        [&wanted](const QCameraDevice &device) {
+            return device.id().toStdString() == wanted;
+        });
+    if (it == cameras_.end()) {
+        cameraRecoveryStatus_ = QStringLiteral("Camera unavailable");
+        emit stateChanged();
+        return;
+    }
+    cameraIndex_ = static_cast<int>(std::distance(cameras_.begin(), it));
+    refreshFormats();
+    emit devicesChanged();
+    cameraRecoveryStatus_ = QStringLiteral("Camera reconnected; output disarmed");
+    emit stateChanged();
+    start(); // start() resets OutputService, never auto-arms it.
 }
 
 void RuntimeController::refreshDevices()
@@ -1149,6 +1508,7 @@ void RuntimeController::updatePiPConnection()
 void RuntimeController::selectCamera(
     int index)
 {
+    cancelCameraRecovery();
     if (pipelineRunning()
         || index < 0
         || index >= static_cast<int>(
@@ -1170,6 +1530,7 @@ void RuntimeController::selectCamera(
 void RuntimeController::selectFormat(
     int index)
 {
+    cancelCameraRecovery();
     if (pipelineRunning()
         || index < 0
         || index >= static_cast<int>(
@@ -1285,6 +1646,12 @@ void RuntimeController::start()
     if (!canStart()) {
         return;
     }
+
+    // Explicit user start overrides a pending automatic reconnect request.
+    // The policy has already disarmed itself before invoking start() when
+    // called by pollCameraRecovery().
+    if (cameraReconnectPolicy_.pending())
+        cancelCameraRecovery();
 
     errorMessage_.clear();
 
@@ -1671,6 +2038,7 @@ void RuntimeController::handleWorkerSessionFinished(
 
 void RuntimeController::stop()
 {
+    cancelCameraRecovery();
     requestSessionStop(
         RuntimeState::Stopped);
 }
@@ -1692,6 +2060,7 @@ void RuntimeController::requestApplicationExit()
     }
 
     exitRequested_ = true;
+    cancelCameraRecovery();
     emit applicationExitRequested();
 
     if (canStop()) {
@@ -1953,10 +2322,11 @@ void RuntimeController::workerLoop(
                             raw,
                             currentSwap);
 
-                    const GestureFrame gestures =
-                        gestureEngine.update(
-                            tracking,
-                            recognitionThreshold_.load());
+                    GestureThresholds thresholds;
+                    thresholds.fallbackPercent = recognitionThreshold_.load();
+                    for (std::size_t idx = 1; idx < kGestureClassCount; ++idx)
+                        thresholds.overrides[idx] = gestureThresholdOverrides_[idx].load();
+                    const GestureFrame gestures = gestureEngine.update(tracking, thresholds);
 
                     const auto processingEndUs =
                         nowUs();
@@ -2133,6 +2503,8 @@ void RuntimeController::applyTrackingFrame(
     const GestureEventFrame events =
         gestureStateManager_.update(gestures, eventConfig);
 
+    calibrator_.ingest(gestures);
+
     leftGestureEvent_ = gestureEventDisplayName(
         events.hands[handIndex(HandSide::Left)].phase);
     rightGestureEvent_ = gestureEventDisplayName(
@@ -2172,6 +2544,9 @@ void RuntimeController::updateGestureBackendStatus(
 
 void RuntimeController::clearTracking()
 {
+    playgroundMode_ = false;
+    cursorPlayground_.stop();
+    calibrator_.cancel();
     stopGestureRecording();
     gestureDiagnostics_.clear();
     leftTracked_ = false;
@@ -2259,6 +2634,18 @@ void RuntimeController::updateContinuousControl(
         events,
         result.controller);
 
+    if (cursorPlayground_.active()) {
+        // Use *raw continuous motion* independently of the active gesture
+        // mapping. Profile click actions remain observable, but nothing is
+        // sent to the OS while the playground is active.
+        playgroundSampleUs_ = frame.captureUs;
+        cursorPlayground_.update(result.controller.mouseX,
+                                 result.controller.mouseY,
+                                 result.cursorTracked,
+                                 controllerState_.mouseLeft,
+                                 frame.captureUs);
+    }
+
     if (result.cursorTracked) {
         if (!cursorPreviewInitialized_) {
             updateCursorGeometry();
@@ -2292,10 +2679,8 @@ void RuntimeController::updateContinuousControl(
     // The output guard ignores submissions while disarmed. When armed, even a
     // neutral frame is submitted so losing the right hand immediately stops
     // motion without requiring the output service to wait for its watchdog.
-    outputService_.submit(
-        controllerState_,
-        frame.captureUs,
-        frame.sequence);
+    if (!playgroundMode_)
+        outputService_.submit(controllerState_, frame.captureUs, frame.sequence);
 }
 
 void RuntimeController::refreshOutputStatus()

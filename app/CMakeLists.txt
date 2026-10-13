@@ -7,6 +7,7 @@ find_package(
         Quick
         QuickControls2
         Multimedia
+        Widgets
 )
 
 qt_standard_project_setup()
@@ -26,13 +27,18 @@ qt_add_executable(
 
     src/runtime/AppPreferences.hpp
     src/runtime/AppPreferences.cpp
+    src/runtime/DesktopIntegration.hpp
+    src/runtime/DesktopIntegration.cpp
     src/runtime/LatestFrameSlot.hpp
     src/runtime/LatestFrameSlot.cpp
     src/runtime/RuntimeMetrics.hpp
     src/runtime/RuntimeMetrics.cpp
+    src/runtime/CameraReconnectPolicy.hpp
     src/runtime/RuntimeController.hpp
     src/runtime/RuntimeController.cpp
 
+    src/control/CursorPlayground.hpp
+    src/control/CursorPlayground.cpp
     src/control/ControllerState.hpp
     src/control/OneEuroFilter.hpp
     src/control/OneEuroFilter.cpp
@@ -42,6 +48,9 @@ qt_add_executable(
     src/gestures/GestureTypes.hpp
     src/gestures/GestureDataRecorder.hpp
     src/gestures/GestureDataRecorder.cpp
+    src/gestures/GestureTuning.hpp
+    src/gestures/GestureCalibrator.hpp
+    src/gestures/GestureCalibrator.cpp
     src/gestures/HandFeatures.hpp
     src/gestures/HandFeatures.cpp
     src/gestures/GestureEngine.hpp
@@ -63,6 +72,7 @@ qt_add_executable(
     src/mapping/ActionMapper.cpp
     src/mapping/ProfileStore.hpp
     src/mapping/ProfileStore.cpp
+    src/mapping/MappingValidator.hpp
 
     src/tracking/TrackingTypes.hpp
     src/tracking/HandIdentityStabilizer.hpp
@@ -87,6 +97,7 @@ target_link_libraries(
         Qt6::Quick
         Qt6::QuickControls2
         Qt6::Multimedia
+        Qt6::Widgets
         Threads::Threads
 )
 
@@ -142,6 +153,8 @@ qt_add_resources(
 
         qml/components/AppTopBar.qml
         qml/components/CameraStage.qml
+        qml/components/CalibrationPanel.qml
+        qml/components/CursorPlaygroundPage.qml
         qml/components/MiniPreviewWindow.qml
         qml/components/ControlsCard.qml
         qml/components/CursorTrackingCard.qml

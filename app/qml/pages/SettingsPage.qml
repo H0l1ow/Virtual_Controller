@@ -1,8 +1,10 @@
 import VirtualController.I18n 1.0
 import VirtualController.Preferences 1.0
+import VirtualController.Desktop 1.0
 import QtQuick
 import QtQml
 import QtQuick.Layouts
+import QtQuick.Controls
 import "../components"
 
 Item {
@@ -10,6 +12,10 @@ Item {
     required property QtObject theme
     required property QtObject uiState
     property int sectionIndex: 0
+    readonly property var shortcutValues: ["Disabled", "Ctrl+Alt+F5", "Ctrl+Alt+F6",
+        "Ctrl+Alt+F7", "Ctrl+Alt+F9", "Ctrl+Alt+F10", "Ctrl+Alt+F11", "Ctrl+Alt+F12"]
+    readonly property var shortcutLabels: [qsTr("Disabled"), "Ctrl+Alt+F5", "Ctrl+Alt+F6",
+        "Ctrl+Alt+F7", "Ctrl+Alt+F9", "Ctrl+Alt+F10", "Ctrl+Alt+F11", "Ctrl+Alt+F12"]
 
     readonly property var sections: [
         {
@@ -33,8 +39,16 @@ Item {
             icon: "mapping"
         },
         {
+            title: qsTr("Calibration"),
+            icon: "hand"
+        },
+        {
             title: qsTr("Model"),
             icon: "settings"
+        },
+        {
+            title: qsTr("Desktop"),
+            icon: "monitor"
         }
     ]
 
@@ -173,10 +187,19 @@ Item {
 
                     // GENERAL / LOCALIZATION
                     Item {
-                        ColumnLayout {
+                        ScrollView {
+                            id: generalScroll
                             anchors.fill: parent
-                            anchors.margins: 18
-                            spacing: 0
+                            clip: true
+                            contentWidth: availableWidth
+                            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                            contentHeight: generalColumn.implicitHeight + 36
+                            ColumnLayout {
+                                id: generalColumn
+                                x: 18
+                                y: 18
+                                width: Math.max(1, generalScroll.availableWidth - 36)
+                                spacing: 0
 
                             Text {
                                 text: qsTr("General")
@@ -249,6 +272,54 @@ Item {
                                 Layout.preferredHeight: 1
                                 color: root.theme.borderSubtle
                             }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                title: qsTr("Mini preview size")
+                                description: qsTr("Set the size of the preview shown when minimized.")
+                                VcComboBox {
+                                    theme: root.theme
+                                    model: [qsTr("Small"), qsTr("Medium"), qsTr("Large")]
+                                    currentIndex: Math.max(0, ["small", "medium", "large"].indexOf(AppPreferences.pipSizeMode))
+                                    implicitWidth: 220
+                                    onActivated: function(index) {
+                                        AppPreferences.pipSizeMode = ["small", "medium", "large"][index]
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: root.theme.borderSubtle
+                            }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                title: qsTr("Show landmarks in mini preview")
+                                description: qsTr("Display tracked hands over the camera image in the small window.")
+                                VcSwitch {
+                                    theme: root.theme
+                                    checked: AppPreferences.pipShowLandmarks
+                                    onToggled: AppPreferences.pipShowLandmarks = checked
+                                }
+                            }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                title: qsTr("Mini preview position")
+                                description: qsTr("Reset the preview to the bottom-right corner of the screen.")
+                                VcButton {
+                                    theme: root.theme
+                                    text: qsTr("Reset position")
+                                    iconName: "reset"
+                                    onClicked: AppPreferences.setPipPosition(-1, -1)
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: root.theme.borderSubtle
+                            }
                             Text {
                                 Layout.fillWidth: true
                                 Layout.topMargin: 14
@@ -259,15 +330,25 @@ Item {
                                 wrapMode: Text.WordWrap
                             }
                             Item { Layout.fillHeight: true }
+                            }
                         }
                     }
 
                     // CAMERA
                     Item {
-                        ColumnLayout {
+                        ScrollView {
+                            id: cameraScroll
                             anchors.fill: parent
-                            anchors.margins: 18
-                            spacing: 0
+                            clip: true
+                            contentWidth: availableWidth
+                            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                            contentHeight: cameraColumn.implicitHeight + 36
+                            ColumnLayout {
+                                id: cameraColumn
+                                x: 18
+                                y: 18
+                                width: Math.max(1, cameraScroll.availableWidth - 36)
+                                spacing: 0
                             Text {
                                 text: qsTr("Camera")
                                 color: root.theme.textPrimary
@@ -331,6 +412,36 @@ Item {
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
+                                title: qsTr("Camera auto-reconnect")
+                                description: qsTr("Retry for 30 seconds after camera disconnection. System input remains disarmed.")
+                                VcSwitch {
+                                    theme: root.theme
+                                    checked: root.uiState.autoRecoverCamera
+                                    onToggled: root.uiState.setAutoRecoverCamera(checked)
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: root.theme.borderSubtle
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: root.uiState.cameraRecoveryStatus.length > 0
+                                text: root.uiState.cameraRecoveryStatus === "Waiting for camera reconnection"
+                                    ? qsTr("Waiting for camera reconnection")
+                                    : root.uiState.cameraRecoveryStatus === "Camera reconnection timed out"
+                                        ? qsTr("Camera reconnection timed out")
+                                        : root.uiState.cameraRecoveryStatus === "Camera reconnected; output disarmed"
+                                            ? qsTr("Camera reconnected; output disarmed")
+                                            : qsTr("Camera unavailable")
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 11
+                                color: root.theme.warning
+                            }
+                            SettingsRow {
+                                Layout.fillWidth: true
+                                theme: root.theme
                                 title: qsTr("Mirror preview")
                                 description: qsTr("Mirror only the displayed image; tracking coordinates remain normalized.")
                                 VcSwitch {
@@ -357,8 +468,7 @@ Item {
                                     onToggled: root.uiState.setSwapHandedness(checked)
                                 }
                             }
-                            Item {
-                                Layout.fillHeight: true
+                            Item { Layout.fillHeight: true }
                             }
                         }
                     }
@@ -639,10 +749,19 @@ Item {
                     // GESTURES
                     Item {
                         enabled: root.uiState.gestureRecognitionAvailable
-                        ColumnLayout {
+                        ScrollView {
+                            id: gesturesSettingsScroll
                             anchors.fill: parent
-                            anchors.margins: 18
-                            spacing: 0
+                            clip: true
+                            contentWidth: availableWidth
+                            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                            contentHeight: gesturesSettingsColumn.implicitHeight + 36
+                            ColumnLayout {
+                                id: gesturesSettingsColumn
+                                x: 18
+                                y: 18
+                                width: Math.max(1, gesturesSettingsScroll.availableWidth - 36)
+                                spacing: 0
                             Text {
                                 text: qsTr("Gestures")
                                 color: root.theme.textPrimary
@@ -681,6 +800,76 @@ Item {
                                 Layout.preferredHeight: 1
                                 color: root.theme.borderSubtle
                             }
+                            Text {
+                                Layout.topMargin: 18
+                                Layout.bottomMargin: 7
+                                text: qsTr("Individual gesture thresholds")
+                                color: root.theme.textPrimary
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 15
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                Layout.bottomMargin: 10
+                                text: qsTr("Each class inherits the global threshold unless customized. Changes affect both hands and are saved with application settings, not mapping profiles.")
+                                wrapMode: Text.WordWrap
+                                color: root.theme.textMuted
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 10
+                            }
+                            Repeater {
+                                model: [
+                                    {code: "FIST", label: qsTr("Fist")},
+                                    {code: "OPEN_HAND", label: qsTr("Open Hand")},
+                                    {code: "POINT", label: qsTr("Point")},
+                                    {code: "PINCH", label: qsTr("Pinch")}
+                                ]
+                                delegate: SettingsRow {
+                                    id: thresholdSettingRow
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    theme: root.theme
+                                    title: thresholdSettingRow.modelData.label
+                                    description: root.uiState.gestureThresholdOverrides[thresholdSettingRow.modelData.code] < 0
+                                        ? qsTr("Using global threshold")
+                                        : qsTr("Custom recognition threshold")
+                                    VcSlider {
+                                        id: classSlider
+                                        theme: root.theme
+                                        implicitWidth: 145
+                                        from: 60
+                                        to: 100
+                                        stepSize: 1
+                                        value: Number(root.uiState.gestureThresholds[thresholdSettingRow.modelData.code])
+                                        onMoved: root.uiState.setGestureThreshold(thresholdSettingRow.modelData.code, value)
+                                    }
+                                    Text {
+                                        text: Math.round(classSlider.value) + "%"
+                                        color: root.theme.textPrimary
+                                        font.family: root.theme.fontFamily
+                                        font.pixelSize: 11
+                                    }
+                                    VcIconButton {
+                                        theme: root.theme
+                                        iconName: "reset"
+                                        implicitWidth: 34
+                                        implicitHeight: 34
+                                        enabled: root.uiState.gestureThresholdOverrides[thresholdSettingRow.modelData.code] >= 0
+                                        onClicked: root.uiState.setGestureThreshold(thresholdSettingRow.modelData.code, -1)
+                                    }
+                                }
+                            }
+                            VcButton {
+                                Layout.topMargin: 12
+                                Layout.bottomMargin: 12
+                                Layout.alignment: Qt.AlignLeft
+                                theme: root.theme
+                                text: qsTr("Reset custom thresholds")
+                                iconName: "reset"
+                                onClicked: root.uiState.resetGestureThresholds()
+                            }
+                            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
                             SettingsRow {
                                 Layout.fillWidth: true
                                 theme: root.theme
@@ -761,9 +950,17 @@ Item {
                                     onToggled: root.uiState.setRequireRelease(checked)
                                 }
                             }
-                            Item {
-                                Layout.fillHeight: true
+                            Item { Layout.preferredHeight: 12 }
                             }
+                        }
+                    }
+
+                    // CALIBRATION
+                    Item {
+                        CalibrationPanel {
+                            anchors.fill: parent
+                            theme: root.theme
+                            uiState: root.uiState
                         }
                     }
 
@@ -852,6 +1049,121 @@ Item {
                             }
                             Item {
                                 Layout.fillHeight: true
+                            }
+                        }
+                    }
+
+                    // DESKTOP INTEGRATION / GLOBAL SHORTCUTS (M5.4)
+                    Item {
+                        ScrollView {
+                            id: desktopScroll
+                            anchors.fill: parent
+                            clip: true
+                            contentWidth: availableWidth
+                            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                            contentHeight: desktopColumn.implicitHeight + 36
+                            ColumnLayout {
+                                id: desktopColumn
+                                x: 18
+                                y: 18
+                                width: Math.max(1, desktopScroll.availableWidth - 36)
+                                spacing: 10
+
+                                Text {
+                                    text: qsTr("Desktop integration")
+                                    font.family: root.theme.fontFamily
+                                    font.pixelSize: 20
+                                    font.weight: Font.DemiBold
+                                    color: root.theme.textPrimary
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: qsTr("Global shortcuts work while minimized on Windows. F8 remains the independent emergency release key.")
+                                    color: root.theme.textMuted
+                                    font.family: root.theme.fontFamily
+                                    font.pixelSize: 11
+                                    wrapMode: Text.WordWrap
+                                    Layout.bottomMargin: 8
+                                }
+                                SettingsRow {
+                                    Layout.fillWidth: true
+                                    theme: root.theme
+                                    title: qsTr("System tray")
+                                    description: DesktopIntegration.trayAvailable
+                                        ? qsTr("Right-click the tray icon for tracking, profile and exit actions.")
+                                        : qsTr("System tray is unavailable in this environment.")
+                                    StatusBadge {
+                                        theme: root.theme
+                                        text: DesktopIntegration.trayAvailable ? qsTr("Available") : qsTr("Unavailable")
+                                        kind: DesktopIntegration.trayAvailable ? "success" : "warning"
+                                    }
+                                }
+                                SettingsRow {
+                                    Layout.fillWidth: true
+                                    theme: root.theme
+                                    title: qsTr("Toggle tracking")
+                                    description: qsTr("Starts or stops camera tracking; never arms system input.")
+                                    VcComboBox {
+                                        theme: root.theme
+                                        enabled: DesktopIntegration.globalShortcutsAvailable
+                                        implicitWidth: 220
+                                        model: root.shortcutLabels
+                                        currentIndex: Math.max(0, root.shortcutValues.indexOf(AppPreferences.shortcutTracking))
+                                        onActivated: function(index) {
+                                            AppPreferences.shortcutTracking = root.shortcutValues[index]
+                                        }
+                                    }
+                                }
+                                SettingsRow {
+                                    Layout.fillWidth: true
+                                    theme: root.theme
+                                    title: qsTr("Stop and disarm")
+                                    description: qsTr("Releases all system inputs and stops tracking. F8 is always available independently.")
+                                    VcComboBox {
+                                        theme: root.theme
+                                        enabled: DesktopIntegration.globalShortcutsAvailable
+                                        implicitWidth: 220
+                                        model: root.shortcutLabels
+                                        currentIndex: Math.max(0, root.shortcutValues.indexOf(AppPreferences.shortcutStop))
+                                        onActivated: function(index) {
+                                            AppPreferences.shortcutStop = root.shortcutValues[index]
+                                        }
+                                    }
+                                }
+                                SettingsRow {
+                                    Layout.fillWidth: true
+                                    theme: root.theme
+                                    title: qsTr("Next profile")
+                                    description: qsTr("Changes to the next profile and disarms system input.")
+                                    VcComboBox {
+                                        theme: root.theme
+                                        enabled: DesktopIntegration.globalShortcutsAvailable
+                                        implicitWidth: 220
+                                        model: root.shortcutLabels
+                                        currentIndex: Math.max(0, root.shortcutValues.indexOf(AppPreferences.shortcutNextProfile))
+                                        onActivated: function(index) {
+                                            AppPreferences.shortcutNextProfile = root.shortcutValues[index]
+                                        }
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: DesktopIntegration.shortcutError.length > 0
+                                    text: DesktopIntegration.shortcutError
+                                    color: root.theme.warning
+                                    font.family: root.theme.fontFamily
+                                    font.pixelSize: 11
+                                    wrapMode: Text.WordWrap
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: qsTr("Changes take effect immediately. Click Save to persist them. If Windows or another application owns a shortcut, choose another combination.")
+                                    color: root.theme.textMuted
+                                    font.family: root.theme.fontFamily
+                                    font.pixelSize: 11
+                                    wrapMode: Text.WordWrap
+                                }
+                                Item { Layout.preferredHeight: 12 }
                             }
                         }
                     }

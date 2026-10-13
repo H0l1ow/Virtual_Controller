@@ -1,7 +1,18 @@
-# Virtual Controller - M5.2 Settings & Mini Preview (0.10.2)
+# Virtual Controller - M5.4 Desktop Integration (0.12.0)
 
 Qt/QML + C++20 desktop application for two-hand camera tracking, gesture-driven
 mouse/keyboard input, mapping profiles and an in-app Gesture Playground.
+
+M5.4 introduces Windows System Tray integration, configurable global shortcuts,
+non-destructive mapping conflict validation, and safe profile copy/delete tools.
+See **PATCH_M5_4_README.md**. Builds now require the Qt Widgets module for the tray.
+
+M5.3 introduces per-gesture recognition thresholds, an interactive left/right hand
+calibration wizard (36 samples per hand/gesture), and a safe virtual Cursor
+Playground with six targets, tracking metrics and live sensitivity/deadzone/
+smoothing tuning. See **PATCH_M5_3_README.md**.
+
+M5.2.2 adds bounded recovery after reconnecting the same USB camera (system input remains disarmed), three mini-preview sizes, saved preview position, optional PiP landmarks and adaptive Settings/toolbar layouts. This is based on **M5.2.1 corrected** (PiP fullscreen interaction remains reverted). See **PATCH_M5_2_2_README.md**.
 
 M5.2 introduces QSettings-backed user settings (explicit Save/Reset),
 Light/Dark/Follow Windows appearance, a mini live-camera window on minimize
@@ -73,7 +84,9 @@ remains a separate mapping action and has priority over the movement gate.
 - `ActionMapper`: mouse buttons, wheel, cursor freeze, cursor movement gate and
   retained special/navigation keyboard actions.
 - editable Mapping page with `Press`, `Hold`, `Toggle` behavior and row removal.
-- JSON mapping profiles (`vc.mapping.profile.v1`).
+- JSON mapping profiles (`vc.mapping.profile.v1`), with safe duplicate/delete and live conflict diagnostics.
+- Windows System Tray (restore, start/stop, disarm, profile choice, exit) and global hotkeys.
+- Emergency F8 remains reserved; shortcut activation never arms system output.
 - Gesture Playground / Test tab with click, drag, freeze, scroll, keyboard and
   cursor-movement-gate exercises.
 - Safe Internal testing through backend-neutral `ControllerState`.
@@ -87,7 +100,7 @@ remains a separate mapping action and has priority over the movement gate.
 - Sensitivity: 70%
 - Smoothing: ON
 - Deadzone: 12%
-- Recognition threshold: 80%
+- Recognition threshold: 80% (FIST/OPEN_HAND/POINT/PINCH inherit by default)
 - Debounce: 120 ms
 - Cooldown: 250 ms
 - Require release: ON
@@ -122,7 +135,7 @@ cmake --build build-core
 ctest --test-dir build-core --output-on-failure
 ```
 
-The M5 core suite contains 9 test executables. Additional stdlib-only Python
+The M5.4 core suite contains 13 test executables. Additional stdlib-only Python
 replay checks: `python -m unittest discover -s ml/tests -p 'test_replay_session.py'`.
 
 See `PATCH_M5_0_README.md` for M5 installation, new gesture diagnostics,

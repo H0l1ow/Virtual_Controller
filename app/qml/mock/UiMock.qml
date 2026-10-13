@@ -21,6 +21,8 @@ QtObject {
     readonly property bool gestureRecognitionAvailable: true
     readonly property bool cursorControlAvailable: true
     readonly property string errorMessage: ""
+    property bool autoRecoverCamera: true
+    readonly property string cameraRecoveryStatus: ""
     readonly property string outputError: ""
 
     property var cameraNames: [
@@ -43,7 +45,9 @@ QtObject {
 
     property string activeProfile: "Default"
     property var profileNames: ["Default", "Desktop", "Presentation", "Game"]
-    readonly property string mappingError: ""
+    property string mappingError: ""
+    readonly property bool canDeleteActiveProfile: ["Default", "Desktop", "Presentation", "Game"].indexOf(activeProfile) === -1
+    readonly property var mappingIssues: [{code: "no_cursor_gate", severity: "warning", first: -1, second: -1}]
     readonly property string mappingProfileDirectory: "<mock>/profiles"
     property string outputMode: "Mouse / Keyboard"
 
@@ -57,6 +61,26 @@ QtObject {
     property int detectionConfidence: 60
     property int trackingConfidence: 55
     property int recognitionThreshold: 80
+    property var gestureThresholdOverrides: ({"FIST": -1, "OPEN_HAND": -1, "POINT": -1, "PINCH": -1})
+    readonly property var gestureThresholds: ({
+        "FIST": gestureThresholdOverrides.FIST < 0 ? recognitionThreshold : gestureThresholdOverrides.FIST,
+        "OPEN_HAND": gestureThresholdOverrides.OPEN_HAND < 0 ? recognitionThreshold : gestureThresholdOverrides.OPEN_HAND,
+        "POINT": gestureThresholdOverrides.POINT < 0 ? recognitionThreshold : gestureThresholdOverrides.POINT,
+        "PINCH": gestureThresholdOverrides.PINCH < 0 ? recognitionThreshold : gestureThresholdOverrides.PINCH
+    })
+    property bool calibrationActive: false
+    property string calibrationStatus: "IDLE"
+    property int calibrationProgress: 0
+    property string calibrationGesture: "PINCH"
+    property string calibrationHand: "Right"
+    property var calibrationResults: []
+    property bool cursorPlaygroundActive: false
+    property var cursorPlaygroundState: ({
+        active: false, complete: false, tracked: rightTracked,
+        x: 480, y: 270, targetX: 190, targetY: 125,
+        targetIndex: 0, targetCount: 6, dwellPercent: 0,
+        averageMs: 0, averageErrorPx: 0, jitterPx: 0, missedClicks: 0
+    })
     property int debounceMs: 120
     property int cooldownMs: 250
     property bool requireRelease: true
@@ -323,7 +347,7 @@ QtObject {
     }
 
     function setOutputArmed(value) {
-        outputArmed = value && pipelineRunning
+        outputArmed = value && pipelineRunning && !cursorPlaygroundActive
     }
 
     function setSensitivity(value) {
@@ -352,6 +376,36 @@ QtObject {
 
     function setRecognitionThreshold(value) {
         recognitionThreshold = Math.round(value)
+    }
+    function setGestureThreshold(gesture, value) {
+        const values = Object.assign({}, gestureThresholdOverrides)
+        values[gesture] = Math.round(value)
+        gestureThresholdOverrides = values
+    }
+    function resetGestureThresholds() {
+        gestureThresholdOverrides = ({"FIST": -1, "OPEN_HAND": -1, "POINT": -1, "PINCH": -1})
+    }
+    function startGestureCalibration(hand, gesture) {
+        calibrationHand = hand
+        calibrationGesture = gesture
+        calibrationActive = true
+        calibrationStatus = "CAPTURING"
+        calibrationProgress = 0
+        outputArmed = false
+        return true
+    }
+    function cancelGestureCalibration() { calibrationActive = false; calibrationStatus = "CANCELLED" }
+    function applyGestureCalibration(gesture) { return false }
+    function clearGestureCalibration() { calibrationResults = []; calibrationStatus = "IDLE" }
+    function startCursorPlayground() {
+        outputArmed = false
+        cursorPlaygroundActive = true
+        cursorPlaygroundState = Object.assign({}, cursorPlaygroundState, {active: true})
+        return true
+    }
+    function stopCursorPlayground() {
+        cursorPlaygroundActive = false
+        cursorPlaygroundState = Object.assign({}, cursorPlaygroundState, {active: false})
     }
 
     function setDebounceMs(value) { debounceMs = Math.round(value) }
@@ -391,12 +445,34 @@ QtObject {
 
     function saveActiveProfile() { return true }
     function reloadActiveProfile() { return true }
+    function duplicateActiveProfile(name) {
+        const trimmed = name.trim()
+        if (!trimmed || profileNames.some(p => p.toLowerCase() === trimmed.toLowerCase())) {
+            mappingError = "Invalid or duplicate profile name."
+            return false
+        }
+        profileNames = profileNames.concat([trimmed])
+        activeProfile = trimmed
+        mappingError = ""
+        outputArmed = false
+        return true
+    }
+    function deleteProfile(name) {
+        if (!canDeleteActiveProfile || name !== activeProfile) return false
+        profileNames = profileNames.filter(p => p !== name)
+        activeProfile = "Default"
+        outputArmed = false
+        return true
+    }
 
     function setPipelineRunning(enabled) {
         cameraRunning = enabled
         pipelineRunning = enabled
-        if (!enabled)
+        if (!enabled) {
             outputArmed = false
+            stopCursorPlayground()
+            cancelGestureCalibration()
+        }
     }
 
     function togglePipeline() {
@@ -413,6 +489,7 @@ QtObject {
         detectionConfidence = 60
         trackingConfidence = 55
         recognitionThreshold = 80
+        resetGestureThresholds()
         debounceMs = 120
         cooldownMs = 250
         requireRelease = true

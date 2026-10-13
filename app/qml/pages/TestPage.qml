@@ -10,6 +10,13 @@ Item {
     required property QtObject theme
     required property QtObject uiState
 
+    property bool cursorMode: false
+    onVisibleChanged: {
+        if (!visible && cursorMode) {
+            uiState.stopCursorPlayground()
+            cursorMode = false
+        }
+    }
     property int selectedMappingPosition: 0
     property int selectedExerciseIndex: 0
 
@@ -524,6 +531,7 @@ Item {
     }
 
     ColumnLayout {
+        visible: !root.cursorMode
         anchors.fill: parent
         anchors.margins: root.theme.pageMargin
         spacing: 12
@@ -534,6 +542,16 @@ Item {
             title: qsTr("Gesture Playground")
             subtitle: qsTr("Test enabled Mapping rules inside the app before relying on Windows output.")
 
+            VcButton {
+                theme: root.theme
+                text: qsTr("Cursor Playground")
+                iconName: "target"
+                onClicked: {
+                    root.cancelRunAll()
+                    root.stopTest()
+                    root.cursorMode = true
+                }
+            }
             Text {
                 text: root.uiState.activeProfile
                 color: root.theme.textSecondary
@@ -1211,5 +1229,12 @@ Item {
                 }
             }
         }
+    }
+    CursorPlaygroundPage {
+        anchors.fill: parent
+        visible: root.cursorMode
+        theme: root.theme
+        uiState: root.uiState
+        onBackRequested: root.cursorMode = false
     }
 }

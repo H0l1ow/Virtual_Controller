@@ -2,6 +2,7 @@
 
 #include "gestures/GestureTypes.hpp"
 #include "gestures/HandFeatures.hpp"
+#include "gestures/GestureTuning.hpp"
 #include "tracking/TrackingTypes.hpp"
 
 #include <array>
@@ -24,6 +25,10 @@ public:
     GestureFrame update(
         const TrackingFrame &tracking,
         int recognitionThresholdPercent);
+
+    GestureFrame update(
+        const TrackingFrame &tracking,
+        const GestureThresholds &thresholds);
 
     void reset();
 
@@ -51,7 +56,7 @@ private:
         int frameWidth,
         int frameHeight,
         std::int64_t timestampUs,
-        int recognitionThresholdPercent);
+        const GestureThresholds &thresholds);
 
     static GestureScores smoothScores(
         const GestureScores &previous,

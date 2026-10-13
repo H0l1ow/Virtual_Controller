@@ -7,21 +7,30 @@ Item {
     property string title: qsTr("Setting")
     property string description: ""
     default property alias controlContent: controlHost.data
-    implicitHeight: Math.max(60, labels.implicitHeight + 18)
+    readonly property bool compact: width < 560
+    implicitHeight: compact
+        ? Math.max(78, labels.implicitHeight + controlHost.implicitHeight + 18)
+        : Math.max(60, labels.implicitHeight + 18)
 
-    RowLayout {
+    GridLayout {
         anchors.fill: parent
-        spacing: 20
+        columns: root.compact ? 1 : 2
+        columnSpacing: 16
+        rowSpacing: 6
+
         ColumnLayout {
             id: labels
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             spacing: 3
             Text {
+                Layout.fillWidth: true
                 text: root.title
                 color: root.theme.textPrimary
                 font.family: root.theme.fontFamily
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
+                wrapMode: Text.WordWrap
             }
             Text {
                 Layout.fillWidth: true
@@ -34,8 +43,10 @@ Item {
         }
         RowLayout {
             id: controlHost
-            Layout.preferredWidth: 300
-            Layout.alignment: Qt.AlignVCenter
+            Layout.fillWidth: root.compact
+            Layout.minimumWidth: 0
+            Layout.preferredWidth: root.compact ? root.width : Math.min(300, root.width * 0.44)
+            Layout.alignment: root.compact ? Qt.AlignLeft : Qt.AlignVCenter
             spacing: 8
         }
     }

@@ -1,10 +1,12 @@
 #include "runtime/RuntimeController.hpp"
 #include "i18n/LanguageManager.hpp"
 #include "runtime/AppPreferences.hpp"
+#include "runtime/DesktopIntegration.hpp"
 
 #include <QCoreApplication>
 #include <QDebug>
-#include <QGuiApplication>
+#include <QApplication>
+#include <QQuickWindow>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QtQml/qqml.h>
@@ -58,7 +60,7 @@ void armExitWatchdog(
 
 int main(int argc, char *argv[])
 {
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
 
     QCoreApplication::setOrganizationName(
         QStringLiteral("VirtualController"));
@@ -80,6 +82,10 @@ int main(int argc, char *argv[])
     // Owned by QGuiApplication so the singleton outlives the QML engine.
     auto *languageManager = new vc::LanguageManager(&engine, &app);
     auto *appPreferences = new vc::AppPreferences(&app);
+    // Own the integration through QQmlEngine so its singleton remains valid
+    // until the QML windows and bindings have been destroyed.
+    auto *desktopIntegration = new vc::DesktopIntegration(
+        &runtimeController, appPreferences, languageManager, &engine);
 
     engine.rootContext()->setContextProperty(
         QStringLiteral("runtimeController"),
@@ -91,6 +97,8 @@ int main(int argc, char *argv[])
         "VirtualController.I18n", 1, 0, "LanguageManager", languageManager);
     qmlRegisterSingletonInstance(
         "VirtualController.Preferences", 1, 0, "AppPreferences", appPreferences);
+    qmlRegisterSingletonInstance(
+        "VirtualController.Desktop", 1, 0, "DesktopIntegration", desktopIntegration);
 
     QObject::connect(
         &runtimeController,
@@ -152,6 +160,10 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection);
 
     engine.load(url);
+    if (!engine.rootObjects().isEmpty()) {
+        desktopIntegration->setMainWindow(
+            qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst()));
+    }
 
     const int exitCode = app.exec();
 

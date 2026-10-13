@@ -16,6 +16,28 @@ Item {
             ? uiState.mappingRows[selectedRow]
             : ({})
 
+    function mappingErrorText(message) {
+        // C++ errors use stable English identifiers; translate only their UI
+        // representation, leaving profile JSON values untouched.
+        LanguageManager.language
+        return qsTr(message)
+    }
+
+    function issueDescription(issue) {
+        LanguageManager.language
+        switch (issue.code) {
+        case "duplicate_id": return qsTr("Two mapping rows use the same internal ID. System input is blocked until fixed.")
+        case "scroll_toggle": return qsTr("Scroll actions cannot use Toggle. Use Press or Hold.")
+        case "cursor_press": return qsTr("Enable cursor movement requires Hold or Toggle.")
+        case "duplicate_action": return qsTr("Two enabled mappings generate the same action from one gesture.")
+        case "conflicting_behavior": return qsTr("The same hand, gesture and action have conflicting behaviors.")
+        case "cursor_gate_freeze": return qsTr("This gesture both enables and freezes cursor movement.")
+        case "drag_exclusive": return qsTr("One hand cannot hold different gestures for cursor movement and drag simultaneously.")
+        case "no_cursor_gate": return qsTr("No enabled cursor movement gate: Windows cursor remains locked.")
+        default: return qsTr("Potential mapping conflict.")
+        }
+    }
+
     readonly property var handOptions: ["Left", "Right"]
     readonly property var gestureOptions: ["PINCH", "FIST", "POINT", "OPEN HAND"]
     readonly property var behaviorOptions: ["Press", "Hold", "Toggle"]
@@ -69,7 +91,7 @@ Item {
             Layout.fillWidth: true
             theme: root.theme
             title: qsTr("Gesture Mapping")
-            subtitle: qsTr("M4: PRESS / HOLD / RELEASE events mapped to mouse and keyboard actions.")
+            subtitle: qsTr("Map gesture events to mouse/keyboard actions; conflicts are checked live.")
 
             VcComboBox {
                 id: mappingProfileCombo
@@ -111,11 +133,59 @@ Item {
         Text {
             Layout.fillWidth: true
             visible: root.uiState.mappingError.length > 0
-            text: root.uiState.mappingError
+            text: root.mappingErrorText(root.uiState.mappingError)
             color: root.theme.error
             font.family: root.theme.fontFamily
             font.pixelSize: 10
             wrapMode: Text.WordWrap
+        }
+
+        Rectangle {
+            id: mappingIssuesPanel
+            Layout.fillWidth: true
+            Layout.preferredHeight: issueItems.implicitHeight + 12
+            visible: root.uiState.mappingIssues.length > 0
+            color: root.theme.surfaceRaised
+            border.width: 1
+            border.color: root.theme.borderStrong
+            radius: root.theme.controlRadius
+            ColumnLayout {
+                id: issueItems
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 6
+                spacing: 4
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("Mapping validation") + " · " + root.uiState.mappingIssues.length
+                    color: root.theme.textPrimary
+                    font.family: root.theme.fontFamily
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                }
+                Repeater {
+                    model: root.uiState.mappingIssues.slice(0, 3)
+                    delegate: Text {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        text: (modelData.first >= 0 ? qsTr("Row %1: ").arg(modelData.first + 1) : "")
+                            + root.issueDescription(modelData)
+                        color: modelData.severity === "error" ? root.theme.error : root.theme.warning
+                        font.family: root.theme.fontFamily
+                        font.pixelSize: 10
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: root.uiState.mappingIssues.length > 3
+                    text: qsTr("More warnings are available after correcting the displayed conflicts.")
+                    color: root.theme.textMuted
+                    font.family: root.theme.fontFamily
+                    font.pixelSize: 10
+                }
+            }
         }
 
         RowLayout {
@@ -209,6 +279,22 @@ Item {
                             wrapMode: Text.WordWrap
                         }
                         Item { Layout.fillHeight: true }
+                        VcButton {
+                            Layout.fillWidth: true
+                            theme: root.theme
+                            text: qsTr("Duplicate profile")
+                            iconName: "plus"
+                            onClicked: duplicateDialog.open()
+                        }
+                        VcButton {
+                            Layout.fillWidth: true
+                            theme: root.theme
+                            text: qsTr("Delete profile")
+                            iconName: "trash"
+                            variant: "danger"
+                            enabled: root.uiState.canDeleteActiveProfile
+                            onClicked: deleteDialog.open()
+                        }
                     }
                 }
             }
@@ -539,6 +625,64 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    Dialog {
+        id: duplicateDialog
+        parent: Overlay.overlay
+        anchors.centerIn: Overlay.overlay
+        width: 380
+        modal: true
+        title: qsTr("Duplicate profile")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onOpened: newProfileName.text = root.uiState.activeProfile + " copy"
+        onAccepted: root.uiState.duplicateActiveProfile(newProfileName.text)
+        background: Rectangle {
+            color: root.theme.surfaceRaised
+            radius: root.theme.controlRadius
+            border.color: root.theme.borderStrong
+        }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("New profile name")
+                color: root.theme.textPrimary
+                font.family: root.theme.fontFamily
+                font.pixelSize: 12
+            }
+            VcTextField {
+                id: newProfileName
+                theme: root.theme
+                Layout.fillWidth: true
+                maximumLength: 64
+                selectByMouse: true
+            }
+        }
+    }
+
+    Dialog {
+        id: deleteDialog
+        parent: Overlay.overlay
+        anchors.centerIn: Overlay.overlay
+        width: 380
+        modal: true
+        title: qsTr("Delete profile")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: root.uiState.deleteProfile(root.uiState.activeProfile)
+        background: Rectangle {
+            color: root.theme.surfaceRaised
+            radius: root.theme.controlRadius
+            border.color: root.theme.borderStrong
+        }
+        contentItem: Text {
+            text: qsTr("Permanently delete custom profile %1? This cannot be undone.")
+                .arg(root.uiState.activeProfile)
+            color: root.theme.textPrimary
+            font.family: root.theme.fontFamily
+            font.pixelSize: 12
+            wrapMode: Text.WordWrap
         }
     }
 

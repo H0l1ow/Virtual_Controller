@@ -228,6 +228,35 @@ void testEngineThresholdAndReset()
     assert(lost.gesture == GestureClass::None);
 }
 
+
+void testPerClassThresholdsWithModel()
+{
+    GestureEngine engine([](const std::vector<float> &) {
+        GestureScores result{};
+        result[gestureIndex(GestureClass::None)] = 0.10F;
+        result[gestureIndex(GestureClass::Fist)] = 0.73F;
+        return result;
+    }, "fixed-model");
+    TrackingFrame frame;
+    frame.width = 1000;
+    frame.height = 1000;
+    frame.hands[handIndex(HandSide::Right)] = makeHand(GestureClass::Fist);
+    GestureThresholds thresholds;
+    thresholds.fallbackPercent = 80;
+    thresholds.overrides[gestureIndex(GestureClass::Pinch)] = 60;
+    GesturePrediction prediction;
+    for (int i = 0; i < 22; ++i) {
+        frame.captureUs = 1'000'000 + i * 33'333;
+        frame.sequence = static_cast<std::uint64_t>(i + 1);
+        prediction = engine.update(frame, thresholds).hands[handIndex(HandSide::Right)];
+    }
+    assert(prediction.ready && prediction.gesture == GestureClass::None);
+    thresholds.overrides[gestureIndex(GestureClass::Fist)] = 70;
+    frame.captureUs += 33'333;
+    prediction = engine.update(frame, thresholds).hands[handIndex(HandSide::Right)];
+    assert(prediction.ready && prediction.gesture == GestureClass::Fist);
+}
+
 } // namespace
 
 int main()
@@ -237,6 +266,7 @@ int main()
     testLeftRightCanonicalization();
     testEngineThresholdAndReset();
     testModelWarmupNoRuleFallback();
+    testPerClassThresholdsWithModel();
 
     std::cout << "Gesture recognition tests passed\n";
     return 0;
