@@ -30,6 +30,9 @@ struct RuntimeMetricsSnapshot {
     int gestureP95Ms{};
     int outputDispatchP50Ms{};
     int outputDispatchP95Ms{};
+    int guiQueueP95Ms{};
+    int guiBackpressureP95Ms{};
+    int inputSubmitP95Ms{};
 
     std::int64_t lastFrameReceivedUs{};
 };
@@ -52,6 +55,9 @@ public:
         std::int64_t gestureUs = 0);
 
     void recordOutputDispatch(std::int64_t dispatchUs);
+    void recordGuiQueueDelay(std::int64_t delayUs);
+    void recordGuiBackpressureWait(std::int64_t delayUs);
+    void recordInputSubmitLatency(std::int64_t latencyUs);
 
     RuntimeMetricsSnapshot snapshot(
         std::int64_t nowUs);
@@ -80,6 +86,9 @@ private:
     std::deque<std::int64_t> conversionUs_;
     std::deque<std::int64_t> gestureUs_;
     std::deque<std::int64_t> outputDispatchUs_;
+    std::deque<std::int64_t> guiQueueDelayUs_;
+    std::deque<std::int64_t> guiBackpressureWaitUs_;
+    std::deque<std::int64_t> inputSubmitLatencyUs_;
     std::deque<std::int64_t> cameraIntervalUs_;
 
     std::mutex snapshotMutex_;

@@ -9,6 +9,7 @@ Item {
     id: root
     required property QtObject theme
     required property QtObject uiState
+    property bool previewActive: true
 
     FileDialog {
         id: replayFileDialog
@@ -82,6 +83,7 @@ Item {
                     rowSpacing: 12
 
                     RecordingCapturePanel {
+                        previewActive: root.previewActive
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
                         Layout.columnSpan: root.width >= 1300 ? 2 : 1
@@ -161,7 +163,7 @@ Item {
                                 Layout.fillWidth: true
                                 theme: root.theme
                                 title: qsTr("Reload model")
-                                description: qsTr("Restart tracking and load the model from disk. System input remains disarmed.")
+                                description: qsTr("Restart tracking and reload the model. Enabled system input pauses safely and resumes after tracking stabilizes.")
                                 VcButton {
                                     theme: root.theme
                                     iconName: "reset"

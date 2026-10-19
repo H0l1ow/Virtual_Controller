@@ -7,6 +7,20 @@ VcCard {
     id: root
 
     required property QtObject uiState
+    property bool previewActive: true
+    property bool previewReady: false
+    readonly property bool drawingActive: root.previewActive && root.visible
+                                          && root.uiState.cameraRunning
+                                          && root.uiState.showLandmarks
+
+    function updatePreviewAttachment() {
+        if (!root.previewReady)
+            return
+        root.uiState.attachVideoOutput(
+            root.previewActive && root.visible ? videoOutput.videoSink : null)
+    }
+    onVisibleChanged: updatePreviewAttachment()
+    onPreviewActiveChanged: updatePreviewAttachment()
 
     // Normal mode deliberately keeps the original M1 layout and aspect-fit
     // preview. Immersive mode only changes presentation: the same VideoOutput
@@ -69,14 +83,15 @@ VcCard {
         fillMode: root.immersiveMode
             ? VideoOutput.PreserveAspectCrop
             : VideoOutput.PreserveAspectFit
-        visible: root.uiState.cameraRunning
+        visible: root.previewActive && root.uiState.cameraRunning
         mirrored: root.uiState.mirrorPreview
 
         Component.onCompleted: {
-            root.uiState.attachVideoOutput(videoOutput)
+            root.previewReady = true
+            root.updatePreviewAttachment()
         }
-
         Component.onDestruction: {
+            root.previewReady = false
             root.uiState.attachVideoOutput(null)
         }
     }
@@ -85,7 +100,7 @@ VcCard {
         id: handCanvas
 
         anchors.fill: parent
-        visible: root.uiState.cameraRunning && root.uiState.showLandmarks
+        visible: root.drawingActive
 
         readonly property var bones: [
             [0, 1], [1, 2], [2, 3], [3, 4],
@@ -252,8 +267,14 @@ VcCard {
             }
         }
 
-        onWidthChanged: requestPaint()
-        onHeightChanged: requestPaint()
+        onWidthChanged: { if (visible) requestPaint() }
+        onHeightChanged: { if (visible) requestPaint() }
+        Timer {
+            interval: 33 // Max ~30 Hz; invisible pages do no Canvas work.
+            repeat: true
+            running: handCanvas.visible
+            onTriggered: handCanvas.requestPaint()
+        }
     }
 
     Rectangle {
@@ -530,37 +551,14 @@ VcCard {
 
     Connections {
         target: root.uiState
-
-        function onLeftTrackedChanged() {
-            handCanvas.requestPaint()
-        }
-
-        function onRightTrackedChanged() {
-            handCanvas.requestPaint()
-        }
-
-        function onLeftLandmarksChanged() {
-            handCanvas.requestPaint()
-        }
-
-        function onRightLandmarksChanged() {
-            handCanvas.requestPaint()
-        }
-
-        function onShowLandmarksChanged() {
-            handCanvas.requestPaint()
-        }
-
-        function onMirrorPreviewChanged() {
-            handCanvas.requestPaint()
-        }
+        enabled: handCanvas.visible
+        function onShowLandmarksChanged() { handCanvas.requestPaint() }
+        function onMirrorPreviewChanged() { handCanvas.requestPaint() }
     }
-
     Connections {
         target: videoOutput
-
-        function onContentRectChanged() {
-            handCanvas.requestPaint()
-        }
+        enabled: handCanvas.visible
+        function onContentRectChanged() { handCanvas.requestPaint() }
     }
+
 }

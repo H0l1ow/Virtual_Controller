@@ -589,7 +589,8 @@ Item {
             VcSwitch {
                 theme: root.theme
                 checked: root.uiState.outputArmed
-                enabled: root.uiState.pipelineRunning && root.uiState.outputAvailable
+                enabled: root.uiState.outputArmed
+                    || (root.uiState.pipelineRunning && root.uiState.outputAvailable)
                 onToggled: root.uiState.setOutputArmed(checked)
             }
 

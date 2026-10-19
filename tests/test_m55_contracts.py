@@ -45,8 +45,8 @@ class PreMlReadiness(unittest.TestCase):
 
     def test_camera_recovery_and_input_state(self):
         runtime = src('app/src/runtime/RuntimeController.cpp')
-        self.assertIn('cameraReconnectPolicy_.begin(deviceId.toStdString(), 30)', runtime)
-        self.assertIn('Camera reconnected; output disarmed', runtime)
+        self.assertIn('cameraReconnectPolicy_.begin(deviceId.toStdString(), pollLimit)', runtime)
+        self.assertIn('Camera reconnected - waiting for tracking', runtime)
         self.assertIn('camera_->start()', runtime)
 
     def test_hand_range_calibration_uses_real_landmarks(self):

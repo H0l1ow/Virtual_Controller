@@ -22,6 +22,12 @@ int main()
     metrics.recordProcessed(5'000, 13'000, 23'000, 7'000);
     metrics.recordOutputDispatch(2'000);
     metrics.recordOutputDispatch(3'000);
+    metrics.recordGuiQueueDelay(12'000);
+    metrics.recordGuiQueueDelay(48'000);
+    metrics.recordGuiBackpressureWait(8'000);
+    metrics.recordGuiBackpressureWait(45'000);
+    metrics.recordInputSubmitLatency(25'000);
+    metrics.recordInputSubmitLatency(75'000);
 
     const auto first = metrics.snapshot(2'000'000);
 
@@ -38,6 +44,9 @@ int main()
     assert(first.gestureP50Ms == 0); // existing call sites default to 0
     assert(first.gestureP95Ms == 7);
     assert(first.outputDispatchP50Ms == 3);
+    assert(first.guiQueueP95Ms == 48);
+    assert(first.guiBackpressureP95Ms == 45);
+    assert(first.inputSubmitP95Ms == 75);
     assert(first.cameraIntervalP50Ms == 10);
     assert(first.mediaPipeP50Ms == first.inferenceP50Ms);
 

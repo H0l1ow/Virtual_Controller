@@ -9,6 +9,10 @@ QtObject {
     property bool cameraRunning: true
     property bool pipelineRunning: true
     property bool outputArmed: false
+    property bool mainWindowMinimized: false
+    readonly property bool outputActive: outputArmed && pipelineRunning
+    readonly property string outputSuspendReason: outputArmed && !outputActive
+        ? "Waiting for tracking" : ""
     property bool hasUnsavedSettings: false
     property string settingsSaveError: ""
 
@@ -182,20 +186,8 @@ QtObject {
     property string recordingError: "Mock mode: no dataset is written"
     readonly property var recordingQuality: ({
         target: 150,
-        left: {
-            labelled: false,
-            usable: 0,
-            missing: 0,
-            percent: 0,
-            trackedPercent: 0
-        },
-        right: {
-            labelled: false,
-            usable: 0,
-            missing: 0,
-            percent: 0,
-            trackedPercent: 0
-        }
+        left: {labelled: false, usable: 0, missing: 0, percent: 0, trackedPercent: 0},
+        right: {labelled: false, usable: 0, missing: 0, percent: 0, trackedPercent: 0}
     })
     property string recordingsDirectory: "Mock mode"
     property var recordings: []
@@ -214,6 +206,9 @@ QtObject {
     property int gestureP95Ms: 3
     property int outputDispatchP50Ms: 1
     property int outputDispatchP95Ms: 2
+    property int guiQueueP95Ms: 2
+    property int guiBackpressureP95Ms: 1
+    property int inputSubmitP95Ms: 32
     readonly property string leftReportedSide: leftTracked ? "L" : "-"
     readonly property string rightReportedSide: rightTracked ? "R" : "-"
 
@@ -362,6 +357,7 @@ QtObject {
 
     function attachPiPVideoSink(sink) {}
     function setPiPActive(active) {}
+    function setMainWindowMinimized(minimized) { mainWindowMinimized = minimized }
     function saveSettings() { return true }
 
     function attachVideoOutput(output) {

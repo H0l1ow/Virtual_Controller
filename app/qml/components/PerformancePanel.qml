@@ -47,7 +47,10 @@ Item {
                         { title: qsTr("MediaPipe tracking"), p50: root.uiState.mediaPipeP50Ms, p95: root.uiState.inferenceP95Ms },
                         { title: qsTr("Gesture classification"), p50: root.uiState.gestureP50Ms, p95: root.uiState.gestureP95Ms },
                         { title: qsTr("Output dispatch"), p50: root.uiState.outputDispatchP50Ms, p95: root.uiState.outputDispatchP95Ms },
-                        { title: qsTr("End-to-end pipeline"), p50: root.uiState.latencyP50Ms, p95: root.uiState.latencyP95Ms }
+                        { title: qsTr("End-to-end pipeline (worker)"), p50: root.uiState.latencyP50Ms, p95: root.uiState.latencyP95Ms },
+                        { title: qsTr("Wait for Qt GUI (P95)"), p50: -1, p95: root.uiState.guiQueueP95Ms },
+                        { title: qsTr("Worker backpressure (P95)"), p50: -1, p95: root.uiState.guiBackpressureP95Ms },
+                        { title: qsTr("Capture to input submit (P95)"), p50: -1, p95: root.uiState.inputSubmitP95Ms }
                     ]
                     delegate: RowLayout {
                         required property var modelData
@@ -61,7 +64,8 @@ Item {
                             font.pixelSize: 12
                         }
                         Text {
-                            text: modelData.p50 + " ms" + (modelData.p95 < 0 ? "" : " / " + modelData.p95 + " ms")
+                            text: (modelData.p50 < 0 ? "" : modelData.p50 + " ms")
+                                + (modelData.p95 < 0 ? "" : (modelData.p50 < 0 ? "" : " / ") + modelData.p95 + " ms")
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
                             font.pixelSize: 12
@@ -71,7 +75,7 @@ Item {
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("Camera: inter-frame period; Output: submission time, not physical Windows input latency.")
+                    text: qsTr("Camera: inter-frame period; Qt GUI: worker-result queue wait; backpressure is waiting before inference; input submit includes GUI wait but excludes OS/device latency.")
                     wrapMode: Text.WordWrap
                     color: root.theme.textMuted
                     font.family: root.theme.fontFamily

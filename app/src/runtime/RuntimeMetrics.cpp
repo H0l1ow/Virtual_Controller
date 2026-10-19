@@ -95,6 +95,24 @@ void RuntimeMetrics::recordOutputDispatch(std::int64_t dispatchUs)
     pushBounded(outputDispatchUs_, dispatchUs, windowSize_);
 }
 
+void RuntimeMetrics::recordGuiQueueDelay(std::int64_t delayUs)
+{
+    std::lock_guard lock(samplesMutex_);
+    pushBounded(guiQueueDelayUs_, delayUs, windowSize_);
+}
+
+void RuntimeMetrics::recordGuiBackpressureWait(std::int64_t delayUs)
+{
+    std::lock_guard lock(samplesMutex_);
+    pushBounded(guiBackpressureWaitUs_, delayUs, windowSize_);
+}
+
+void RuntimeMetrics::recordInputSubmitLatency(std::int64_t latencyUs)
+{
+    std::lock_guard lock(samplesMutex_);
+    pushBounded(inputSubmitLatencyUs_, latencyUs, windowSize_);
+}
+
 int RuntimeMetrics::percentileMs(
     const std::deque<std::int64_t> &samples,
     double percentile)
@@ -203,6 +221,9 @@ RuntimeMetricsSnapshot RuntimeMetrics::snapshot(
         result.gestureP95Ms = percentileMs(gestureUs_, 0.95);
         result.outputDispatchP50Ms = percentileMs(outputDispatchUs_, 0.50);
         result.outputDispatchP95Ms = percentileMs(outputDispatchUs_, 0.95);
+        result.guiQueueP95Ms = percentileMs(guiQueueDelayUs_, 0.95);
+        result.guiBackpressureP95Ms = percentileMs(guiBackpressureWaitUs_, 0.95);
+        result.inputSubmitP95Ms = percentileMs(inputSubmitLatencyUs_, 0.95);
     }
 
     {

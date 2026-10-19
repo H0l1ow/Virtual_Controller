@@ -241,14 +241,20 @@ Window {
                 if (mini.uiState.rightTracked)
                     drawHand(ctx, mini.uiState.rightLandmarks, "#D5DDE4")
             }
+            Timer {
+                interval: 100 // PiP does not need per-frame Canvas repaints.
+                repeat: true
+                running: skeleton.visible && mini.visible
+                onTriggered: skeleton.requestPaint()
+            }
             Connections {
                 target: mini.uiState
-                function onLeftLandmarksChanged() { skeleton.requestPaint() }
-                function onRightLandmarksChanged() { skeleton.requestPaint() }
+                enabled: skeleton.visible && mini.visible
                 function onMirrorPreviewChanged() { skeleton.requestPaint() }
             }
             Connections {
                 target: pipVideo
+                enabled: skeleton.visible && mini.visible
                 function onContentRectChanged() { skeleton.requestPaint() }
             }
         }

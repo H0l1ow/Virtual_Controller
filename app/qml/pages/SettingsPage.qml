@@ -332,7 +332,7 @@ Item {
                                 Layout.fillWidth: true
                                 theme: root.theme
                                 title: qsTr("Camera auto-reconnect")
-                                description: qsTr("Retry for 30 seconds after camera disconnection. System input remains disarmed.")
+                                description: qsTr("Reconnect automatically. If system input was enabled, it stays ON but temporarily pauses until tracking recovers.")
                                 VcSwitch {
                                     theme: root.theme
                                     checked: root.uiState.autoRecoverCamera
@@ -347,12 +347,12 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 visible: root.uiState.cameraRecoveryStatus.length > 0
-                                text: root.uiState.cameraRecoveryStatus === "Waiting for camera reconnection"
-                                    ? qsTr("Waiting for camera reconnection")
+                                text: root.uiState.cameraRecoveryStatus === "Waiting for camera recovery"
+                                    ? qsTr("Waiting for camera recovery")
                                     : root.uiState.cameraRecoveryStatus === "Camera reconnection timed out"
                                         ? qsTr("Camera reconnection timed out")
-                                        : root.uiState.cameraRecoveryStatus === "Camera reconnected; output disarmed"
-                                            ? qsTr("Camera reconnected; output disarmed")
+                                        : root.uiState.cameraRecoveryStatus === "Camera reconnected - waiting for tracking"
+                                            ? qsTr("Camera reconnected - waiting for tracking")
                                             : qsTr("Camera unavailable")
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 11

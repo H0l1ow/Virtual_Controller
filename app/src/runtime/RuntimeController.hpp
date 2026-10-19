@@ -16,6 +16,10 @@
 #include "mapping/MappingValidator.hpp"
 #include "input/OutputService.hpp"
 #include "runtime/LatestFrameSlot.hpp"
+#include "runtime/LatestValueMailbox.hpp"
+#include "runtime/GuiResultBackpressure.hpp"
+#include "runtime/PreviewFrameLimiter.hpp"
+#include "runtime/PreviewRoutingPolicy.hpp"
 #include "runtime/RuntimeMetrics.hpp"
 #include "runtime/CameraReconnectPolicy.hpp"
 #include "tracking/TrackingTypes.hpp"
@@ -36,6 +40,7 @@
 #include <QVariant>
 #include <QVariantMap>
 #include <QVideoSink>
+#include <QVideoFrame>
 
 #include <atomic>
 #include <chrono>
@@ -169,6 +174,10 @@ public:
             READ inferenceP95Ms
                 NOTIFY stateChanged)
 
+    Q_PROPERTY(int guiQueueP95Ms READ guiQueueP95Ms NOTIFY stateChanged)
+    Q_PROPERTY(int guiBackpressureP95Ms READ guiBackpressureP95Ms NOTIFY stateChanged)
+    Q_PROPERTY(int inputSubmitP95Ms READ inputSubmitP95Ms NOTIFY stateChanged)
+
     Q_PROPERTY(
         int conversionP50Ms
             READ conversionP50Ms
@@ -270,6 +279,9 @@ public:
             READ outputArmed
                 WRITE setOutputArmed
                     NOTIFY stateChanged)
+
+    Q_PROPERTY(bool outputActive READ outputActive NOTIFY stateChanged)
+    Q_PROPERTY(QString outputSuspendReason READ outputSuspendReason NOTIFY stateChanged)
 
     Q_PROPERTY(
         QString outputError
@@ -506,7 +518,7 @@ public:
     Q_PROPERTY(int recordedFrames READ recordedFrames NOTIFY stateChanged)
     Q_PROPERTY(QString recordingPath READ recordingPath NOTIFY stateChanged)
     Q_PROPERTY(QString recordingError READ recordingError NOTIFY stateChanged)
-    Q_PROPERTY(QVariantMap recordingQuality READ recordingQuality NOTIFY stateChanged)
+    Q_PROPERTY(QVariantMap recordingQuality READ recordingQuality NOTIFY recordingQualityChanged)
     Q_PROPERTY(QString recordingsDirectory READ recordingsDirectory NOTIFY recordingsChanged)
     Q_PROPERTY(QVariantList recordings READ recordings NOTIFY recordingsChanged)
     Q_PROPERTY(QString recordingsError READ recordingsError NOTIFY recordingsChanged)
@@ -632,6 +644,9 @@ public:
     int gestureP95Ms() const { return metricsSnapshot_.gestureP95Ms; }
     int outputDispatchP50Ms() const { return metricsSnapshot_.outputDispatchP50Ms; }
     int outputDispatchP95Ms() const { return metricsSnapshot_.outputDispatchP95Ms; }
+    int guiQueueP95Ms() const { return metricsSnapshot_.guiQueueP95Ms; }
+    int guiBackpressureP95Ms() const { return metricsSnapshot_.guiBackpressureP95Ms; }
+    int inputSubmitP95Ms() const { return metricsSnapshot_.inputSubmitP95Ms; }
 
     QString resolution() const
     {
@@ -716,7 +731,17 @@ public:
 
     bool outputArmed() const
     {
+        return outputSnapshot_.requested;
+    }
+
+    bool outputActive() const
+    {
         return outputSnapshot_.armed;
+    }
+
+    QString outputSuspendReason() const
+    {
+        return QString::fromStdString(outputSnapshot_.reason);
     }
 
     QString outputError() const
@@ -974,6 +999,9 @@ public:
     Q_INVOKABLE void attachPiPVideoSink(QObject *sink);
     Q_INVOKABLE void attachRecordingVideoSink(QObject *sink);
     Q_INVOKABLE void setPiPActive(bool active);
+    // Minimize/Show Desktop only changes the presentation route.
+    // It never changes the persistent output request or stops MediaPipe.
+    Q_INVOKABLE void setMainWindowMinimized(bool minimized);
     Q_INVOKABLE void selectCamera(int index);
     Q_INVOKABLE void selectFormat(int index);
 
@@ -1002,6 +1030,7 @@ signals:
     void settingsChanged();
     void mappingChanged();
     void recordingsChanged();
+    void recordingQualityChanged();
 
     // First signal lets main.cpp arm its process-level watchdog. The second is
     // emitted only after the current tracking session reached a safe terminal
@@ -1094,21 +1123,35 @@ private:
     CameraReconnectPolicy cameraReconnectPolicy_;
     bool autoRecoverCamera_{true};
     QString cameraRecoveryStatus_;
+    std::int64_t recoveryNotBeforeUs_{};
+    int recoveryAttempt_{};
+    std::int64_t sessionStartedUs_{};
+    bool captureStallHandled_{};
     QList<QCameraDevice> cameras_;
     QList<QCameraFormat> formats_;
 
     std::unique_ptr<QCamera> camera_;
+    // The capture sink is always alive, even with no QML page visible. This
+    // prevents navigation/minimization from stopping MediaPipe or recording.
+    // Declare before captureSession_ so the session is destroyed first.
+    QVideoSink captureSink_;
     QMediaCaptureSession captureSession_;
-    QPointer<QObject> videoOutput_;
-    // Secondary sink mirrors the same camera frames when PiP is visible.
-    // It never replaces the tracking/primary capture sink.
+
+    // Preview sinks are attached only while their view is actually active.
+    // Never route more than one live preview at a time.
+    QPointer<QVideoSink> controllerSink_;
     QPointer<QVideoSink> pipSink_;
-    bool pipActive_{false};
-    QMetaObject::Connection pipFrameConnection_;
-    void updatePiPConnection();
     QPointer<QVideoSink> recordingSink_;
-    QMetaObject::Connection recordingFrameConnection_;
-    void updateRecordingPreviewConnection();
+    bool pipActive_{false};
+    bool mainWindowMinimized_{false};
+    // Capture producer writes to a single coalescing presentation mailbox.
+    // Only the GUI timer touches QVideoSink::setVideoFrame(). Neither capture
+    // nor gesture recognition can be delayed by queued preview callbacks.
+    LatestValueMailbox<QVideoFrame> previewMailbox_;
+    std::atomic_bool previewCaptureEnabled_{false};
+    QPointer<QVideoSink> activePreviewSink_;
+    std::uint64_t previewGeneration_{0};
+    void updatePreviewConnections();
     QString validatedRecordingPath(const QString &name) const;
     void setRecordingsError(const QString &message);
 
@@ -1127,6 +1170,7 @@ private:
     std::shared_ptr<WorkerExitState> workerExitState_;
     std::jthread worker_;
 
+    QTimer previewTimer_;
     QTimer statsTimer_;
     QTimer replayTimer_;
     GestureReplayReader replayReader_;
@@ -1140,6 +1184,8 @@ private:
     bool pendingModelReload_{};
     bool reloadQueued_{};
     RuntimeMetricsSnapshot metricsSnapshot_;
+    std::int64_t lastTrackingUiNotifyUs_{};
+    std::int64_t lastDiagnosticsNotifyUs_{};
 
     std::atomic_bool swapHandedness_{};
     std::atomic_int recognitionThreshold_{80};
@@ -1181,6 +1227,7 @@ private:
     int gestureReleaseThreshold_{55};
     QVariantList gestureDiagnostics_;
     GestureDataRecorder recorder_;
+    std::int64_t lastRecordingQualitySignalUs_{};
     QString recordingPath_;
     QString recordingError_;
     QString recordingsError_;

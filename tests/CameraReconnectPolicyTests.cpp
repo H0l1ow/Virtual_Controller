@@ -28,5 +28,13 @@ int main()
     assert(policy.begin("usb-camera-C"));
     policy.cancel();
     assert(policy.poll(true, true) == Policy::Decision::Idle);
+
+    // When the user left system input ON, recovery remains pending beyond the
+    // 30-second default window and waits specifically for the original device.
+    assert(policy.begin("usb-camera-D", 1000));
+    for (int i = 0; i < 90; ++i)
+        assert(policy.poll(false, true) == Policy::Decision::Wait);
+    assert(policy.pending());
+    assert(policy.poll(true, true) == Policy::Decision::Restart);
     std::cout << "Camera recovery policy: OK\n";
 }

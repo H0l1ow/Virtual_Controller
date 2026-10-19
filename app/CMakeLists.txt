@@ -31,6 +31,8 @@ qt_add_executable(
     src/runtime/DesktopIntegration.cpp
     src/runtime/LatestFrameSlot.hpp
     src/runtime/LatestFrameSlot.cpp
+    src/runtime/LatestValueMailbox.hpp
+    src/runtime/GuiResultBackpressure.hpp
     src/runtime/RuntimeMetrics.hpp
     src/runtime/RuntimeMetrics.cpp
     src/runtime/CameraReconnectPolicy.hpp
@@ -46,6 +48,8 @@ qt_add_executable(
     src/control/ContinuousControlInterpreter.cpp
 
     src/gestures/GestureTypes.hpp
+    src/gestures/AsyncJsonlWriter.hpp
+    src/gestures/AsyncJsonlWriter.cpp
     src/gestures/GestureDataRecorder.hpp
     src/gestures/GestureDataRecorder.cpp
     src/gestures/GestureReplayReader.hpp
@@ -67,8 +71,10 @@ qt_add_executable(
     src/input/InputBackend.hpp
     src/input/InputBackend.cpp
     src/input/OutputGuard.hpp
+    src/input/OutputResumePolicy.hpp
     src/input/OutputGuard.cpp
     src/input/OutputService.hpp
+    src/input/OutputResumePolicy.hpp
     src/input/OutputService.cpp
 
     src/mapping/MappingTypes.hpp

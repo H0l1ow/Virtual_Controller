@@ -10,14 +10,16 @@ def get(name):
 
 
 class StabilityAndPiPTests(unittest.TestCase):
-    def test_camera_recovery_is_bounded_and_disarmed(self):
+    def test_camera_recovery_is_bounded_when_off_and_persistent_when_requested(self):
         cpp = get('app/src/runtime/RuntimeController.cpp')
         policy = get('app/src/runtime/CameraReconnectPolicy.hpp')
         self.assertIn('cameraRecoveryTimer_.setInterval(1000)', cpp)
-        self.assertIn('begin(deviceId.toStdString(), 30)', cpp)
+        self.assertIn('const int pollLimit = persistent ? std::numeric_limits<int>::max() : 30;', cpp)
+        self.assertIn('cameraReconnectPolicy_.begin(deviceId.toStdString(), pollLimit)', cpp)
         self.assertIn('device.id().toStdString() == wanted', cpp)
         self.assertIn('if (exitRequested_)', cpp)
-        self.assertIn('start(); // start() resets OutputService, never auto-arms it.', cpp)
+        self.assertIn('outputService_.pause("Camera or pipeline temporarily unavailable")', cpp)
+        self.assertIn('start();', cpp)
         self.assertIn('outputService_.stop();', cpp)
         self.assertIn('if (cameraReconnectPolicy_.pending())', cpp)
         self.assertIn('cancelCameraRecovery();', cpp)

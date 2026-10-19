@@ -24,6 +24,7 @@ OutputService::~OutputService()
         quit_ = true;
         guard_.stop();
         status_.armed = false;
+        status_.requested = false;
     }
 
     wake_.notify_all();
@@ -45,14 +46,22 @@ std::unique_ptr<IInputBackend> OutputService::createBackend() const
 bool OutputService::arm()
 {
     std::lock_guard lock(mutex_);
-
-    if (!status_.ready) {
+    if (!status_.ready)
         return false;
-    }
 
-    guard_.arm();
-    status_.armed = true;
+    // A user request is persistent. Physical output stays neutral until a
+    // short sequence of fresh tracked frames has re-established confidence.
+    guard_.stop();
+    resumePolicy_.reset();
+    suppressLeftUntilReleased_ = false;
+    suppressRightUntilReleased_ = false;
+    suppressKeysUntilReleased_ = 0;
+    status_.requested = true;
+    status_.armed = false;
+    status_.applied = {};
+    status_.reason = "Waiting for stable tracking";
     status_.error.clear();
+    retryAfterUs_ = 0;
     wake_.notify_all();
     return true;
 }
@@ -62,26 +71,92 @@ void OutputService::stop()
     {
         std::lock_guard lock(mutex_);
         guard_.stop();
+        resumePolicy_.reset();
+        suppressLeftUntilReleased_ = false;
+        suppressRightUntilReleased_ = false;
+        suppressKeysUntilReleased_ = 0;
+        status_.requested = false;
         status_.armed = false;
         status_.applied = {};
+        status_.reason.clear();
+        status_.error.clear();
+        retryAfterUs_ = 0;
     }
+    wake_.notify_all();
+}
 
+void OutputService::pause(const std::string &reason)
+{
+    {
+        std::lock_guard lock(mutex_);
+        guard_.stop();
+        resumePolicy_.reset();
+        suppressLeftUntilReleased_ = false;
+        suppressRightUntilReleased_ = false;
+        suppressKeysUntilReleased_ = 0;
+        status_.armed = false;
+        status_.applied = {};
+        if (status_.requested)
+            status_.reason = reason;
+    }
     wake_.notify_all();
 }
 
 void OutputService::submit(
     const ControllerState &state,
     std::int64_t captureUs,
-    std::uint64_t sequence)
+    std::uint64_t sequence,
+    bool handTracked)
 {
     {
         std::lock_guard lock(mutex_);
-        guard_.submit(
-            state,
-            captureUs,
-            sequence);
-    }
+        if (!status_.requested)
+            return;
 
+        const auto timestamp = nowUs();
+        constexpr std::int64_t kMaxFrameAgeUs = 250'000;
+        if (!handTracked || captureUs <= 0 || captureUs > timestamp
+            || timestamp - captureUs > kMaxFrameAgeUs) {
+            guard_.stop();
+            resumePolicy_.reset();
+            suppressLeftUntilReleased_ = false;
+            suppressRightUntilReleased_ = false;
+            suppressKeysUntilReleased_ = 0;
+            status_.armed = false;
+            status_.applied = {};
+            status_.reason = "Tracking interrupted - waiting to resume";
+        }
+        else if (!guard_.armed()) {
+            if (timestamp < retryAfterUs_)
+                return;
+            if (resumePolicy_.observe(captureUs, sequence, timestamp, handTracked)) {
+                guard_.arm();
+                // First frame after suspension is deliberately neutral. No
+                // old mouse delta/held key is replayed by the resumed guard.
+                guard_.submit({}, captureUs, sequence);
+                suppressLeftUntilReleased_ = state.mouseLeft;
+                suppressRightUntilReleased_ = state.mouseRight;
+                suppressKeysUntilReleased_ = state.keys;
+                status_.armed = true;
+                status_.reason.clear();
+                status_.error.clear();
+            }
+        }
+        else {
+            ControllerState safeState = state;
+            if (suppressLeftUntilReleased_) {
+                safeState.mouseLeft = false;
+                if (!state.mouseLeft) suppressLeftUntilReleased_ = false;
+            }
+            if (suppressRightUntilReleased_) {
+                safeState.mouseRight = false;
+                if (!state.mouseRight) suppressRightUntilReleased_ = false;
+            }
+            safeState.keys &= ~suppressKeysUntilReleased_;
+            suppressKeysUntilReleased_ &= state.keys;
+            guard_.submit(safeState, captureUs, sequence);
+        }
+    }
     wake_.notify_all();
 }
 
@@ -123,6 +198,13 @@ void OutputService::loop()
         try {
             if (emergencyStopPressed()) {
                 guard_.stop();
+                resumePolicy_.reset();
+                suppressLeftUntilReleased_ = false;
+                suppressRightUntilReleased_ = false;
+                suppressKeysUntilReleased_ = 0;
+                status_.requested = false;
+                status_.armed = false;
+                status_.reason.clear();
                 status_.error =
                     "F8 emergency stop: system output disarmed.";
             }
@@ -132,9 +214,14 @@ void OutputService::loop()
                 guard_.poll(nowUs());
 
             if (wasArmed && !guard_.armed()) {
-                status_.error =
-                    "Output watchdog: tracking data became stale; "
-                    "system output was disarmed.";
+                resumePolicy_.reset();
+                suppressLeftUntilReleased_ = false;
+                suppressRightUntilReleased_ = false;
+                suppressKeysUntilReleased_ = 0;
+                if (status_.requested) {
+                    status_.reason = "Tracking stalled - auto-resume pending";
+                    status_.error.clear();
+                }
             }
 
             if (guard_.armed()) {
@@ -170,14 +257,19 @@ void OutputService::loop()
             }
             lock.lock();
 
-            // A transient SendInput failure (for example an elevated
-            // foreground window) disarms output but does not destroy the
-            // backend. The user can explicitly re-arm after the condition is
-            // gone without restarting the application.
+            // A transient SendInput failure must release all held inputs,
+            // but must not silently erase the user's enabled preference.
+            // Retry at a bounded rate; F8/explicit STOP still cancel intent.
             status_.ready = true;
             status_.armed = false;
             status_.applied = {};
+            status_.reason = "Output backend error - retrying";
             status_.error = exception.what();
+            retryAfterUs_ = nowUs() + 2'000'000;
+            resumePolicy_.reset();
+            suppressLeftUntilReleased_ = false;
+            suppressRightUntilReleased_ = false;
+            suppressKeysUntilReleased_ = 0;
             backendHadArmedOutput = false;
         }
 

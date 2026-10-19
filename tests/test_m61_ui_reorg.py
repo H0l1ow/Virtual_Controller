@@ -85,7 +85,7 @@ class UiNavigationContracts(unittest.TestCase):
         cmake = text('app/CMakeLists.txt')
         for name in ('MLPage.qml', 'GestureTuningPanel.qml', 'PerformancePanel.qml'):
             self.assertIn(name, cmake)
-        self.assertIn('project(VirtualController VERSION 0.14.2', text('CMakeLists.txt'))
+        self.assertRegex(text('CMakeLists.txt'), r'project\(VirtualController VERSION 0\.14\.\d+ LANGUAGES CXX\)')
 
 
 if __name__ == '__main__':

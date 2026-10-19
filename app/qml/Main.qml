@@ -40,6 +40,21 @@ ApplicationWindow {
         mockUi ? uiStateMock : runtimeUiState
 
     property int currentPage: 0
+    // A window minimized by a gesture / Windows Show Desktop is NOT a user
+    // request to stop tracking or disarm system output. Only its previews
+    // should be detached. Keep PiP independent of the main window.
+    readonly property bool presentationSuspended:
+        window.visibility === Window.Minimized || window.visibility === Window.Hidden
+    property bool presentationInitialized: false
+    function synchronizePresentation() {
+        if (presentationInitialized && window.uiState)
+            window.uiState.setMainWindowMinimized(presentationSuspended)
+    }
+    onPresentationSuspendedChanged: synchronizePresentation()
+    Component.onCompleted: {
+        presentationInitialized = true
+        synchronizePresentation()
+    }
 
     function restoreMainWindow() {
         if (controllerFullscreen)
@@ -54,7 +69,7 @@ ApplicationWindow {
         id: miniPreview
         uiState: window.uiState
         theme: theme
-        minimizeActive: window.visibility === Window.Minimized
+        minimizeActive: window.presentationInitialized && window.presentationSuspended
         enabledByUser: AppPreferences.pipEnabled
         onRestoreRequested: window.restoreMainWindow()
     }
@@ -129,6 +144,8 @@ ApplicationWindow {
             ControllerPage {
                 theme: theme
                 uiState: window.uiState
+                previewActive: window.currentPage === 0
+                               && !window.presentationSuspended
                 immersiveMode: window.controllerFullscreen
                 onImmersiveModeRequested: function(enabled) {
                     window.setControllerFullscreen(enabled)
@@ -153,6 +170,8 @@ ApplicationWindow {
             MLPage {
                 theme: theme
                 uiState: window.uiState
+                previewActive: window.currentPage === 5
+                               && !window.presentationSuspended
             }
             SettingsPage {
                 theme: theme

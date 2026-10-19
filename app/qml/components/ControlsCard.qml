@@ -62,9 +62,10 @@ VcCard {
                 Text {
                     text: !root.uiState.outputAvailable
                         ? qsTr("Unavailable")
-                        : (root.uiState.outputArmed ? qsTr("Armed") : qsTr("Disarmed"))
+                        : (!root.uiState.outputArmed ? qsTr("Disarmed")
+                            : (root.uiState.outputActive ? qsTr("Active") : qsTr("Auto-paused")))
                     color: root.uiState.outputArmed
-                        ? root.theme.accent
+                        ? (root.uiState.outputActive ? root.theme.accent : root.theme.warning)
                         : root.theme.textMuted
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10
@@ -74,8 +75,9 @@ VcCard {
                 VcSwitch {
                     id: outputSwitch
                     theme: root.theme
-                    enabled: root.uiState.outputAvailable
-                        && root.uiState.runtimeStateName === "Running"
+                    enabled: root.uiState.outputArmed
+                        || (root.uiState.outputAvailable
+                            && root.uiState.runtimeStateName === "Running")
                     checked: root.uiState.outputArmed
                     onToggled: root.uiState.setOutputArmed(checked)
                 }
@@ -124,10 +126,12 @@ VcCard {
                     Layout.fillWidth: true
                     text: root.uiState.outputError.length > 0
                         ? root.uiState.outputError
-                        : (root.uiState.outputAvailable
+                        : (root.uiState.outputArmed && !root.uiState.outputActive
+                            ? qsTr("Input paused safely. It will resume automatically when tracking is stable.")
+                            : (root.uiState.outputAvailable
                             ? qsTr("M4: cursor movement and mapped mouse/keyboard actions share the protected output path. ")
                                 + qsTr("System output is opt-in; STOP, stale frames and F8 release everything.")
-                            : qsTr("Windows mouse/keyboard output is not available in this build."))
+                            : qsTr("Windows mouse/keyboard output is not available in this build.")))
                     color: root.theme.textSecondary
                     font.family: root.theme.fontFamily
                     font.pixelSize: 10

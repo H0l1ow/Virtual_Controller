@@ -1,7 +1,46 @@
-# Virtual Controller - M6.2 Guided Dataset Capture (0.14.2)
+# Virtual Controller - M6.2.3 Persistent Output & Minimize Safety (0.14.5)
 
 Qt/QML + C++20 desktop application for two-hand camera tracking, gesture-driven
 mouse/keyboard input, mapping profiles and an in-app Gesture Playground.
+
+
+**M6.2.3 (Persistent Output / Minimize Safety):** System output ON is now a
+persistent user request for the current session. Temporary hand occlusion,
+missed camera frames, watchdog timeouts, camera reconnect, profile reload or
+minimization/Show Desktop safely release held inputs without changing ON to
+OFF. When at least one hand is tracked consistently with *fresh* data, output
+resumes automatically; a held button/key must be released before it can be
+pressed again. Only explicit OFF, global STOP, F8, closing the app or entering
+an isolated safety/testing mode cancel the request. Preview routing now
+explicitly handles minimized/hidden windows independently of capture, and
+camera reconnect keeps retrying while system output was enabled. Details and
+Windows acceptance checks: **PATCH_M6_2_3_README.md**. Output is never stored
+as armed across application restarts.
+
+**M6.2.2 stabilizes the experimental performance source (not the stock M6.2.1 ZIP).**
+It keeps the presentation-only latest-frame mailbox and 30/20/20 FPS display pacing.
+A worker-to-GUI in-flight gate prevents old processed results from piling up
+behind the Qt event loop. No already computed gesture events are discarded;
+under congestion the existing capture-side single-slot policy replaces raw
+camera frames before inference, and the output watchdog remains active.
+JSONL writes now run on a separate bounded file-I/O thread; Stop/fault drains
+accepted samples. VideoOutput sinks release retained frames on tab/minimize
+switches. Added **Worker backpressure P95** in the Performance Monitor.
+See **PATCH_M6_2_2_README.md** for precautions and Windows checks.
+
+**Performance audit 2026-10-19 (experimental, Windows GUI not yet validated):**
+A latest-frame preview mailbox prevents capture callbacks from queuing obsolete
+video frames to the GUI; render pacing is about 30 FPS Controller / 20 FPS ML
+or PiP. QML state notifications are limited to about 30 Hz while tracking,
+recording and input events still process every worker result. The Test tab
+now measures GUI-result queue wait and capture-to-input-submission latency.
+See **PERFORMANCE_AUDIT_2026-10-19.md** for tests, limitations and rollback.
+
+M6.2.1 separates MediaPipe capture from the Qt Quick camera previews, routes
+frames to only the currently visible Controller / ML / minimized PiP window and
+suspends hidden overlays. No second camera is created. It also reduces
+ML-preview rendering and avoids repeating recording geometry calculations.
+See **PATCH_M6_2_1_README.md** for regression tests and Windows checks.
 
 M6.2 adds guided landmark recording with an in-app camera/skeleton preview,
 per-hand geometric validity progress, a session library with Open/Replay/
@@ -37,7 +76,7 @@ calibration wizard (36 samples per hand/gesture), and a safe virtual Cursor
 Playground with six targets, tracking metrics and live sensitivity/deadzone/
 smoothing tuning. See **PATCH_M5_3_README.md**.
 
-M5.2.2 adds bounded recovery after reconnecting the same USB camera (system input remains disarmed), three mini-preview sizes, saved preview position, optional PiP landmarks and adaptive Settings/toolbar layouts. This is based on **M5.2.1 corrected** (PiP fullscreen interaction remains reverted). See **PATCH_M5_2_2_README.md**.
+M5.2.2 originally added bounded recovery after reconnecting the same USB camera (the M6.2.3 persistent-output mode supersedes the old disarm behavior), three mini-preview sizes, saved preview position, optional PiP landmarks and adaptive Settings/toolbar layouts. This is based on **M5.2.1 corrected** (PiP fullscreen interaction remains reverted). See **PATCH_M5_2_2_README.md**.
 
 M5.2 introduces QSettings-backed user settings (explicit Save/Reset),
 Light/Dark/Follow Windows appearance, a mini live-camera window on minimize
@@ -114,7 +153,7 @@ remains a separate mapping action and has priority over the movement gate.
 - Offline Rules replay for previously recorded landmark sessions.
 - Independent live performance timings for camera interval, conversion,
   MediaPipe, gesture classification, output dispatch and pipeline latency.
-- Reload Model: safe worker teardown/restart, with output disarmed after restart.
+- Reload Model: safe worker teardown/restart; enabled output remains safely suspended until fresh tracking returns.
 - PiP display selector plus size, position and optional landmark overlay.
 - Windows System Tray (restore, start/stop, disarm, profile choice, exit) and global hotkeys.
 - Emergency F8 remains reserved; shortcut activation never arms system output.
@@ -168,7 +207,7 @@ cmake --build build-core
 ctest --test-dir build-core --output-on-failure
 ```
 
-The Qt-independent core suite contains 14 test executables. M6 adds Python
+The Qt-independent core suite contains 19 test executables. M6 adds Python
 dataset/split/evaluation tests: `python -m unittest discover -s ml/tests -p 'test_*.py'`.
 
 See `PATCH_M5_5_README.md` for the newest changes and audit of ten requested features.

@@ -39,6 +39,10 @@ QtObject {
 
     readonly property bool outputArmed:
         runtimeBackend.outputArmed
+    readonly property bool outputActive:
+        runtimeBackend.outputActive
+    readonly property string outputSuspendReason:
+        runtimeBackend.outputSuspendReason
     readonly property string outputError:
         runtimeBackend.outputError
 
@@ -165,6 +169,9 @@ QtObject {
     readonly property int gestureP95Ms: runtimeBackend.gestureP95Ms
     readonly property int outputDispatchP50Ms: runtimeBackend.outputDispatchP50Ms
     readonly property int outputDispatchP95Ms: runtimeBackend.outputDispatchP95Ms
+    readonly property int guiQueueP95Ms: runtimeBackend.guiQueueP95Ms
+    readonly property int guiBackpressureP95Ms: runtimeBackend.guiBackpressureP95Ms
+    readonly property int inputSubmitP95Ms: runtimeBackend.inputSubmitP95Ms
     readonly property real replacedFrames:
         Number(runtimeBackend.replacedFrames)
     readonly property real replacedPercent:
@@ -273,6 +280,10 @@ QtObject {
 
     function setPiPActive(active) {
         runtimeBackend.setPiPActive(active)
+    }
+
+    function setMainWindowMinimized(minimized) {
+        runtimeBackend.setMainWindowMinimized(minimized)
     }
 
     function selectCamera(index) {

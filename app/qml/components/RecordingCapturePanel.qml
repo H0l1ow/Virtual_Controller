@@ -9,6 +9,21 @@ VcCard {
     required property QtObject uiState
     property string leftRecordLabel: "UNLABELED"
     property string rightRecordLabel: "UNLABELED"
+    // Pausing preview does not stop tracking or dataset recording.
+    property bool previewEnabled: true
+    property bool previewActive: true
+    property bool previewReady: false
+    readonly property bool renderingPreview: root.visible && root.previewActive
+                                              && root.previewEnabled
+
+    function updatePreviewAttachment() {
+        if (!root.previewReady)
+            return
+        root.uiState.attachRecordingVideoSink(
+            root.renderingPreview ? recordingVideo.videoSink : null)
+    }
+
+    onRenderingPreviewChanged: updatePreviewAttachment()
     readonly property var recordingLabels: ["UNLABELED", "NONE", "FIST", "OPEN_HAND", "POINT", "PINCH"]
     readonly property var quality: uiState.recordingQuality
     readonly property var leftQuality: quality.left || {labelled: false, usable: 0, missing: 0, percent: 0, trackedPercent: 0}
@@ -257,6 +272,11 @@ VcCard {
                         font.pixelSize: 11
                         color: root.theme.textSecondary
                     }
+                    VcButton {
+                        theme: root.theme
+                        text: root.previewEnabled ? qsTr("Pause preview") : qsTr("Resume preview")
+                        onClicked: root.previewEnabled = !root.previewEnabled
+                    }
                 }
                 Rectangle {
                     Layout.fillWidth: true
@@ -270,24 +290,30 @@ VcCard {
                         anchors.fill: parent
                         fillMode: VideoOutput.PreserveAspectFit
                         mirrored: root.uiState.mirrorPreview
-                        visible: root.uiState.cameraRunning
+                        visible: root.uiState.cameraRunning && root.renderingPreview
                         Component.onCompleted: {
-                            if (root.visible)
-                                root.uiState.attachRecordingVideoSink(videoSink)
+                            root.previewReady = true
+                            root.updatePreviewAttachment()
                         }
-                        Component.onDestruction: root.uiState.attachRecordingVideoSink(null)
+                        Component.onDestruction: {
+                            root.previewReady = false
+                            root.uiState.attachRecordingVideoSink(null)
+                        }
                     }
                     Text {
                         anchors.centerIn: parent
-                        visible: !root.uiState.cameraRunning
-                        text: qsTr("Start tracking to see the camera")
+                        visible: !root.uiState.cameraRunning || !root.renderingPreview
+                        text: root.previewEnabled
+                              ? qsTr("Start tracking to see the camera")
+                              : qsTr("Preview paused")
                         color: root.theme.textSecondary
                         font.pixelSize: 12
                     }
                     Canvas {
                         id: handDrawing
                         anchors.fill: parent
-                        visible: root.uiState.cameraRunning
+                        visible: root.uiState.cameraRunning && root.renderingPreview
+                                 && root.uiState.showLandmarks
                         readonly property var bones: [
                             [0,1],[1,2],[2,3],[3,4], [0,5],[5,6],[6,7],[7,8],
                             [5,9],[9,10],[10,11],[11,12], [9,13],[13,14],[14,15],[15,16],
@@ -324,14 +350,24 @@ VcCard {
                             if (root.uiState.rightTracked)
                                 drawHand(ctx, root.uiState.rightLandmarks, "#D5DDE4")
                         }
+                        // A 10 Hz skeleton overlay is sufficient for dataset
+                        // positioning. Per-landmark repaint events (2 per frame)
+                        // previously overloaded Qt Quick's rendering thread.
+                        Timer {
+                            interval: 100
+                            repeat: true
+                            running: root.renderingPreview
+                                     && root.uiState.cameraRunning && root.uiState.showLandmarks
+                            onTriggered: handDrawing.requestPaint()
+                        }
                         Connections {
                             target: root.uiState
-                            function onLeftLandmarksChanged() { handDrawing.requestPaint() }
-                            function onRightLandmarksChanged() { handDrawing.requestPaint() }
+                            enabled: handDrawing.visible
                             function onMirrorPreviewChanged() { handDrawing.requestPaint() }
                         }
                         Connections {
                             target: recordingVideo
+                            enabled: handDrawing.visible
                             function onContentRectChanged() { handDrawing.requestPaint() }
                         }
                     }
@@ -347,10 +383,5 @@ VcCard {
             }
         }
     }
-    onVisibleChanged: {
-        if (visible)
-            root.uiState.attachRecordingVideoSink(recordingVideo.videoSink)
-        else
-            root.uiState.attachRecordingVideoSink(null)
-    }
+    onVisibleChanged: updatePreviewAttachment()
 }

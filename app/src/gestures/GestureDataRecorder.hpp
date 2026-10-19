@@ -1,12 +1,13 @@
 #pragma once
 
+#include "gestures/AsyncJsonlWriter.hpp"
 #include "gestures/GestureTypes.hpp"
 #include "tracking/TrackingTypes.hpp"
 
 #include <array>
 #include <cstddef>
 #include <filesystem>
-#include <fstream>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -18,14 +19,19 @@ namespace vc {
 class GestureDataRecorder final
 {
 public:
+    ~GestureDataRecorder() { stop(); }
     using Labels = std::array<std::optional<GestureClass>, kHandCount>;
     static constexpr std::size_t kMaxFrames = 18000;
 
     bool start(const std::filesystem::path &directory, Labels labels);
     bool append(const TrackingFrame &frame);
+    // Reuse GestureEngine's per-hand geometry-valid flags to avoid duplicate
+    // floating-point feature extraction on the GUI thread during capture.
+    bool append(const TrackingFrame &frame,
+                const std::array<bool, kHandCount> &geometryValid);
     void stop();
 
-    bool active() const { return stream_.is_open(); }
+    bool active() const { return writer_ && writer_->isOpen(); }
     std::size_t frameCount() const { return frameCount_; }
     // 'Usable' means labelled, tracked and numerically valid. It does NOT
     // verify that the operator chose the correct gesture label.
@@ -38,7 +44,9 @@ public:
     const std::string &error() const { return error_; }
 
 private:
-    std::ofstream stream_;
+    bool appendImpl(const TrackingFrame &frame,
+                    const std::array<bool, kHandCount> *geometryValid);
+    std::unique_ptr<AsyncJsonlWriter> writer_;
     std::filesystem::path path_;
     std::string error_;
     Labels labels_{};

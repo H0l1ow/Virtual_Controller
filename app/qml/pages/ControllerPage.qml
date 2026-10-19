@@ -7,6 +7,7 @@ Item {
 
     required property QtObject theme
     required property QtObject uiState
+    property bool previewActive: true
 
     // Controlled by Main.qml. Normal mode is intentionally the unchanged M1
     // layout. Fullscreen turns the camera stage into the page background and
@@ -108,6 +109,7 @@ Item {
 
         theme: root.theme
         uiState: root.uiState
+        previewActive: root.previewActive
         immersiveMode: root.immersiveMode
         uiOptionsOpen: root.uiOptionsOpen
 

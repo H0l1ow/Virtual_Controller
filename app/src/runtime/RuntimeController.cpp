@@ -34,6 +34,7 @@
 #include <utility>
 #include <vector>
 #include <optional>
+#include <limits>
 
 namespace vc {
 
@@ -192,9 +193,34 @@ RuntimeController::RuntimeController(
     : QObject(parent)
     , mediaDevices_(this)
     , cameraRecoveryTimer_(this)
+    , captureSink_(this)
     , captureSession_(this)
+    , previewTimer_(this)
     , statsTimer_(this)
 {
+    // Keep capture/MediaPipe independent of the visible Qt Quick VideoOutput.
+    captureSession_.setVideoSink(&captureSink_);
+
+    // Run this very small producer on the camera backend's emitting thread.
+    // There is no per-frame Qt::QueuedConnection to GUI: old preview frames
+    // get overwritten in one slot. Never access UI objects from this lambda.
+    connect(&captureSink_, &QVideoSink::videoFrameChanged, this,
+            [this](const QVideoFrame &frame) {
+                if (previewCaptureEnabled_.load(std::memory_order_acquire)
+                    && frame.isValid()) {
+                    previewMailbox_.publish(frame);
+                }
+            }, Qt::DirectConnection);
+
+    previewTimer_.setTimerType(Qt::PreciseTimer);
+    connect(&previewTimer_, &QTimer::timeout, this, [this] {
+        auto frame = previewMailbox_.take();
+        if (activePreviewSink_ && frame && frame->isValid()) {
+            // This method runs exclusively on the Qt GUI thread.
+            activePreviewSink_->setVideoFrame(*frame);
+        }
+    });
+
     for (auto &threshold : gestureThresholdOverrides_)
         threshold.store(-1);
     for (auto &value : appliedPinchLow_) value.store(0.17F);
@@ -214,20 +240,21 @@ RuntimeController::RuntimeController(
 
     connect(&mediaDevices_, &QMediaDevices::videoInputsChanged,
             this, [this] {
-        // Only restart automatically when the *selected* physical device was
-        // removed during an active session. Never switch to another camera.
-        if (runtimeState_ == RuntimeState::Running
-            || runtimeState_ == RuntimeState::Starting) {
-            const QByteArray selectedId = cameras_.isEmpty() ? QByteArray{} :
-                cameras_[std::clamp(cameraIndex_, 0, static_cast<int>(cameras_.size()) - 1)].id();
+        // Device-list changes are not camera failures. Only stop the running
+        // session if its *actual* selected device disappeared.
+        if (camera_ && (runtimeState_ == RuntimeState::Running
+                        || runtimeState_ == RuntimeState::Starting)) {
+            const QByteArray selectedId = camera_->cameraDevice().id();
             const auto connected = QMediaDevices::videoInputs();
             const bool disappeared = std::none_of(connected.begin(), connected.end(),
                 [&selectedId](const QCameraDevice &device) {
                     return device.id() == selectedId;
                 });
-            if (autoRecoverCamera_ && disappeared)
-                scheduleCameraRecovery(selectedId);
-            requestSessionStop(RuntimeState::Stopped);
+            if (disappeared) {
+                if (autoRecoverCamera_)
+                    scheduleCameraRecovery(selectedId);
+                requestSessionStop(RuntimeState::Stopped);
+            }
         }
         refreshDevices();
     });
@@ -308,7 +335,13 @@ bool RuntimeController::shutdownForExit(
         }
     }
 
-    captureSession_.setVideoOutput(nullptr);
+    previewCaptureEnabled_.store(false, std::memory_order_release);
+    previewTimer_.stop();
+    previewMailbox_.clear();
+    if (controllerSink_) controllerSink_->setVideoFrame(QVideoFrame{});
+    if (recordingSink_) recordingSink_->setVideoFrame(QVideoFrame{});
+    if (pipSink_) pipSink_->setVideoFrame(QVideoFrame{});
+    captureSession_.setVideoSink(nullptr);
 
     if (!worker_.joinable()) {
         qInfo() << "[shutdown] worker already not joinable";
@@ -528,8 +561,8 @@ bool RuntimeController::loadProfile(const QString &name)
         return false;
     }
 
-    if (outputSnapshot_.armed) {
-        outputService_.stop();
+    if (outputService_.status().requested) {
+        outputService_.pause("Profile or gesture mapping changed");
         refreshOutputStatus();
     }
 
@@ -562,8 +595,8 @@ int RuntimeController::addMapping()
 {
     // Mapping edits are a safety boundary. Disarm before changing the
     // ActionMapper so no held/toggled OS input survives an editor operation.
-    if (outputSnapshot_.armed) {
-        outputService_.stop();
+    if (outputService_.status().requested) {
+        outputService_.pause("Profile or gesture mapping changed");
         refreshOutputStatus();
     }
 
@@ -600,8 +633,8 @@ void RuntimeController::removeMapping(int index)
         return;
     }
 
-    if (outputSnapshot_.armed) {
-        outputService_.stop();
+    if (outputService_.status().requested) {
+        outputService_.pause("Profile or gesture mapping changed");
         refreshOutputStatus();
     }
 
@@ -657,8 +690,8 @@ bool RuntimeController::updateMapping(
         return false;
     }
 
-    if (outputSnapshot_.armed) {
-        outputService_.stop();
+    if (outputService_.status().requested) {
+        outputService_.pause("Profile or gesture mapping changed");
         refreshOutputStatus();
     }
 
@@ -854,7 +887,7 @@ void RuntimeController::failWithoutSession(
     errorMessage_ = message;
     trackerReady_ = false;
     cameraRunning_ = false;
-    outputService_.stop();
+    outputService_.pause("Pipeline fault - waiting for recovery");
     refreshOutputStatus();
     clearTracking();
     metricsSnapshot_ = {};
@@ -902,14 +935,11 @@ void RuntimeController::setSwapHandedness(
     emit settingsChanged();
 }
 
-void RuntimeController::setOutputArmed(
-    bool value)
+void RuntimeController::setOutputArmed(bool value)
 {
     refreshOutputStatus();
-
-    if (outputSnapshot_.armed == value) {
+    if (outputSnapshot_.requested == value)
         return;
-    }
 
     if (value) {
         if (hasBlockingMappingIssues(activeMappingProfile_)) {
@@ -919,8 +949,8 @@ void RuntimeController::setOutputArmed(
             emit stateChanged();
             return;
         }
-        // Cursor Playground is an isolated test mode: fail closed even if an
-        // unrelated QML control attempts to arm Windows input.
+        // These modes must *not* silently resume system input later. The
+        // user explicitly enables it again after leaving them.
         if (playgroundMode_ || recorder_.active()
             || calibrator_.capturing() || rangeCalibrator_.capturing()
             || runtimeState_ != RuntimeState::Running
@@ -928,18 +958,16 @@ void RuntimeController::setOutputArmed(
             emit stateChanged();
             return;
         }
-
-        // Re-prime continuous control when output becomes live. The next hand
-        // frame therefore establishes a baseline instead of moving the mouse.
         resetContinuousControl();
         actionMapper_.reset();
-        outputService_.arm();
+        outputService_.arm(); // Persistent request; waits for stable frames.
     }
     else {
-        outputService_.stop();
+        outputService_.stop(); // Explicit user OFF cancels every auto-resume.
         actionMapper_.reset();
+        if (cameraReconnectPolicy_.pending() && runtimeState_ != RuntimeState::Running)
+            cancelCameraRecovery();
     }
-
     refreshOutputStatus();
     emit stateChanged();
 }
@@ -1458,6 +1486,8 @@ bool RuntimeController::startGestureRecording(
     }
     recordingPath_ = filePathDisplay(recorder_.path());
     recordingError_.clear();
+    lastRecordingQualitySignalUs_ = 0;
+    emit recordingQualityChanged();
     emit recordingsChanged();
     emit stateChanged();
     return true;
@@ -1468,6 +1498,8 @@ void RuntimeController::stopGestureRecording()
     if (!recorder_.active()) return;
     recorder_.stop();
     recordingError_ = QString::fromStdString(recorder_.error());
+    lastRecordingQualitySignalUs_ = 0;
+    emit recordingQualityChanged();
     emit recordingsChanged();
     emit stateChanged();
 }
@@ -1484,12 +1516,23 @@ void RuntimeController::setAutoRecoverCamera(bool enabled)
 
 void RuntimeController::scheduleCameraRecovery(const QByteArray &deviceId)
 {
-    if (!autoRecoverCamera_ || deviceId.isEmpty())
+    if (!autoRecoverCamera_ || deviceId.isEmpty() || exitRequested_)
         return;
-    if (!cameraReconnectPolicy_.begin(deviceId.toStdString(), 30))
+    if (cameraReconnectPolicy_.pending())
         return;
-    cameraRecoveryStatus_ = QStringLiteral("Waiting for camera reconnection");
-    // System output is neutralized by requestSessionStop before any restart.
+
+    // While the user still wants Windows input, keep waiting for the original
+    // camera instead of giving up after 30 seconds. Never silently switch to
+    // a different device. Backoff prevents a faulty driver from rapid loops.
+    const bool persistent = outputService_.status().requested;
+    const int pollLimit = persistent ? std::numeric_limits<int>::max() : 30;
+    if (!cameraReconnectPolicy_.begin(deviceId.toStdString(), pollLimit))
+        return;
+    recoveryAttempt_ = std::min(recoveryAttempt_ + 1, 5);
+    const std::int64_t delayUs = std::min<std::int64_t>(
+        10'000'000, 1'000'000LL << recoveryAttempt_);
+    recoveryNotBeforeUs_ = nowUs() + delayUs;
+    cameraRecoveryStatus_ = QStringLiteral("Waiting for camera recovery");
     cameraRecoveryTimer_.start();
     emit stateChanged();
 }
@@ -1498,6 +1541,7 @@ void RuntimeController::cancelCameraRecovery()
 {
     cameraRecoveryTimer_.stop();
     cameraReconnectPolicy_.cancel();
+    recoveryNotBeforeUs_ = 0;
     if (!cameraRecoveryStatus_.isEmpty()) {
         cameraRecoveryStatus_.clear();
         emit stateChanged();
@@ -1510,11 +1554,13 @@ void RuntimeController::pollCameraRecovery()
         cancelCameraRecovery();
         return;
     }
-    // Do not spawn sessions during teardown or application shutdown.
     if (exitRequested_) {
         cancelCameraRecovery();
         return;
     }
+    if (nowUs() < recoveryNotBeforeUs_)
+        return;
+
     const auto connected = QMediaDevices::videoInputs();
     const std::string wanted = cameraReconnectPolicy_.deviceId();
     auto found = std::find_if(connected.begin(), connected.end(),
@@ -1546,9 +1592,11 @@ void RuntimeController::pollCameraRecovery()
     cameraIndex_ = static_cast<int>(std::distance(cameras_.begin(), it));
     refreshFormats();
     emit devicesChanged();
-    cameraRecoveryStatus_ = QStringLiteral("Camera reconnected; output disarmed");
+    cameraRecoveryStatus_ = QStringLiteral("Camera reconnected - waiting for tracking");
     emit stateChanged();
-    start(); // start() resets OutputService, never auto-arms it.
+    // start() preserves the enabled intent; output resumes only after fresh
+    // tracked frames satisfy OutputResumePolicy.
+    start();
 }
 
 void RuntimeController::refreshDevices()
@@ -1634,47 +1682,33 @@ void RuntimeController::refreshFormats()
     }
 }
 
-void RuntimeController::attachVideoOutput(
-    QObject *output)
+void RuntimeController::attachVideoOutput(QObject *sink)
 {
-    if (!output) {
-        if (pipelineRunning()) {
-            requestSessionStop(
-                RuntimeState::Stopped);
-        }
-
-        videoOutput_.clear();
-        captureSession_.setVideoOutput(nullptr);
-        updatePiPConnection();
-        updateRecordingPreviewConnection();
+    // Keep the public method name for existing QML integrations, but receive
+    // VideoOutput.videoSink rather than the VideoOutput itself. Disconnecting
+    // an inactive view must never stop the camera or the tracking worker.
+    auto *preview = qobject_cast<QVideoSink *>(sink);
+    if (sink && !preview) {
+        qWarning() << "[controller preview] Expected a QVideoSink";
         return;
     }
-
-    if (pipelineRunning()
-        && videoOutput_ != output) {
-
-        errorMessage_ =
-            QStringLiteral(
-                "Stop tracking before replacing "
-                "the video output.");
-
-        emit stateChanged();
+    if (controllerSink_ == preview)
         return;
-    }
-
-    videoOutput_ = output;
-    captureSession_.setVideoOutput(output);
-    updatePiPConnection();
-    updateRecordingPreviewConnection();
+    controllerSink_ = preview;
+    updatePreviewConnections();
 }
 
 void RuntimeController::attachPiPVideoSink(QObject *sink)
 {
-    // QML VideoOutput.videoSink is a QVideoSink. Reject other objects.
-    pipSink_ = qobject_cast<QVideoSink *>(sink);
-    if (sink && !pipSink_)
+    auto *preview = qobject_cast<QVideoSink *>(sink);
+    if (sink && !preview) {
         qWarning() << "[pip] Expected a QVideoSink";
-    updatePiPConnection();
+        return;
+    }
+    if (pipSink_ == preview)
+        return;
+    pipSink_ = preview;
+    updatePreviewConnections();
 }
 
 void RuntimeController::setPiPActive(bool active)
@@ -1682,50 +1716,82 @@ void RuntimeController::setPiPActive(bool active)
     if (pipActive_ == active)
         return;
     pipActive_ = active;
-    updatePiPConnection();
+    updatePreviewConnections();
 }
 
-void RuntimeController::updatePiPConnection()
+void RuntimeController::setMainWindowMinimized(bool minimized)
 {
-    QObject::disconnect(pipFrameConnection_);
-    pipFrameConnection_ = {};
-    QVideoSink *source = captureSession_.videoSink();
-    if (!pipActive_ || !pipSink_ || !source || source == pipSink_)
+    if (mainWindowMinimized_ == minimized)
         return;
 
-    const QPointer<QVideoSink> destination(pipSink_);
-    // Queued if needed: the secondary Qt Quick VideoOutput belongs to the GUI
-    // thread. No second QCamera or MediaPipe instance is created.
-    pipFrameConnection_ = connect(
-        source, &QVideoSink::videoFrameChanged, pipSink_,
-        [destination](const QVideoFrame &frame) {
-            if (destination && frame.isValid())
-                destination->setVideoFrame(frame);
-        });
+    mainWindowMinimized_ = minimized;
+    // Rendering only: do not reset gestures, disarm output, restart camera,
+    // or disturb an active JSONL recording. If capture briefly stalls while
+    // minimized, OutputService temporarily releases held inputs and resumes
+    // when fresh tracked frames return, without another ON click.
+    updatePreviewConnections();
+    qInfo() << "[window]" << (minimized ? "minimized" : "restored")
+            << "output requested:" << outputService_.status().requested;
 }
 
 void RuntimeController::attachRecordingVideoSink(QObject *sink)
 {
-    recordingSink_ = qobject_cast<QVideoSink *>(sink);
-    if (sink && !recordingSink_)
+    auto *preview = qobject_cast<QVideoSink *>(sink);
+    if (sink && !preview) {
         qWarning() << "[recording preview] Expected a QVideoSink";
-    updateRecordingPreviewConnection();
+        return;
+    }
+    if (recordingSink_ == preview)
+        return;
+    recordingSink_ = preview;
+    updatePreviewConnections();
 }
 
-void RuntimeController::updateRecordingPreviewConnection()
+void RuntimeController::updatePreviewConnections()
 {
-    QObject::disconnect(recordingFrameConnection_);
-    recordingFrameConnection_ = {};
-    auto *source = captureSession_.videoSink();
-    if (!source || !recordingSink_ || recordingSink_ == source)
+    // The camera keeps capturing even with no visible preview. Pause only the
+    // UI presentation route on navigation/minimization, never MediaPipe.
+    previewCaptureEnabled_.store(false, std::memory_order_release);
+    previewTimer_.stop();
+    previewMailbox_.clear();
+    // Qt Quick VideoOutput can otherwise retain the last QVideoFrame (and
+    // possibly GPU/D3D11 resources) after its page becomes hidden. Release
+    // all inactive preview references on the GUI thread on every route change.
+    if (controllerSink_) controllerSink_->setVideoFrame(QVideoFrame{});
+    if (recordingSink_) recordingSink_->setVideoFrame(QVideoFrame{});
+    if (pipSink_) pipSink_->setVideoFrame(QVideoFrame{});
+    ++previewGeneration_;
+    activePreviewSink_ = nullptr;
+
+    const auto target = selectPreviewTarget(
+        bool(controllerSink_), bool(recordingSink_),
+        bool(pipSink_), pipActive_, mainWindowMinimized_);
+    int timerMs = 0;
+    switch (target) {
+    case PreviewTarget::Controller:
+        activePreviewSink_ = controllerSink_;
+        timerMs = 33;  // ~30 FPS; the full-rate worker is unaffected.
+        break;
+    case PreviewTarget::Recording:
+        activePreviewSink_ = recordingSink_;
+        timerMs = 50;  // ~20 FPS is sufficient for positioning gestures.
+        break;
+    case PreviewTarget::PiP:
+        activePreviewSink_ = pipSink_;
+        timerMs = 50;
+        break;
+    case PreviewTarget::None:
         return;
-    const QPointer<QVideoSink> destination(recordingSink_);
-    recordingFrameConnection_ = connect(
-        source, &QVideoSink::videoFrameChanged, recordingSink_,
-        [destination](const QVideoFrame &frame) {
-            if (destination && frame.isValid())
-                destination->setVideoFrame(frame);
-        });
+    }
+
+    if (!activePreviewSink_ || activePreviewSink_ == &captureSink_)
+        return;
+
+    // This is the only place where the presentation sink is updated. Unlike
+    // an AutoConnection slot attached to every incoming camera frame, the GUI
+    // can never accumulate a backlog of obsolete preview delivery events.
+    previewTimer_.start(timerMs);
+    previewCaptureEnabled_.store(true, std::memory_order_release);
 }
 
 void RuntimeController::selectCamera(
@@ -1887,13 +1953,6 @@ void RuntimeController::start()
         return;
     }
 
-    if (!videoOutput_) {
-        failWithoutSession(
-            QStringLiteral(
-                "Camera preview is not attached yet."));
-        return;
-    }
-
     const QString libraryPath =
         mediaPipeLibraryPath();
 
@@ -1916,8 +1975,7 @@ void RuntimeController::start()
         return;
     }
 
-    auto *videoSink =
-        captureSession_.videoSink();
+    auto *videoSink = &captureSink_;
 
     if (!videoSink) {
         failWithoutSession(
@@ -1927,11 +1985,15 @@ void RuntimeController::start()
         return;
     }
 
-    outputService_.stop();
+    outputService_.pause("Waiting for new tracking session");
     refreshOutputStatus();
     clearTracking();
     resetContinuousControl();
     metricsSnapshot_ = {};
+    captureStallHandled_ = false;
+    sessionStartedUs_ = nowUs();
+    lastTrackingUiNotifyUs_ = 0;
+    lastDiagnosticsNotifyUs_ = 0;
 
     trackerReady_ = false;
     cameraRunning_ = false;
@@ -2049,8 +2111,9 @@ void RuntimeController::start()
                     [this, generation, resolved] {
                         if (generation == generation_) {
                             errorMessage_ = resolved;
-                            requestSessionStop(
-                                RuntimeState::Faulted);
+                            if (camera_ && autoRecoverCamera_)
+                                scheduleCameraRecovery(camera_->cameraDevice().id());
+                            requestSessionStop(RuntimeState::Faulted);
                         }
                     },
                     Qt::QueuedConnection);
@@ -2149,11 +2212,16 @@ void RuntimeController::requestSessionStop(
     terminalStateAfterStop_ = terminalState;
     trackerReady_ = false;
 
-    // System input is neutralized immediately on every explicit STOP/fault,
-    // before native tracker teardown begins.
-    outputService_.stop();
+    // Neutralize physical inputs immediately. The explicit user STOP has
+    // already cleared the request in stop(); camera faults/reloads must not.
+    outputService_.pause("Camera or pipeline temporarily unavailable");
     refreshOutputStatus();
     resetContinuousControl();
+    // Camera stop/fault/reconnect must close and flush any active dataset.
+    // In particular never leave an asynchronous file writer running across
+    // a newly started camera/tracking generation.
+    if (recorder_.active())
+        stopGestureRecording();
 
     setRuntimeState(
         RuntimeState::Stopping);
@@ -2230,8 +2298,8 @@ void RuntimeController::finalizeSessionStop(
     setRuntimeState(terminalState);
     emit stateChanged();
 
-    // Reload starts a fresh worker session only after the prior tracker and
-    // camera are completely stopped. Output stays disarmed after restart.
+    // Reload starts only after teardown. Output remains physically neutral
+    // until OutputResumePolicy sees a stable stream after restart.
     if (pendingModelReload_) {
         pendingModelReload_ = false;
         if (terminalState == RuntimeState::Stopped && !exitRequested_) {
@@ -2259,6 +2327,8 @@ void RuntimeController::handleWorkerFault(
 
     pendingModelReload_ = false;
     errorMessage_ = message;
+    if (camera_ && autoRecoverCamera_)
+        scheduleCameraRecovery(camera_->cameraDevice().id());
     requestSessionStop(
         RuntimeState::Faulted);
 }
@@ -2277,6 +2347,10 @@ void RuntimeController::handleWorkerSessionFinished(
 
 void RuntimeController::stop()
 {
+    // Explicit STOP always cancels both the retry policy and sticky intent.
+    outputService_.stop();
+    refreshOutputStatus();
+    recoveryAttempt_ = 0;
     pendingModelReload_ = false;
     reloadQueued_ = false;
     stopGestureReplay(); // Global STOP also cancels offline replay.
@@ -2302,6 +2376,8 @@ void RuntimeController::requestApplicationExit()
     }
 
     exitRequested_ = true;
+    outputService_.stop();
+    refreshOutputStatus();
     pendingModelReload_ = false;
     reloadQueued_ = false;
     stopGestureReplay();
@@ -2480,8 +2556,22 @@ void RuntimeController::workerLoop(
                     },
                     Qt::QueuedConnection);
 
+                // Backpressure for *processed* results, not just camera frames.
+                // We must never discard an already recognized gesture
+                // transition on its way to ActionMapper/OutputService.
+                auto guiGate = std::make_shared<GuiResultBackpressure>();
                 while (!stopToken.stop_requested()
                        && !session->inbox->isClosed()) {
+                    // Wait BEFORE inference. A congested GUI therefore
+                    // causes capture frames to coalesce in LatestFrameSlot
+                    // rather than queueing stale recognized gestures.
+                    const auto waitingSinceUs = nowUs();
+                    auto guiLease = guiGate->acquire(stopToken, [&] {
+                        return session->inbox->isClosed();
+                    });
+                    if (!guiLease) break;
+                    if (session->metrics)
+                        session->metrics->recordGuiBackpressureWait(nowUs() - waitingSinceUs);
 
                     auto packet =
                         session->inbox->take(
@@ -2508,8 +2598,7 @@ void RuntimeController::workerLoop(
                         packet->frame
                             .toImage()
                             .convertToFormat(
-                                QImage::Format_RGB888)
-                            .copy();
+                                QImage::Format_RGB888);
 
                     packet.reset();
 
@@ -2594,15 +2683,26 @@ void RuntimeController::workerLoop(
                                 gestureEndUs - gestureStartUs);
                     }
 
-                    QMetaObject::invokeMethod(
+                    const auto postedUs = nowUs();
+                    const bool enqueued = QMetaObject::invokeMethod(
                         this,
-                        [this, tracking, gestures, generation] {
+                        [this, tracking, gestures, generation, postedUs, guiLease] {
+                            // The captured lease is released only when this
+                            // callback finishes or Qt destroys an undelivered
+                            // callback during shutdown. The gesture events
+                            // cannot be overtaken by a newer result.
+                            if (generation != generation_)
+                                return;
+                            if (metrics_)
+                                metrics_->recordGuiQueueDelay(nowUs() - postedUs);
                             applyTrackingFrame(
                                 tracking,
                                 gestures,
                                 generation);
                         },
                         Qt::QueuedConnection);
+                    if (!enqueued)
+                        throw std::runtime_error("Cannot queue tracking result to GUI");
                 }
             }
             catch (const std::exception &error) {
@@ -2678,6 +2778,14 @@ void RuntimeController::applyTrackingFrame(
         return;
     }
 
+    const bool previousLeftTracked = leftTracked_;
+    const bool previousRightTracked = rightTracked_;
+    const QString previousLeftGesture = leftGesture_;
+    const QString previousRightGesture = rightGesture_;
+    const QString previousLeftEvent = leftGestureEvent_;
+    const QString previousRightEvent = rightGestureEvent_;
+    const ControllerState previousControllerState = controllerState_;
+
     leftTracked_ =
         frame.hands[handIndex(HandSide::Left)]
             .tracked;
@@ -2711,21 +2819,6 @@ void RuntimeController::applyTrackingFrame(
               frame.hands[handIndex(HandSide::Right)]
                   .reportedSide)
         : QStringLiteral("-");
-
-    leftLandmarks_ =
-        toVariantLandmarks(
-            frame.hands[
-                handIndex(HandSide::Left)]);
-
-    rightLandmarks_ =
-        toVariantLandmarks(
-            frame.hands[
-                handIndex(HandSide::Right)]);
-
-    resolution_ =
-        QStringLiteral("%1 x %2")
-            .arg(frame.width)
-            .arg(frame.height);
 
     const auto &leftGesture =
         gestures.hands[handIndex(HandSide::Left)];
@@ -2763,23 +2856,77 @@ void RuntimeController::applyTrackingFrame(
     rightGestureEvent_ = gestureEventDisplayName(
         events.hands[handIndex(HandSide::Right)].phase);
 
-    gestureDiagnostics_.clear();
-    for (std::size_t index = 0; index < kHandCount; ++index) {
-        const auto side = static_cast<HandSide>(index);
-        gestureDiagnostics_.append(diagnosticMap(
-            gestures.hands[index],
-            gestureStateManager_.debugState(side, frame.captureUs)));
-    }
-
-    if (recorder_.active() && !recorder_.append(frame)) {
-        recordingError_ = QString::fromStdString(recorder_.error());
-        emit recordingsChanged();
+    if (recorder_.active()) {
+        // Geometry validity has ALREADY been calculated by GestureEngine on
+        // the worker thread. Reuse it: do not recompute it on the GUI thread.
+        const std::array<bool, kHandCount> usableGeometry = {
+            gestures.hands[0].geometryValid,
+            gestures.hands[1].geometryValid
+        };
+        if (!recorder_.append(frame, usableGeometry)) {
+            recordingError_ = QString::fromStdString(recorder_.error());
+            lastRecordingQualitySignalUs_ = 0;
+            emit recordingQualityChanged();
+            emit recordingsChanged();
+        } else if (lastRecordingQualitySignalUs_ == 0
+                   || frame.captureUs < lastRecordingQualitySignalUs_
+                   || frame.captureUs - lastRecordingQualitySignalUs_ >= 200'000) {
+            // Updating the nested QML progress model on every incoming frame
+            // needlessly triggers a full group of bindings/layout updates.
+            lastRecordingQualitySignalUs_ = frame.captureUs;
+            emit recordingQualityChanged();
+        }
     }
 
     const auto outputStartUs = nowUs();
     updateContinuousControl(frame, events);
-    if (metrics_)
-        metrics_->recordOutputDispatch(nowUs() - outputStartUs);
+    const auto outputSubmittedUs = nowUs();
+    if (metrics_) {
+        metrics_->recordOutputDispatch(outputSubmittedUs - outputStartUs);
+        metrics_->recordInputSubmitLatency(outputSubmittedUs - frame.captureUs);
+    }
+
+    // Keep GestureStateManager, recording and output at full processing FPS.
+    // Only presentation QVariant conversion and QML notifications are paced.
+    // Gesture/button/tracking edges are sent immediately for responsiveness.
+    const bool eventEdge = previousLeftTracked != leftTracked_
+        || previousRightTracked != rightTracked_
+        || previousLeftGesture != leftGesture_
+        || previousRightGesture != rightGesture_
+        || previousLeftEvent != leftGestureEvent_
+        || previousRightEvent != rightGestureEvent_
+        || previousControllerState.mouseLeft != controllerState_.mouseLeft
+        || previousControllerState.mouseRight != controllerState_.mouseRight
+        || previousControllerState.buttons != controllerState_.buttons
+        || previousControllerState.keys != controllerState_.keys
+        || previousControllerState.cursorFrozen != controllerState_.cursorFrozen
+        || previousControllerState.cursorMovementLocked != controllerState_.cursorMovementLocked;
+    constexpr std::int64_t kUiIntervalUs = 33'000;  // max ~30 UI notifications/second
+    const bool refreshUi = eventEdge || lastTrackingUiNotifyUs_ == 0
+        || outputSubmittedUs < lastTrackingUiNotifyUs_
+        || outputSubmittedUs - lastTrackingUiNotifyUs_ >= kUiIntervalUs;
+    if (!refreshUi)
+        return;
+
+    leftLandmarks_ = toVariantLandmarks(frame.hands[handIndex(HandSide::Left)]);
+    rightLandmarks_ = toVariantLandmarks(frame.hands[handIndex(HandSide::Right)]);
+    resolution_ = QStringLiteral("%1 x %2").arg(frame.width).arg(frame.height);
+
+    // Diagnostic QVariantMaps are not needed at full video cadence.
+    if (eventEdge || lastDiagnosticsNotifyUs_ == 0
+        || outputSubmittedUs < lastDiagnosticsNotifyUs_
+        || outputSubmittedUs - lastDiagnosticsNotifyUs_ >= 100'000) {
+        gestureDiagnostics_.clear();
+        for (std::size_t index = 0; index < kHandCount; ++index) {
+            const auto side = static_cast<HandSide>(index);
+            gestureDiagnostics_.append(diagnosticMap(
+                gestures.hands[index],
+                gestureStateManager_.debugState(side, frame.captureUs)));
+        }
+        lastDiagnosticsNotifyUs_ = outputSubmittedUs;
+    }
+
+    lastTrackingUiNotifyUs_ = outputSubmittedUs;
     emit stateChanged();
 }
 
@@ -2838,13 +2985,10 @@ void RuntimeController::resetGestureActions()
     leftGestureEvent_ = QStringLiteral("IDLE");
     rightGestureEvent_ = QStringLiteral("IDLE");
 
-    // Changing event semantics while a key/button is held must never leave the
-    // OS state latched. Disarm the output path; the user explicitly re-arms it.
+    // A gesture or tracking reset releases every held/toggled input while
+    // preserving the explicit ON request. Only fresh frames can resume it.
+    outputService_.pause("Gesture state reset - waiting for tracking");
     refreshOutputStatus();
-    if (outputSnapshot_.armed) {
-        outputService_.stop();
-        refreshOutputStatus();
-    }
 }
 
 void RuntimeController::updateCursorGeometry()
@@ -2940,7 +3084,8 @@ void RuntimeController::updateContinuousControl(
     // neutral frame is submitted so losing the right hand immediately stops
     // motion without requiring the output service to wait for its watchdog.
     if (!playgroundMode_)
-        outputService_.submit(controllerState_, frame.captureUs, frame.sequence);
+        outputService_.submit(controllerState_, frame.captureUs, frame.sequence,
+                              leftTracked_ || rightTracked_);
 }
 
 void RuntimeController::refreshOutputStatus()
@@ -3169,23 +3314,39 @@ void RuntimeController::tickGestureReplay()
 void RuntimeController::updateStats()
 {
     refreshOutputStatus();
-
     if (!metrics_ || !pipelineRunning()) {
         emit stateChanged();
         return;
     }
 
-    metricsSnapshot_ =
-        metrics_->snapshot(nowUs());
+    const auto timestamp = nowUs();
+    metricsSnapshot_ = metrics_->snapshot(timestamp);
+    const auto lastFrameUs = metricsSnapshot_.lastFrameReceivedUs;
+    const auto referenceUs = lastFrameUs > 0 ? lastFrameUs : sessionStartedUs_;
+    const std::int64_t frameAgeUs = referenceUs > 0 ? timestamp - referenceUs : 0;
 
-    const auto lastFrameUs =
-        metricsSnapshot_.lastFrameReceivedUs;
-
-    if (lastFrameUs > 0
-        && nowUs() - lastFrameUs > 500000) {
+    if (frameAgeUs > 500'000 && !captureStallHandled_) {
+        captureStallHandled_ = true;
+        // Old gestures and held OS buttons cannot survive stalled capture.
+        // The ON preference stays latched and can resume from fresh frames.
         clearTracking();
     }
+    else if (frameAgeUs <= 500'000) {
+        captureStallHandled_ = false;
+        // A sustained healthy session resets fault backoff.
+        if (referenceUs > 0 && timestamp - sessionStartedUs_ > 5'000'000)
+            recoveryAttempt_ = 0;
+    }
 
+    // Some Windows camera drivers stall without emitting errorOccurred or
+    // activeChanged. Recover after 3s of missing frames, at most once per
+    // session; the camera reconnect policy throttles subsequent attempts.
+    if (frameAgeUs > 3'000'000 && !cameraReconnectPolicy_.pending()
+        && runtimeState_ == RuntimeState::Running && camera_
+        && autoRecoverCamera_) {
+        scheduleCameraRecovery(camera_->cameraDevice().id());
+        requestSessionStop(RuntimeState::Faulted);
+    }
     emit stateChanged();
 }
 

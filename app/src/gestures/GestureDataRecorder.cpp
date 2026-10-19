@@ -71,15 +71,30 @@ bool GestureDataRecorder::start(
         return false;
     }
 
-    stream_.open(path_, std::ios::out | std::ios::binary | std::ios::trunc);
-    if (!stream_.is_open()) {
-        error_ = "Cannot open recording file for writing";
+    writer_ = std::make_unique<AsyncJsonlWriter>();
+    if (!writer_->open(path_)) {
+        error_ = writer_->error();
+        writer_.reset();
         return false;
     }
     return true;
 }
 
 bool GestureDataRecorder::append(const TrackingFrame &frame)
+{
+    return appendImpl(frame, nullptr);
+}
+
+bool GestureDataRecorder::append(
+    const TrackingFrame &frame,
+    const std::array<bool, kHandCount> &geometryValid)
+{
+    return appendImpl(frame, &geometryValid);
+}
+
+bool GestureDataRecorder::appendImpl(
+    const TrackingFrame &frame,
+    const std::array<bool, kHandCount> *geometryValid)
 {
     if (!active()) {
         return false;
@@ -107,7 +122,8 @@ bool GestureDataRecorder::append(const TrackingFrame &frame)
             // Use the same geometric validity contract as the ML dataset.
             // A valid hand is still NOT proof that its manual label is correct.
             const bool valid = hand.tracked && hand.trackId != 0
-                && extractGestureGeometry(hand, frame.width, frame.height).valid;
+                && (geometryValid ? (*geometryValid)[side]
+                    : extractGestureGeometry(hand, frame.width, frame.height).valid);
             (valid ? usable_[side] : missing_[side])++;
         }
         line << "{\"side\":\""
@@ -142,10 +158,10 @@ bool GestureDataRecorder::append(const TrackingFrame &frame)
         line << "]}";
     }
     line << "]}\n";
-    stream_ << line.str();
-    if (!stream_) {
-        stop();
-        error_ = "Write failed: check storage space and permissions";
+    if (!writer_->enqueue(line.str())) {
+        const auto message = writer_->error();
+        stop();  // Flush every previously accepted line before surfacing error.
+        error_ = message.empty() ? "Recording writer stopped" : message;
         return false;
     }
     ++frameCount_;
@@ -154,12 +170,12 @@ bool GestureDataRecorder::append(const TrackingFrame &frame)
 
 void GestureDataRecorder::stop()
 {
-    if (stream_.is_open()) {
-        stream_.flush();
-        if (!stream_) {
-            error_ = "Failed to flush recording to disk";
+    if (writer_) {
+        writer_->close();  // Bounded backlog drained before this call returns.
+        if (!writer_->error().empty()) {
+            error_ = writer_->error();
         }
-        stream_.close();
+        writer_.reset();
     }
 }
 

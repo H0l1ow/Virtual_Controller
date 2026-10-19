@@ -20,10 +20,12 @@ class RecordingIntegration(unittest.TestCase):
     def test_preview_uses_secondary_sink_and_no_new_camera(self):
         ui = read('app/qml/components/RecordingCapturePanel.qml')
         runtime = read('app/src/runtime/RuntimeController.cpp')
-        self.assertIn('attachRecordingVideoSink(videoSink)', ui)
+        self.assertIn('attachRecordingVideoSink(', ui)
+        self.assertIn('recordingVideo.videoSink', ui)
         self.assertIn('root.uiState.leftLandmarks', ui)
         self.assertIn('QVideoSink::videoFrameChanged', runtime)
-        self.assertIn('updateRecordingPreviewConnection()', runtime)
+        self.assertIn('updatePreviewConnections()', runtime)
+        self.assertIn('captureSession_.setVideoSink(&captureSink_)', runtime)
         self.assertNotIn('QCamera {', ui)
 
     def test_files_restricted_to_own_dir_and_trash(self):
