@@ -162,6 +162,9 @@ qt_add_resources(
         qml/mock/UiMock.qml
 
         qml/components/AppTopBar.qml
+        qml/components/AppSideBar.qml
+        qml/components/DashboardSidePanel.qml
+        qml/components/DisclosurePanel.qml
         qml/components/CameraStage.qml
         qml/components/CalibrationPanel.qml
         qml/components/CursorPlaygroundPage.qml
@@ -177,7 +180,6 @@ qt_add_resources(
         qml/components/RecordingFilesPanel.qml
         qml/components/HandLogo.qml
         qml/components/MetricTile.qml
-        qml/components/NavTab.qml
         qml/components/PageToolbar.qml
         qml/components/PanelHeader.qml
         qml/components/QuickSettingsCard.qml

@@ -1,4 +1,37 @@
-# Virtual Controller - M6.2.3 Persistent Output & Minimize Safety (0.14.5)
+# Virtual Controller — M6.3.3 UI Layout Refinement (0.15.3)
+
+**M6.3.3 (from M6.3.1, not the rejected M6.3.2):** Dashboard camera status
+is a translucent overlay **inside** the larger camera preview and the Dashboard
+has no scrolling. Gestures now use three Settings-style sections and one outer
+scroll region. In ML, recording and the session library precede model settings.
+Gamepad Monitor provides two distinct Xbox/PlayStation visual layouts with
+**separate** L1/L2, R1/R2 (LB/LT, RB/RT), sticks and stick-clicks.
+No new gamepad driver, input action, model or fake feature was added.
+Core camera/performance/persistent-arming behavior remains untouched.
+See **PATCH_M6_3_3_README.md** for installation, tests and limitations.
+
+# Virtual Controller - M6.3.1 Visual Fidelity & Responsive Layout (0.15.1)
+
+**M6.3.1:** Reworked Dashboard, Gestures, Mapping, ML and Settings to follow
+the approved five-screen visual concept while using only existing functional
+C++ actions. Five primary navigation pages; Test Lab and Gamepad Monitor under
+Tools; responsive gesture cards, camera-first ML recording and lazy advanced
+panels. No changes to MediaPipe, model inference, persistent-arming safety or
+profile/recording data formats. See **PATCH_M6_3_1_README.md** for installation,
+visual acceptance checks, and the exact list of concept-only controls omitted.
+
+# Virtual Controller — M6.3.0 UI Refresh (0.15.0)
+
+**M6.3.0 (UI Refresh):** Collapsible navigation sidebar, simplified Dashboard,
+responsive toolbar, lazy-loaded advanced cursor controls, concise Settings categories,
+and an ML screen that places model status before guided recording while keeping
+replay/training instructions under an expandable panel. Mapping's infrequent
+Reload/Remove commands are grouped into a More menu. A few inert controls and
+the unused `NavTab.qml` were removed, and historical notes moved to
+`docs/releases/`. Gesture logic, camera preview routing, output safety and JSONL
+format are unchanged. See **PATCH_M6_3_0_README.md**.
+
+## Previous release: M6.2.3 Persistent Output & Minimize Safety (0.14.5)
 
 Qt/QML + C++20 desktop application for two-hand camera tracking, gesture-driven
 mouse/keyboard input, mapping profiles and an in-app Gesture Playground.
@@ -14,7 +47,7 @@ pressed again. Only explicit OFF, global STOP, F8, closing the app or entering
 an isolated safety/testing mode cancel the request. Preview routing now
 explicitly handles minimized/hidden windows independently of capture, and
 camera reconnect keeps retrying while system output was enabled. Details and
-Windows acceptance checks: **PATCH_M6_2_3_README.md**. Output is never stored
+Windows acceptance checks: **docs/releases/PATCH_M6_2_3_README.md**. Output is never stored
 as armed across application restarts.
 
 **M6.2.2 stabilizes the experimental performance source (not the stock M6.2.1 ZIP).**
@@ -26,7 +59,7 @@ camera frames before inference, and the output watchdog remains active.
 JSONL writes now run on a separate bounded file-I/O thread; Stop/fault drains
 accepted samples. VideoOutput sinks release retained frames on tab/minimize
 switches. Added **Worker backpressure P95** in the Performance Monitor.
-See **PATCH_M6_2_2_README.md** for precautions and Windows checks.
+See **docs/releases/PATCH_M6_2_2_README.md** for precautions and Windows checks.
 
 **Performance audit 2026-10-19 (experimental, Windows GUI not yet validated):**
 A latest-frame preview mailbox prevents capture callbacks from queuing obsolete
@@ -34,13 +67,13 @@ video frames to the GUI; render pacing is about 30 FPS Controller / 20 FPS ML
 or PiP. QML state notifications are limited to about 30 Hz while tracking,
 recording and input events still process every worker result. The Test tab
 now measures GUI-result queue wait and capture-to-input-submission latency.
-See **PERFORMANCE_AUDIT_2026-10-19.md** for tests, limitations and rollback.
+See **docs/releases/PERFORMANCE_AUDIT_2026-10-19.md** for tests, limitations and rollback.
 
 M6.2.1 separates MediaPipe capture from the Qt Quick camera previews, routes
 frames to only the currently visible Controller / ML / minimized PiP window and
 suspends hidden overlays. No second camera is created. It also reduces
 ML-preview rendering and avoids repeating recording geometry calculations.
-See **PATCH_M6_2_1_README.md** for regression tests and Windows checks.
+See **docs/releases/PATCH_M6_2_1_README.md** for regression tests and Windows checks.
 
 M6.2 adds guided landmark recording with an in-app camera/skeleton preview,
 per-hand geometric validity progress, a session library with Open/Replay/

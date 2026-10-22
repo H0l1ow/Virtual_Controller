@@ -66,14 +66,16 @@ class StabilityAndPiPTests(unittest.TestCase):
         self.assertIn('AppPreferences.pipSizeMode', settings)
 
     def test_small_window_navigation_remains_accessible(self):
-        top = get('app/qml/components/AppTopBar.qml')
-        nav = get('app/qml/components/NavTab.qml')
+        main = get('app/qml/Main.qml')
+        side = get('app/qml/components/AppSideBar.qml')
         settingsRow = get('app/qml/components/SettingsRow.qml')
-        self.assertIn('root.width < 1180 ? 60', top)
-        self.assertIn('visible: root.width >= 90', nav)
-        self.assertIn('ToolTip.text: root.text', nav)
+        self.assertIn('width < 1180', main)
+        self.assertIn('onCollapseToggled:', main)
+        self.assertIn('ToolTip.text: nav.modelData.title', side)
+        self.assertIn('implicitWidth: collapsed ? 67 : 218', side)
         self.assertIn('columns: root.compact ? 1 : 2', settingsRow)
-        self.assertIn('minimumWidth: 960', get('app/qml/Main.qml'))
+        self.assertIn('minimumWidth: 780', main)
+
 
 if __name__ == '__main__':
     unittest.main()

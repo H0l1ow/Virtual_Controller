@@ -18,7 +18,7 @@ Button {
     opacity: enabled ? 1.0 : 0.45
 
     readonly property color baseColor: {
-        if (variant === "primary") return theme.surfaceRaised
+        if (variant === "primary") return theme.accent
         if (variant === "danger") return theme.isLight ? "#FBE7EA" : "#271419"
         if (variant === "ghost") return "transparent"
         return theme.surfaceRaised
@@ -34,7 +34,7 @@ Button {
         border.width: 1
         border.color: root.variant === "danger"
             ? Qt.rgba(theme.error.r, theme.error.g, theme.error.b, 0.55)
-            : theme.borderStrong
+            : root.variant === "primary" ? theme.accent : theme.borderStrong
     }
 
     contentItem: RowLayout {
@@ -46,7 +46,8 @@ Button {
             Layout.preferredWidth: 20
             Layout.preferredHeight: 20
             name: root.iconName
-            color: root.variant === "danger" ? root.theme.error : root.theme.textPrimary
+            color: root.variant === "danger" ? root.theme.error
+                : root.variant === "primary" ? (root.theme.isLight ? "#FFFFFF" : "#031320") : root.theme.textPrimary
         }
 
         Text {
@@ -56,7 +57,8 @@ Button {
             elide: Text.ElideRight
             clip: true
             text: root.text
-            color: root.variant === "danger" ? root.theme.error : root.theme.textPrimary
+            color: root.variant === "danger" ? root.theme.error
+                : root.variant === "primary" ? (root.theme.isLight ? "#FFFFFF" : "#031320") : root.theme.textPrimary
             font.family: root.theme.fontFamily
             font.pixelSize: 13
             font.weight: Font.DemiBold

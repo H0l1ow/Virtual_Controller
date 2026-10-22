@@ -9,18 +9,32 @@ VcCard {
     required property QtObject uiState
     property bool previewActive: true
     property bool previewReady: false
+    property bool sinkAttached: false
     readonly property bool drawingActive: root.previewActive && root.visible
                                           && root.uiState.cameraRunning
                                           && root.uiState.showLandmarks
 
     function updatePreviewAttachment() {
-        if (!root.previewReady)
-            return
-        root.uiState.attachVideoOutput(
-            root.previewActive && root.visible ? videoOutput.videoSink : null)
+        if (!root.previewReady) return
+        const shouldAttach = root.previewActive && root.visible
+        if (shouldAttach) {
+            root.uiState.attachVideoOutput(videoOutput.videoSink)
+            root.sinkAttached = true
+        } else if (root.sinkAttached) {
+            root.uiState.attachVideoOutput(null)
+            root.sinkAttached = false
+        }
     }
-    onVisibleChanged: updatePreviewAttachment()
-    onPreviewActiveChanged: updatePreviewAttachment()
+    // Deactivate immediately; attach at the end of the binding change batch
+    // so an old stage cannot detach the newly selected sink.
+    function synchronizePreview() {
+        if (root.previewActive && root.visible)
+            Qt.callLater(root.updatePreviewAttachment)
+        else
+            root.updatePreviewAttachment()
+    }
+    onVisibleChanged: synchronizePreview()
+    onPreviewActiveChanged: synchronizePreview()
 
     // Normal mode deliberately keeps the original M1 layout and aspect-fit
     // preview. Immersive mode only changes presentation: the same VideoOutput
@@ -31,6 +45,8 @@ VcCard {
     property bool showGestureHints: true
     property bool showMetrics: true
     property bool showHandBadges: true
+    // Status overlay shares this exact VideoOutput; no additional video sink.
+    property bool dashboardStatusOverlay: false
     property real overlayBottomInset: 0
 
     signal fullscreenRequested(bool enabled)
@@ -91,8 +107,9 @@ VcCard {
             root.updatePreviewAttachment()
         }
         Component.onDestruction: {
+            if (root.sinkAttached) root.uiState.attachVideoOutput(null)
+            root.sinkAttached = false
             root.previewReady = false
-            root.uiState.attachVideoOutput(null)
         }
     }
 
@@ -515,6 +532,20 @@ VcCard {
                 font.weight: Font.DemiBold
             }
         }
+    }
+
+    // Overlay is inside the live camera viewport, never a separate dashboard column.
+    DashboardSidePanel {
+        id: cameraStatusOverlay
+        z: 10
+        visible: root.dashboardStatusOverlay && root.previewActive
+        anchors.right: parent.right
+        anchors.rightMargin: 12
+        anchors.verticalCenter: parent.verticalCenter
+        width: Math.min(254, Math.max(178, parent.width * 0.30))
+        height: Math.min(285, Math.max(208, parent.height - 38))
+        theme: root.theme
+        uiState: root.uiState
     }
 
     Rectangle {

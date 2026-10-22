@@ -62,19 +62,13 @@ Item {
         return -1
     }
 
-    ScrollView {
-        id: scroll
-        anchors.fill: parent
-        clip: true
-        contentWidth: availableWidth
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        contentHeight: contents.implicitHeight + 36
+    implicitHeight: contents.implicitHeight + 36
 
         ColumnLayout {
             id: contents
             x: 18
             y: 18
-            width: Math.max(1, scroll.availableWidth - 36)
+            width: Math.max(1, root.width - 36)
             spacing: 13
 
             Text {
@@ -351,5 +345,4 @@ Item {
             }
             Item { Layout.preferredHeight: 8 }
         }
-    }
 }

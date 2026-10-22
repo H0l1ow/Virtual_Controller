@@ -83,28 +83,6 @@ VcCard {
                 }
             }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                VcButton {
-                    Layout.fillWidth: true
-                    theme: root.theme
-                    iconName: "target"
-                    text: qsTr("Calibrate")
-                    enabled: false
-                }
-
-                VcButton {
-                    Layout.fillWidth: true
-                    theme: root.theme
-                    iconName: "reset"
-                    text: qsTr("Reset")
-                    enabled: !root.uiState.pipelineRunning
-                    onClicked: root.uiState.resetSettingsDefaults()
-                }
-            }
-
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1

@@ -31,8 +31,8 @@ class PreMlReadiness(unittest.TestCase):
         mapping = src('app/qml/pages/MappingPage.qml')
         self.assertIn('width < 670', row)
         self.assertIn('labelText.implicitWidth', button)
-        self.assertIn('visible: root.width >= 1180', mapping)
-        self.assertIn('Math.min(360', src('app/qml/pages/GesturesPage.qml'))
+        self.assertIn('columns: root.width >= 900 ? 2 : 1', mapping)
+        self.assertIn('columns: root.width >= 1170 ? 2 : 1', src('app/qml/pages/GesturesPage.qml'))
 
     def test_pip_monitor_and_original_restore_behavior(self):
         prefs = src('app/src/runtime/AppPreferences.cpp')

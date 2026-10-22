@@ -9,18 +9,12 @@ Item {
     required property QtObject uiState
     enabled: root.uiState.gestureRecognitionAvailable
 
-    ScrollView {
-        id: gesturesSettingsScroll
-        anchors.fill: parent
-        clip: true
-        contentWidth: availableWidth
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        contentHeight: gesturesSettingsColumn.implicitHeight + 36
+    implicitHeight: gesturesSettingsColumn.implicitHeight + 36
         ColumnLayout {
             id: gesturesSettingsColumn
             x: 18
             y: 18
-            width: Math.max(1, gesturesSettingsScroll.availableWidth - 36)
+            width: Math.max(1, root.width - 36)
             spacing: 0
         Text {
             text: qsTr("Gestures")
@@ -212,7 +206,6 @@ Item {
         }
         Item { Layout.preferredHeight: 12 }
         }
-    }
 
 
     Connections {

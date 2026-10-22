@@ -99,6 +99,9 @@ VcCard {
             columnSpacing: 16
             rowSpacing: 12
             ColumnLayout {
+                // On desktop, controls stay on the right of the live camera.
+                Layout.column: root.width >= 880 ? 1 : 0
+                Layout.row: root.width >= 880 ? 0 : 1
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.minimumWidth: 0
@@ -253,6 +256,8 @@ VcCard {
                 }
             }
             ColumnLayout {
+                Layout.column: 0
+                Layout.row: 0
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.minimumWidth: 0

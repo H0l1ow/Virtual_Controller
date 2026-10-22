@@ -53,7 +53,6 @@ QtObject {
     readonly property bool canDeleteActiveProfile: ["Default", "Desktop", "Presentation", "Game"].indexOf(activeProfile) === -1
     readonly property var mappingIssues: [{code: "no_cursor_gate", severity: "warning", first: -1, second: -1}]
     readonly property string mappingProfileDirectory: "<mock>/profiles"
-    property string outputMode: "Mouse / Keyboard"
 
     property int sensitivity: 70
     property bool smoothing: true

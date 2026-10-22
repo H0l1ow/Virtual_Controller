@@ -70,6 +70,7 @@ Item {
                 enabled: !root.uiState.pipelineRunning
                 onClicked: root.uiState.resetSettingsDefaults()
             }
+
             VcButton {
                 theme: root.theme
                 text: qsTr("Save")
@@ -85,81 +86,80 @@ Item {
             spacing: 12
 
             VcCard {
-                Layout.preferredWidth: 230
+                Layout.preferredWidth: root.width >= 1000 ? 218 : 170
                 Layout.fillHeight: true
                 theme: root.theme
-
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 6
+                    anchors.margins: 11
+                    spacing: 8
+                    Text {
+                        text: qsTr("Sections")
+                        Layout.leftMargin: 5
+                        color: root.theme.textSecondary
+                        font.family: root.theme.fontFamily
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                    }
                     Repeater {
                         model: root.sections
                         delegate: Rectangle {
+                            id: sectionItem
                             required property var modelData
                             required property int index
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 48
-                            color: root.sectionIndex === index ? root.theme.surfaceHover : "transparent"
-                            border.width: root.sectionIndex === index ? 1 : 0
-                            border.color: root.theme.border
+                            Layout.preferredHeight: 54
                             radius: root.theme.controlRadius
-
-                            Rectangle {
-                                visible: root.sectionIndex === index
-                                anchors.left: parent.left
-                                width: 2
-                                height: parent.height
-                                color: root.theme.accent
-                            }
+                            color: root.sectionIndex === index ? root.theme.accentSoft
+                                : sectionMouse.containsMouse ? root.theme.surfaceHover : "transparent"
+                            border.width: root.sectionIndex === index ? 1 : 0
+                            border.color: root.theme.accentDim
+                            Behavior on color { ColorAnimation { duration: 140 } }
                             RowLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 12
-                                anchors.rightMargin: 10
-                                spacing: 11
+                                anchors.margins: 11
+                                spacing: 9
                                 VcIcon {
-                                    Layout.preferredWidth: 21
-                                    Layout.preferredHeight: 21
-                                    name: modelData.icon
-                                    color: root.sectionIndex === index ? root.theme.textPrimary : root.theme.textMuted
+                                    name: sectionItem.modelData.icon
+                                    color: root.sectionIndex === sectionItem.index
+                                        ? root.theme.accent : root.theme.textSecondary
+                                    Layout.preferredWidth: 19
+                                    Layout.preferredHeight: 19
                                 }
                                 Text {
                                     Layout.fillWidth: true
-                                    text: modelData.title
-                                    color: root.sectionIndex === index
-                                        ? root.theme.textPrimary
-                                        : root.theme.textSecondary
+                                    text: sectionItem.modelData.title
+                                    color: root.sectionIndex === sectionItem.index
+                                        ? root.theme.textPrimary : root.theme.textSecondary
                                     font.family: root.theme.fontFamily
                                     font.pixelSize: 12
-                                    font.weight: root.sectionIndex === index ? Font.DemiBold : Font.Normal
+                                    font.weight: root.sectionIndex === sectionItem.index
+                                        ? Font.DemiBold : Font.Normal
+                                    elide: Text.ElideRight
                                 }
                                 Text {
-                                    text: "›"
+                                    text: root.sectionIndex === sectionItem.index ? "-" : "+"
                                     color: root.theme.textMuted
-                                    font.pixelSize: 16
+                                    font.pixelSize: 17
                                 }
                             }
                             MouseArea {
+                                id: sectionMouse
                                 anchors.fill: parent
+                                hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.sectionIndex = index
+                                onClicked: root.sectionIndex = sectionItem.index
                             }
                         }
                     }
-                    Item {
-                        Layout.fillHeight: true
-                    }
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
-                        color: root.theme.borderSubtle
-                    }
+                    Item { Layout.fillHeight: true }
                     Text {
-                        text: qsTr("Virtual Controller v") + Qt.application.version
+                        Layout.fillWidth: true
+                        text: qsTr("Changes are applied live. Click Save to keep them after restart.")
                         color: root.theme.textMuted
+                        wrapMode: Text.WordWrap
                         font.family: root.theme.fontFamily
-                        font.pixelSize: 9
-                        Layout.leftMargin: 6
+                        font.pixelSize: 10
                     }
                 }
             }
@@ -517,11 +517,10 @@ Item {
                                 title: qsTr("Maximum hands")
                                 description: qsTr("The project architecture is designed for simultaneous ") +
                                     qsTr("left and right hand tracking.")
-                                VcComboBox {
-                                    theme: root.theme
-                                    model: [qsTr("2 hands")]
-                                    implicitWidth: 180
-                                    enabled: false
+                                Text {
+                                    text: qsTr("2 hands")
+                                    color: root.theme.textSecondary
+                                    font.pixelSize: 12
                                 }
                             }
 
@@ -867,6 +866,102 @@ Item {
                                 Item { Layout.preferredHeight: 12 }
                             }
                         }
+                    }
+                }
+            }
+
+            VcCard {
+                visible: root.sectionIndex === 1 && root.width >= 1220
+                Layout.preferredWidth: visible ? 250 : 0
+                Layout.fillHeight: true
+                theme: root.theme
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 13
+                    spacing: 11
+                    Text {
+                        text: qsTr("PiP preview")
+                        color: root.theme.textPrimary
+                        font.family: root.theme.fontFamily
+                        font.pixelSize: 15
+                        font.weight: Font.DemiBold
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 140
+                        color: root.theme.backgroundAlt
+                        radius: root.theme.controlRadius
+                        border.color: root.theme.border
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            VcIcon {
+                                Layout.alignment: Qt.AlignHCenter
+                                name: "monitor"
+                                color: root.theme.accent
+                                Layout.preferredWidth: 32
+                                Layout.preferredHeight: 32
+                            }
+                            Text {
+                                text: qsTr("PiP opens when minimized")
+                                color: root.theme.textSecondary
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 11
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Enable PiP")
+                            color: root.theme.textPrimary
+                            font.pixelSize: 12
+                        }
+                        VcSwitch {
+                            theme: root.theme
+                            checked: AppPreferences.pipEnabled
+                            onToggled: AppPreferences.pipEnabled = checked
+                        }
+                    }
+                    Text { text: qsTr("Window size"); color: root.theme.textSecondary; font.pixelSize: 11 }
+                    VcComboBox {
+                        theme: root.theme
+                        Layout.fillWidth: true
+                        model: [qsTr("Small"), qsTr("Medium"), qsTr("Large")]
+                        currentIndex: Math.max(0, ["small", "medium", "large"].indexOf(AppPreferences.pipSizeMode))
+                        onActivated: function(index) {
+                            AppPreferences.pipSizeMode = ["small", "medium", "large"][index]
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Show landmarks")
+                            color: root.theme.textPrimary
+                            font.pixelSize: 12
+                        }
+                        VcSwitch {
+                            theme: root.theme
+                            checked: AppPreferences.pipShowLandmarks
+                            onToggled: AppPreferences.pipShowLandmarks = checked
+                        }
+                    }
+                    VcButton {
+                        theme: root.theme
+                        Layout.fillWidth: true
+                        text: qsTr("Reset PiP position")
+                        iconName: "reset"
+                        onClicked: AppPreferences.setPipPosition(-1, -1)
+                    }
+                    Item { Layout.fillHeight: true }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Live PiP is only shown after the main window is minimized.")
+                        wrapMode: Text.WordWrap
+                        color: root.theme.textMuted
+                        font.pixelSize: 11
                     }
                 }
             }

@@ -17,7 +17,7 @@ def qml(path):
 class UiHotfixTests(unittest.TestCase):
     def test_mapping_toolbar_buttons_are_content_sized(self):
         mapping = qml('pages/MappingPage.qml')
-        for source in ('Reload', 'Add mapping', 'Remove'):
+        for source in ('Reload profile', 'Add mapping', 'Remove'):
             pattern = r'text: qsTr\("' + re.escape(source) + r'"\)(?:(?!\n\s*}).)*'
             match = re.search(pattern, mapping, flags=re.S)
             self.assertIsNotNone(match, source)

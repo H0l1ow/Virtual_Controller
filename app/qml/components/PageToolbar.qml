@@ -50,9 +50,20 @@ Rectangle {
             }
         }
 
-        RowLayout {
-            id: extra
-            spacing: 8
+        Flickable {
+            Layout.preferredWidth: Math.min(extra.implicitWidth, root.width * 0.69)
+            Layout.maximumWidth: root.width * 0.69
+            Layout.preferredHeight: 46
+            contentWidth: extra.implicitWidth
+            contentHeight: height
+            interactive: contentWidth > width + 1
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            RowLayout {
+                id: extra
+                height: parent.height
+                spacing: 8
+            }
         }
     }
 }

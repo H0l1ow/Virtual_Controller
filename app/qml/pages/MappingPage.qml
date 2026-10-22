@@ -1,636 +1,541 @@
-import VirtualController.I18n 1.0
 import QtQuick
-import QtQml
 import QtQuick.Controls
 import QtQuick.Layouts
+import VirtualController.I18n 1.0
 import "../components"
 
 Item {
     id: root
     required property QtObject theme
     required property QtObject uiState
-
     property int selectedRow: uiState.mappingRows.length > 0 ? 0 : -1
-    readonly property var selectedMapping:
-        selectedRow >= 0 && uiState.mappingRows.length > selectedRow
-            ? uiState.mappingRows[selectedRow]
-            : ({})
-
-    function mappingErrorText(message) {
-        // C++ errors use stable English identifiers; translate only their UI
-        // representation, leaving profile JSON values untouched.
-        LanguageManager.language
-        return qsTr(message)
-    }
-
-    function issueDescription(issue) {
-        LanguageManager.language
-        switch (issue.code) {
-        case "duplicate_id": return qsTr("Two mapping rows use the same internal ID. System input is blocked until fixed.")
-        case "scroll_toggle": return qsTr("Scroll actions cannot use Toggle. Use Press or Hold.")
-        case "cursor_press": return qsTr("Enable cursor movement requires Hold or Toggle.")
-        case "duplicate_action": return qsTr("Two enabled mappings generate the same action from one gesture.")
-        case "conflicting_behavior": return qsTr("The same hand, gesture and action have conflicting behaviors.")
-        case "cursor_gate_freeze": return qsTr("This gesture both enables and freezes cursor movement.")
-        case "drag_exclusive": return qsTr("One hand cannot hold different gestures for cursor movement and drag simultaneously.")
-        case "no_cursor_gate": return qsTr("No enabled cursor movement gate: Windows cursor remains locked.")
-        default: return qsTr("Potential mapping conflict.")
-        }
-    }
-
+    property string gestureFilter: "ALL"
+    readonly property var selectedMapping: selectedRow >= 0 && selectedRow < uiState.mappingRows.length
+        ? uiState.mappingRows[selectedRow] : ({})
     readonly property var handOptions: ["Left", "Right"]
     readonly property var gestureOptions: ["PINCH", "FIST", "POINT", "OPEN HAND"]
     readonly property var behaviorOptions: ["Press", "Hold", "Toggle"]
     readonly property var actionOptions: [
         "Left click", "Right click", "Scroll up", "Scroll down", "Freeze cursor",
-        "Enable cursor movement",
-        "Key Space", "Key Enter", "Key Escape", "Key Tab",
-        "Key Left", "Key Right", "Key Up", "Key Down",
-        "Key Ctrl", "Key Shift", "Key Alt"
+        "Enable cursor movement", "Key Space", "Key Enter", "Key Escape", "Key Tab",
+        "Key Left", "Key Right", "Key Up", "Key Down", "Key Ctrl", "Key Shift", "Key Alt"
     ]
-
-    function displayOption(value) {
-        // The mapper expects stable English action/behavior identifiers.
-        // Only the ComboBox and table labels are translated.
-        LanguageManager.language
-        return qsTr(value)
-    }
-
-    function optionIndex(options, value, fallback) {
-        const index = options.indexOf(value)
-        return index >= 0 ? index : fallback
-    }
-
-    function syncEditor() {
-        if (root.selectedRow < 0 || root.uiState.mappingRows.length <= root.selectedRow) {
-            handCombo.currentIndex = 1
-            gestureCombo.currentIndex = 0
-            actionCombo.currentIndex = 0
-            behaviorCombo.currentIndex = 1
-            enabledSwitch.checked = false
-            return
+    readonly property var filterOptions: [
+        {code: "ALL", title: qsTr("All gestures"), icon: "hand"},
+        {code: "OPEN HAND", title: qsTr("Open Hand"), icon: "open"},
+        {code: "POINT", title: qsTr("Point"), icon: "point"},
+        {code: "FIST", title: qsTr("Fist"), icon: "fist"},
+        {code: "PINCH", title: qsTr("Pinch"), icon: "pinch"}
+    ]
+    readonly property var displayedRows: {
+        const rows = []
+        const all = uiState.mappingRows || []
+        for (let i = 0; i < all.length; ++i) {
+            if (gestureFilter === "ALL" || all[i].source === gestureFilter)
+                rows.push({mapping: all[i], realIndex: i})
         }
-
-        const mapping = root.uiState.mappingRows[root.selectedRow]
-        handCombo.currentIndex = root.optionIndex(root.handOptions, mapping.hand || "Right", 1)
-        gestureCombo.currentIndex = root.optionIndex(root.gestureOptions, mapping.source || "PINCH", 0)
-        actionCombo.currentIndex = root.optionIndex(root.actionOptions, mapping.action || "Left click", 0)
-        behaviorCombo.currentIndex = root.optionIndex(root.behaviorOptions, mapping.behavior || "Hold", 1)
-        enabledSwitch.checked = mapping.enabled === true
+        return rows
     }
+    function optionIndex(options, value, fallback) {
+        const at = options.indexOf(value)
+        return at >= 0 ? at : fallback
+    }
+    function displayOption(text) {
+        LanguageManager.language
+        return qsTr(text || "")
+    }
+    function issueDescription(issue) {
+        LanguageManager.language
+        switch (issue.code) {
+        case "duplicate_id": return qsTr("Two mappings have the same ID.")
+        case "scroll_toggle": return qsTr("Scroll cannot use Toggle.")
+        case "cursor_press": return qsTr("Cursor movement requires Hold or Toggle.")
+        case "duplicate_action": return qsTr("The same action is assigned twice.")
+        case "conflicting_behavior": return qsTr("Conflicting mapping behaviors.")
+        case "cursor_gate_freeze": return qsTr("Cursor gating conflicts with freezing.")
+        case "drag_exclusive": return qsTr("Cursor movement and drag cannot require different gestures on the same hand.")
+        case "no_cursor_gate": return qsTr("No gesture unlocks cursor movement.")
+        default: return qsTr("Potential mapping conflict.")
+        }
+    }
+    function syncEditor() {
+        if (selectedRow < 0 || selectedRow >= uiState.mappingRows.length) return
+        const m = uiState.mappingRows[selectedRow]
+        handCombo.currentIndex = optionIndex(handOptions, m.hand || "Right", 1)
+        gestureCombo.currentIndex = optionIndex(gestureOptions, m.source || "PINCH", 0)
+        actionCombo.currentIndex = optionIndex(actionOptions, m.action || "Left click", 0)
+        behaviorCombo.currentIndex = optionIndex(behaviorOptions, m.behavior || "Hold", 1)
+        enabledSwitch.checked = m.enabled === true
+    }
+    function openEditor(index) {
+        selectedRow = index
+        Qt.callLater(syncEditor)
+        editPopup.open()
+    }
+    onSelectedRowChanged: Qt.callLater(syncEditor)
+    Component.onCompleted: Qt.callLater(syncEditor)
 
-    onSelectedRowChanged: Qt.callLater(root.syncEditor)
-    Component.onCompleted: Qt.callLater(root.syncEditor)
-
-    ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: root.theme.pageMargin
-        spacing: 12
-
-        PageToolbar {
-            Layout.fillWidth: true
-            theme: root.theme
-            title: qsTr("Gesture Mapping")
-            subtitle: qsTr("Map gesture events to mouse/keyboard actions; conflicts are checked live.")
-
-            VcComboBox {
-                id: mappingProfileCombo
-                theme: root.theme
-                model: root.uiState.profileNames
-                currentIndex: Math.max(0, root.uiState.profileNames.indexOf(root.uiState.activeProfile))
-                implicitWidth: 160
-                onActivated: root.uiState.setActiveProfile(currentText)
-            }
-
+    Popup {
+        id: mappingActions
+        x: Math.max(8, root.width - width - 18)
+        y: 68
+        width: 228
+        padding: 10
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            radius: root.theme.controlRadius
+            color: root.theme.surface
+            border.color: root.theme.borderStrong
+        }
+        contentItem: ColumnLayout {
+            spacing: 7
             VcButton {
+                Layout.fillWidth: true
                 theme: root.theme
-                text: qsTr("Reload")
+                text: qsTr("Reload profile")
                 iconName: "reset"
-                onClicked: root.uiState.reloadActiveProfile()
+                onClicked: { mappingActions.close(); root.uiState.reloadActiveProfile() }
             }
-
             VcButton {
+                Layout.fillWidth: true
                 theme: root.theme
-                text: qsTr("Add mapping")
-                iconName: "plus"
-                onClicked: root.selectedRow = root.uiState.addMapping()
-            }
-
-            VcButton {
-                theme: root.theme
-                text: qsTr("Remove")
+                text: qsTr("Delete profile")
                 iconName: "trash"
                 variant: "danger"
-                enabled: root.selectedRow >= 0
-                onClicked: {
-                    const oldIndex = root.selectedRow
-                    root.uiState.removeMapping(oldIndex)
-                    root.selectedRow = Math.min(oldIndex, root.uiState.mappingRows.length - 1)
-                }
+                enabled: root.uiState.canDeleteActiveProfile
+                onClicked: { mappingActions.close(); deleteDialog.open() }
             }
         }
+    }
 
-        Text {
-            Layout.fillWidth: true
-            visible: root.uiState.mappingError.length > 0
-            text: root.mappingErrorText(root.uiState.mappingError)
-            color: root.theme.error
-            font.family: root.theme.fontFamily
-            font.pixelSize: 10
-            wrapMode: Text.WordWrap
-        }
-
-        Rectangle {
-            id: mappingIssuesPanel
-            Layout.fillWidth: true
-            Layout.preferredHeight: issueItems.implicitHeight + 12
-            visible: root.uiState.mappingIssues.length > 0
-            color: root.theme.surfaceRaised
-            border.width: 1
-            border.color: root.theme.borderStrong
-            radius: root.theme.controlRadius
-            ColumnLayout {
-                id: issueItems
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: 6
-                spacing: 4
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Mapping validation") + " · " + root.uiState.mappingIssues.length
-                    color: root.theme.textPrimary
-                    font.family: root.theme.fontFamily
-                    font.pixelSize: 11
-                    font.weight: Font.DemiBold
-                }
-                Repeater {
-                    model: root.uiState.mappingIssues.slice(0, 3)
-                    delegate: Text {
-                        required property var modelData
-                        Layout.fillWidth: true
-                        text: (modelData.first >= 0 ? qsTr("Row %1: ").arg(modelData.first + 1) : "")
-                            + root.issueDescription(modelData)
-                        color: modelData.severity === "error" ? root.theme.error : root.theme.warning
-                        font.family: root.theme.fontFamily
-                        font.pixelSize: 10
-                        wrapMode: Text.WordWrap
-                    }
-                }
-                Text {
-                    Layout.fillWidth: true
-                    visible: root.uiState.mappingIssues.length > 3
-                    text: qsTr("More warnings are available after correcting the displayed conflicts.")
-                    color: root.theme.textMuted
-                    font.family: root.theme.fontFamily
-                    font.pixelSize: 10
-                }
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: 12
-
-            VcCard {
-                // Preserve the editable mapping table at 100-200% Windows DPI.
-                // The explanatory side card yields space on narrower windows.
-                visible: root.width >= 1180
-                Layout.preferredWidth: visible ? 210 : 0
-                Layout.fillHeight: true
-                theme: root.theme
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 0
-
-                    PanelHeader {
-                        Layout.fillWidth: true
-                        theme: root.theme
-                        iconName: "mapping"
-                        title: qsTr("Event model")
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
-                        color: root.theme.border
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        Layout.margins: 14
-                        spacing: 10
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("Recognized gesture")
-                            color: root.theme.textSecondary
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 11
-                            font.weight: Font.DemiBold
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: "↓  debounce"
-                            color: root.theme.textMuted
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 10
-                        }
-                        StatusBadge { theme: root.theme; text: "PRESS"; kind: "success" }
-                        StatusBadge { theme: root.theme; text: "HOLD"; kind: "neutral" }
-                        StatusBadge { theme: root.theme; text: "RELEASE"; kind: "warning" }
-                        Text {
-                            Layout.fillWidth: true
-                            text: "↓  ActionMapper"
-                            color: root.theme.textMuted
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 10
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("Mouse / Keyboard")
-                            color: root.theme.textSecondary
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 11
-                            font.weight: Font.DemiBold
-                        }
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 1
-                            Layout.topMargin: 6
-                            color: root.theme.borderSubtle
-                        }
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("Profiles")
-                            color: root.theme.textSecondary
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 11
-                            font.weight: Font.DemiBold
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            text: qsTr("JSON profiles are stored in:\n") + root.uiState.mappingProfileDirectory
-                            color: root.theme.textMuted
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 9
-                            wrapMode: Text.WordWrap
-                        }
-                        Item { Layout.fillHeight: true }
-                        VcButton {
-                            Layout.fillWidth: true
-                            theme: root.theme
-                            text: qsTr("Duplicate profile")
-                            iconName: "plus"
-                            onClicked: duplicateDialog.open()
-                        }
-                        VcButton {
-                            Layout.fillWidth: true
-                            theme: root.theme
-                            text: qsTr("Delete profile")
-                            iconName: "trash"
-                            variant: "danger"
-                            enabled: root.uiState.canDeleteActiveProfile
-                            onClicked: deleteDialog.open()
-                        }
-                    }
-                }
-            }
-
-            VcCard {
+    ScrollView {
+        id: scroll
+        anchors.fill: parent
+        contentWidth: availableWidth
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ColumnLayout {
+            width: Math.max(1, scroll.availableWidth)
+            spacing: 13
+            Item { Layout.preferredHeight: 4 }
+            RowLayout {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                theme: root.theme
-
+                Layout.leftMargin: root.theme.pageMargin
+                Layout.rightMargin: root.theme.pageMargin
+                spacing: 9
                 ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 0
-
-                    RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+                    Text {
+                        text: qsTr("Mapping")
+                        color: root.theme.textPrimary
+                        font.family: root.theme.fontFamily
+                        font.pixelSize: root.theme.fontHero
+                        font.weight: Font.Bold
+                    }
+                    Text {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 50
-                        Layout.leftMargin: 14
-                        Layout.rightMargin: 14
+                        text: qsTr("Assign hand gestures to mouse and keyboard actions")
+                        color: root.theme.textSecondary
+                        font.family: root.theme.fontFamily
+                        font.pixelSize: root.theme.fontBody
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+            Flow {
+                Layout.fillWidth: true
+                Layout.leftMargin: root.theme.pageMargin
+                Layout.rightMargin: root.theme.pageMargin
+                spacing: 9
+                VcComboBox {
+                    id: mappingProfileCombo
+                    theme: root.theme
+                    implicitWidth: 205
+                    model: root.uiState.profileNames
+                    currentIndex: Math.max(0, root.uiState.profileNames.indexOf(root.uiState.activeProfile))
+                    onActivated: root.uiState.setActiveProfile(currentText)
+                }
+                VcButton {
+                    theme: root.theme
+                    iconName: "plus"
+                    text: qsTr("Add mapping")
+                    variant: "primary"
+                    onClicked: {
+                        const i = root.uiState.addMapping()
+                        if (i >= 0) root.openEditor(i)
+                    }
+                }
+                VcButton {
+                    theme: root.theme
+                    iconName: "save"
+                    text: qsTr("Save profile")
+                    onClicked: root.uiState.saveActiveProfile()
+                }
+                VcButton {
+                    theme: root.theme
+                    iconName: "plus"
+                    text: qsTr("Duplicate profile")
+                    onClicked: duplicateDialog.open()
+                }
+                VcButton {
+                    theme: root.theme
+                    iconName: "settings"
+                    text: qsTr("More")
+                    onClicked: mappingActions.open()
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                Layout.leftMargin: root.theme.pageMargin
+                Layout.rightMargin: root.theme.pageMargin
+                visible: root.uiState.mappingError.length > 0
+                text: root.displayOption(root.uiState.mappingError)
+                color: root.theme.error
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+            GridLayout {
+                Layout.fillWidth: true
+                Layout.leftMargin: root.theme.pageMargin
+                Layout.rightMargin: root.theme.pageMargin
+                columns: root.width >= 900 ? 2 : 1
+                columnSpacing: 13
+                rowSpacing: 13
+                VcCard {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 370
+                    Layout.preferredHeight: 490
+                    theme: root.theme
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 15
                         spacing: 10
-
                         Text {
-                            Layout.fillWidth: true
-                            text: qsTr("Mappings")
+                            text: qsTr("Gestures")
                             color: root.theme.textPrimary
                             font.family: root.theme.fontFamily
-                            font.pixelSize: 15
+                            font.pixelSize: 16
                             font.weight: Font.DemiBold
                         }
                         Text {
-                            text: qsTr("Mappings") + ": " + root.uiState.mappingRows.length
+                            Layout.fillWidth: true
+                            text: qsTr("Select a gesture to filter its assigned actions.")
                             color: root.theme.textMuted
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 10
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
                         }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
-                        color: root.theme.border
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 36
-                        color: root.theme.backgroundAlt
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 12
-                            anchors.rightMargin: 12
-                            spacing: 8
-
-                            Repeater {
-                                model: [
-                                    { title: qsTr("Hand"), width: 58 },
-                                    { title: qsTr("Gesture"), width: 116 },
-                                    { title: qsTr("Behavior"), width: 76 },
-                                    { title: qsTr("Action"), width: 130 },
-                                    { title: qsTr("Output"), width: 78 },
-                                    { title: qsTr("State"), width: 76 }
-                                ]
-                                delegate: Text {
-                                    required property var modelData
-                                    Layout.preferredWidth: modelData.width
-                                    Layout.fillWidth: modelData.title === "Action"
-                                    text: modelData.title.toUpperCase()
-                                    color: root.theme.textMuted
-                                    font.family: root.theme.fontFamily
-                                    font.pixelSize: 9
-                                    font.weight: Font.Bold
-                                    font.letterSpacing: 0.6
-                                }
-                            }
-                        }
-                    }
-
-                    Flickable {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        contentWidth: width
-                        contentHeight: mappingColumn.implicitHeight
-                        clip: true
-
-                        Column {
-                            id: mappingColumn
-                            width: parent.width
-
-                            Repeater {
-                                model: root.uiState.mappingRows
-
-                                delegate: Rectangle {
-                                    required property var modelData
-                                    required property int index
-                                    width: mappingColumn.width
-                                    height: 56
-                                    color: root.selectedRow === index
-                                        ? root.theme.surfaceHover
-                                        : "transparent"
-
-                                    Rectangle {
-                                        anchors.left: parent.left
-                                        anchors.right: parent.right
-                                        anchors.bottom: parent.bottom
-                                        height: 1
-                                        color: root.theme.borderSubtle
-                                    }
-                                    Rectangle {
-                                        visible: root.selectedRow === index
-                                        anchors.left: parent.left
-                                        width: 2
-                                        height: parent.height
+                        Repeater {
+                            model: root.filterOptions
+                            delegate: Rectangle {
+                                id: filterCard
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 67
+                                radius: root.theme.controlRadius
+                                color: root.gestureFilter === modelData.code
+                                    ? root.theme.accentSoft : root.theme.surfaceRaised
+                                border.width: 1
+                                border.color: root.gestureFilter === modelData.code
+                                    ? root.theme.accentDim : root.theme.borderSubtle
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 11
+                                    spacing: 10
+                                    GestureGlyph {
+                                        gesture: filterCard.modelData.code === "ALL" ? "open" : filterCard.modelData.icon
                                         color: root.theme.accent
+                                        Layout.preferredWidth: 35
+                                        Layout.preferredHeight: 35
                                     }
-
-                                    RowLayout {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: 12
-                                        anchors.rightMargin: 12
-                                        spacing: 8
-
-                                        Text {
-                                            Layout.preferredWidth: 58
-                                            text: root.displayOption(modelData.hand)
-                                            color: root.theme.textSecondary
-                                            font.family: root.theme.fontFamily
-                                            font.pixelSize: 11
-                                        }
-                                        Text {
-                                            Layout.preferredWidth: 116
-                                            text: root.displayOption(modelData.source)
-                                            color: root.theme.textPrimary
-                                            font.family: root.theme.fontFamily
-                                            font.pixelSize: 11
-                                            font.weight: Font.DemiBold
-                                        }
-                                        TagChip {
-                                            Layout.preferredWidth: 76
-                                            theme: root.theme
-                                            text: root.displayOption(modelData.behavior)
-                                        }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 130
-                                            text: root.displayOption(modelData.action)
-                                            color: root.theme.textSecondary
-                                            font.family: root.theme.fontFamily
-                                            font.pixelSize: 11
-                                            elide: Text.ElideRight
-                                        }
-                                        Text {
-                                            Layout.preferredWidth: 78
-                                            text: root.displayOption(modelData.output)
-                                            color: root.theme.textSecondary
-                                            font.family: root.theme.fontFamily
-                                            font.pixelSize: 11
-                                        }
-                                        StatusBadge {
-                                            Layout.preferredWidth: 76
-                                            theme: root.theme
-                                            text: root.displayOption(modelData.state)
-                                            kind: modelData.enabled ? "success" : "neutral"
-                                        }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: filterCard.modelData.title
+                                        color: root.theme.textPrimary
+                                        font.family: root.theme.fontFamily
+                                        font.pixelSize: 13
+                                        font.weight: Font.DemiBold
                                     }
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: root.selectedRow = index
+                                    Text {
+                                        text: root.gestureFilter === filterCard.modelData.code ? "\u2713" : ">"
+                                        color: root.theme.accent
+                                        font.pixelSize: 16
                                     }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.gestureFilter = filterCard.modelData.code
                                 }
                             }
                         }
+                        Item { Layout.fillHeight: true }
                     }
                 }
-            }
-
-            VcCard {
-                Layout.preferredWidth: 300
-                Layout.fillHeight: true
-                theme: root.theme
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 0
-
-                    PanelHeader {
-                        Layout.fillWidth: true
-                        theme: root.theme
-                        iconName: "settings"
-                        title: qsTr("Mapping Details")
-                    }
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 1
-                        color: root.theme.border
-                    }
-
+                VcCard {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 680
+                    Layout.preferredHeight: 490
+                    theme: root.theme
                     ColumnLayout {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        Layout.margins: 14
-                        spacing: 9
-                        enabled: root.selectedRow >= 0
-
-                        Text { text: qsTr("Hand"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
-                        VcComboBox {
-                            id: handCombo
-                            Layout.fillWidth: true
-                            theme: root.theme
-                            model: root.handOptions
-                            labelFormatter: root.displayOption
-                        }
-
-                        Text { text: qsTr("Gesture"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
-                        VcComboBox {
-                            id: gestureCombo
-                            Layout.fillWidth: true
-                            theme: root.theme
-                            model: root.gestureOptions
-                            labelFormatter: root.displayOption
-                        }
-
-                        Text { text: qsTr("Action"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
-                        VcComboBox {
-                            id: actionCombo
-                            Layout.fillWidth: true
-                            theme: root.theme
-                            model: root.actionOptions
-                            labelFormatter: root.displayOption
-                            onActivated: {
-                                if ((currentText === "Freeze cursor"
-                                        || currentText === "Enable cursor movement")
-                                        && behaviorCombo.currentText === "Press") {
-                                    behaviorCombo.currentIndex = root.behaviorOptions.indexOf("Hold")
-                                }
-                            }
-                        }
-
-                        Text { text: qsTr("Behavior"); color: root.theme.textMuted; font.family: root.theme.fontFamily; font.pixelSize: 10 }
-                        VcComboBox {
-                            id: behaviorCombo
-                            Layout.fillWidth: true
-                            theme: root.theme
-                            model: root.behaviorOptions
-                            labelFormatter: root.displayOption
-                            onActivated: {
-                                if (actionCombo.currentText === "Enable cursor movement"
-                                        && currentText === "Press") {
-                                    currentIndex = root.behaviorOptions.indexOf("Hold")
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 1
-                            Layout.topMargin: 3
-                            color: root.theme.borderSubtle
-                        }
-
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 10
                         RowLayout {
                             Layout.fillWidth: true
                             Text {
                                 Layout.fillWidth: true
-                                text: qsTr("Enabled")
+                                text: qsTr("Assigned actions")
                                 color: root.theme.textPrimary
                                 font.family: root.theme.fontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: 16
                                 font.weight: Font.DemiBold
                             }
-                            VcSwitch {
-                                id: enabledSwitch
+                            StatusBadge {
                                 theme: root.theme
-                                checked: false
+                                text: root.uiState.mappingIssues.length === 0 ? qsTr("No conflicts")
+                                    : qsTr("Issues: %1").arg(root.uiState.mappingIssues.length)
+                                kind: root.uiState.mappingIssues.length === 0 ? "success" : "warning"
                             }
                         }
-
                         Text {
                             Layout.fillWidth: true
-                            text: actionCombo.currentText === "Freeze cursor"
-                                ? (behaviorCombo.currentText === "Toggle"
-                                    ? qsTr("Toggle freezes/unfreezes cursor movement on each PRESS. Tracking continues in the background.")
-                                    : behaviorCombo.currentText === "Hold"
-                                        ? qsTr("Hold freezes cursor movement until RELEASE. You can reposition your hand without a cursor jump.")
-                                        : qsTr("Press freezes cursor movement for the PRESS frame only; Hold is recommended."))
-                                : actionCombo.currentText === "Enable cursor movement"
-                                    ? (behaviorCombo.currentText === "Toggle"
-                                        ? qsTr("Toggle: first PRESS enables cursor movement, the next PRESS disables it. Cursor movement is locked by default and only an active Enable cursor movement mapping can unlock it.")
-                                        : qsTr("Hold: cursor movement is enabled only while this gesture is held. Tracking continues while locked, so activating the gesture does not cause a cursor jump."))
-                                    : behaviorCombo.currentText === "Hold"
-                                        ? qsTr("Hold keeps the button/key down until RELEASE. Useful for pinch-drag.")
-                                        : behaviorCombo.currentText === "Toggle"
-                                            ? qsTr("Toggle flips the target state on every PRESS. F8 or disarm always releases it.")
-                                            : qsTr("Press generates a short one-shot action when PRESS is emitted.")
+                            visible: root.displayedRows.length === 0
+                            text: qsTr("No mappings for this gesture yet. Click Add mapping.")
                             color: root.theme.textMuted
-                            font.family: root.theme.fontFamily
-                            font.pixelSize: 9
+                            font.pixelSize: 12
                             wrapMode: Text.WordWrap
                         }
-
-                        Item { Layout.fillHeight: true }
-
-                        VcButton {
+                        ListView {
                             Layout.fillWidth: true
-                            theme: root.theme
-                            text: qsTr("Save mapping")
-                            iconName: "save"
-                            onClicked: root.uiState.updateMapping(
-                                root.selectedRow,
-                                handCombo.currentText,
-                                gestureCombo.currentText,
-                                actionCombo.currentText,
-                                behaviorCombo.currentText,
-                                enabledSwitch.checked)
-                        }
-
-                        VcButton {
-                            Layout.fillWidth: true
-                            theme: root.theme
-                            text: qsTr("Remove mapping")
-                            variant: "danger"
-                            onClicked: {
-                                const oldIndex = root.selectedRow
-                                root.uiState.removeMapping(oldIndex)
-                                root.selectedRow = Math.min(oldIndex, root.uiState.mappingRows.length - 1)
+                            Layout.fillHeight: true
+                            model: root.displayedRows
+                            clip: true
+                            spacing: 7
+                            delegate: Rectangle {
+                                id: mapCard
+                                required property var modelData
+                                width: ListView.view.width
+                                height: 72
+                                radius: root.theme.controlRadius
+                                color: root.selectedRow === modelData.realIndex
+                                    ? root.theme.accentSoft : root.theme.surfaceRaised
+                                border.width: 1
+                                border.color: root.selectedRow === modelData.realIndex
+                                    ? root.theme.accentDim : root.theme.borderSubtle
+                                opacity: modelData.mapping.enabled ? 1 : 0.65
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 11
+                                    spacing: 9
+                                    VcIcon {
+                                        name: "hand"
+                                        Layout.preferredWidth: 23
+                                        Layout.preferredHeight: 23
+                                        color: root.theme.accent
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 4
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: root.displayOption(mapCard.modelData.mapping.source) + "  /  "
+                                                + root.displayOption(mapCard.modelData.mapping.hand)
+                                            font.pixelSize: 12
+                                            font.weight: Font.DemiBold
+                                            color: root.theme.textPrimary
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: root.displayOption(mapCard.modelData.mapping.action) + "  -  "
+                                                + root.displayOption(mapCard.modelData.mapping.behavior)
+                                            font.pixelSize: 11
+                                            color: root.theme.textSecondary
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    StatusBadge {
+                                        theme: root.theme
+                                        text: mapCard.modelData.mapping.enabled ? qsTr("Enabled") : qsTr("Disabled")
+                                        kind: mapCard.modelData.mapping.enabled ? "success" : "neutral"
+                                    }
+                                    VcIcon {
+                                        name: "settings"
+                                        Layout.preferredWidth: 18
+                                        Layout.preferredHeight: 18
+                                        color: root.theme.textMuted
+                                    }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.openEditor(mapCard.modelData.realIndex)
+                                }
                             }
                         }
                     }
                 }
             }
+            DisclosurePanel {
+                Layout.fillWidth: true
+                Layout.leftMargin: root.theme.pageMargin
+                Layout.rightMargin: root.theme.pageMargin
+                theme: root.theme
+                title: qsTr("Mapping validation")
+                description: qsTr("Review conflicts before arming system input")
+                iconName: "info"
+                bodyHeight: 210
+                bodyComponent: Component {
+                    ScrollView {
+                        clip: true
+                        ColumnLayout {
+                            width: parent.width
+                            spacing: 8
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.uiState.mappingIssues.length === 0
+                                    ? qsTr("No mapping conflicts detected.")
+                                    : qsTr("Mapping issues found: %1").arg(root.uiState.mappingIssues.length)
+                                color: root.theme.textPrimary
+                                font.pixelSize: 12
+                            }
+                            Repeater {
+                                model: root.uiState.mappingIssues
+                                delegate: Text {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    text: root.issueDescription(modelData)
+                                    wrapMode: Text.WordWrap
+                                    font.pixelSize: 11
+                                    color: modelData.severity === "error" ? root.theme.error : root.theme.warning
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Item { Layout.preferredHeight: root.theme.pageMargin }
         }
     }
 
+    Popup {
+        id: editPopup
+        parent: Overlay.overlay
+        x: Math.max(8, parent.width - width - 15)
+        y: Math.max(12, (parent.height - height) / 2)
+        width: Math.min(415, parent.width - 24)
+        height: Math.min(670, parent.height - 24)
+        padding: 0
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onOpened: Qt.callLater(root.syncEditor)
+        background: Rectangle {
+            color: root.theme.surface
+            border.color: root.theme.borderStrong
+            radius: root.theme.cardRadius
+        }
+        contentItem: ColumnLayout {
+            spacing: 0
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 58
+                Layout.leftMargin: 16
+                Layout.rightMargin: 13
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("Edit mapping")
+                    color: root.theme.textPrimary
+                    font.family: root.theme.fontFamily
+                    font.pixelSize: 16
+                    font.weight: Font.DemiBold
+                }
+                VcIconButton {
+                    theme: root.theme
+                    iconName: "stop"
+                    onClicked: editPopup.close()
+                }
+            }
+            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: availableWidth
+                clip: true
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 10
+                    anchors.margins: 16
+                    Item { Layout.preferredHeight: 8 }
+                    Text { text: qsTr("Hand"); color: root.theme.textSecondary; font.pixelSize: 11 }
+                    VcComboBox { id: handCombo; Layout.fillWidth: true; theme: root.theme; model: root.handOptions; labelFormatter: root.displayOption }
+                    Text { text: qsTr("Gesture"); color: root.theme.textSecondary; font.pixelSize: 11 }
+                    VcComboBox { id: gestureCombo; Layout.fillWidth: true; theme: root.theme; model: root.gestureOptions; labelFormatter: root.displayOption }
+                    Text { text: qsTr("Action"); color: root.theme.textSecondary; font.pixelSize: 11 }
+                    VcComboBox { id: actionCombo; Layout.fillWidth: true; theme: root.theme; model: root.actionOptions; labelFormatter: root.displayOption }
+                    Text { text: qsTr("Behavior"); color: root.theme.textSecondary; font.pixelSize: 11 }
+                    VcComboBox { id: behaviorCombo; Layout.fillWidth: true; theme: root.theme; model: root.behaviorOptions; labelFormatter: root.displayOption }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Enabled")
+                            color: root.theme.textPrimary
+                            font.pixelSize: 12
+                        }
+                        VcSwitch { id: enabledSwitch; theme: root.theme; checked: false }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Mapping changes take effect after Save mapping.")
+                        color: root.theme.textMuted
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                    }
+                    Item { Layout.preferredHeight: 8 }
+                }
+            }
+            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 70
+                Layout.leftMargin: 11
+                Layout.rightMargin: 11
+                spacing: 8
+                VcButton {
+                    theme: root.theme
+                    text: qsTr("Remove")
+                    iconName: "trash"
+                    variant: "danger"
+                    enabled: root.selectedRow >= 0
+                    onClicked: {
+                        const index = root.selectedRow
+                        editPopup.close()
+                        root.uiState.removeMapping(index)
+                        root.selectedRow = Math.min(index, root.uiState.mappingRows.length - 1)
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                VcButton {
+                    theme: root.theme
+                    text: qsTr("Save mapping")
+                    iconName: "save"
+                    variant: "primary"
+                    enabled: root.selectedRow >= 0
+                    onClicked: {
+                        root.uiState.updateMapping(root.selectedRow, handCombo.currentText,
+                            gestureCombo.currentText, actionCombo.currentText,
+                            behaviorCombo.currentText, enabledSwitch.checked)
+                        editPopup.close()
+                    }
+                }
+            }
+        }
+    }
     Dialog {
         id: duplicateDialog
         parent: Overlay.overlay

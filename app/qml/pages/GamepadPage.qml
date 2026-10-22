@@ -1,5 +1,6 @@
 import VirtualController.I18n 1.0
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import "../components"
 
@@ -8,15 +9,35 @@ Item {
 
     required property QtObject theme
     required property QtObject uiState
+    property string controllerLayout: "xbox"
+
+    function playstationInputLabel(name) {
+        switch (name) {
+        case "A": return "Cross (×)"
+        case "B": return "Circle (○)"
+        case "X": return "Square (□)"
+        case "Y": return "Triangle (△)"
+        case "LB / RB": return "L1 / R1"
+        default: return name
+        }
+    }
 
     function localizedStatus(value) {
         LanguageManager.language
         return qsTr(value)
     }
 
-    ColumnLayout {
+    ScrollView {
+        id: gamepadScroll
         anchors.fill: parent
-        anchors.margins: root.theme.pageMargin
+        clip: true
+        contentWidth: availableWidth
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+    ColumnLayout {
+        width: Math.max(1, gamepadScroll.availableWidth - 2 * root.theme.pageMargin)
+        x: root.theme.pageMargin
+        y: root.theme.pageMargin
         spacing: 12
 
         PageToolbar {
@@ -24,14 +45,6 @@ Item {
             theme: root.theme
             title: qsTr("Gamepad Monitor")
             subtitle: qsTr("Live logical controller state. The virtual device backend will be connected in a later stage.")
-
-            VcComboBox {
-                theme: root.theme
-                model: [qsTr("Xbox layout"), qsTr("PlayStation layout (planned)")]
-                currentIndex: 0
-                implicitWidth: 190
-                enabled: false
-            }
 
             StatusBadge {
                 theme: root.theme
@@ -48,13 +61,38 @@ Item {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: 12
+            spacing: 8
+            VcButton {
+                theme: root.theme
+                text: "Xbox"
+                variant: root.controllerLayout === "xbox" ? "primary" : "secondary"
+                onClicked: root.controllerLayout = "xbox"
+            }
+            VcButton {
+                theme: root.theme
+                text: "PlayStation"
+                variant: root.controllerLayout === "playstation" ? "primary" : "secondary"
+                onClicked: root.controllerLayout = "playstation"
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Display layout only — no physical gamepad backend")
+                color: root.theme.textMuted
+                font.pixelSize: 11
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        GridLayout {
+            Layout.fillWidth: true
+            columns: width >= 1120 ? 2 : 1
+            columnSpacing: 12
+            rowSpacing: 12
 
             VcCard {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.minimumWidth: 620
+                Layout.preferredHeight: 570
+                Layout.minimumWidth: 0
                 theme: root.theme
 
                 ColumnLayout {
@@ -93,6 +131,7 @@ Item {
 
                             anchors.centerIn: parent
                             theme: root.theme
+                            controllerLayout: root.controllerLayout
 
                             readonly property real availableWidth: Math.max(0, gamepadArea.width - 20)
                             readonly property real availableHeight: Math.max(0, gamepadArea.height - 20)
@@ -106,13 +145,15 @@ Item {
                         }
                     }
 
-                    RowLayout {
+                    GridLayout {
                         Layout.fillWidth: true
                         Layout.leftMargin: 16
                         Layout.rightMargin: 16
                         Layout.bottomMargin: 16
-                        Layout.preferredHeight: 58
-                        spacing: 8
+                        columns: width >= 700 ? 4 : 2
+                        columnSpacing: 8
+                        rowSpacing: 8
+                        Layout.preferredHeight: columns === 4 ? 58 : 124
 
                         MetricTile {
                             Layout.fillWidth: true
@@ -121,7 +162,6 @@ Item {
                             value: root.uiState.leftStickValue
                             label: qsTr("Left Stick X / Y")
                         }
-
                         MetricTile {
                             Layout.fillWidth: true
                             theme: root.theme
@@ -129,23 +169,30 @@ Item {
                             value: root.uiState.rightStickValue
                             label: qsTr("Right Stick X / Y")
                         }
-
                         MetricTile {
                             Layout.fillWidth: true
                             theme: root.theme
                             iconName: "play"
-                            value: root.uiState.triggerValue
-                            label: qsTr("LT / RT")
+                            value: root.uiState.triggerValue.split("/")[0].trim()
+                            label: root.controllerLayout === "playstation" ? "L2" : "LT"
+                        }
+                        MetricTile {
+                            Layout.fillWidth: true
+                            theme: root.theme
+                            iconName: "play"
+                            value: root.uiState.triggerValue.split("/").length > 1
+                                   ? root.uiState.triggerValue.split("/")[1].trim() : "0.00"
+                            label: root.controllerLayout === "playstation" ? "R2" : "RT"
                         }
                     }
                 }
             }
 
             ColumnLayout {
-                Layout.preferredWidth: 320
-                Layout.minimumWidth: 300
-                Layout.maximumWidth: 360
-                Layout.fillHeight: true
+                Layout.fillWidth: true
+                Layout.preferredWidth: width >= 1120 ? 320 : 720
+                Layout.minimumWidth: 0
+                Layout.preferredHeight: 570
                 spacing: 12
 
                 VcCard {
@@ -187,7 +234,9 @@ Item {
 
                                     Text {
                                         Layout.fillWidth: true
-                                        text: modelData.keyName
+                                        text: root.controllerLayout === "playstation"
+                                            ? root.playstationInputLabel(modelData.keyName)
+                                            : modelData.keyName
                                         color: root.theme.textSecondary
                                         font.family: root.theme.fontFamily
                                         font.pixelSize: 11
@@ -248,16 +297,11 @@ Item {
                                 font.pixelSize: 10
                             }
 
-                            VcComboBox {
+                            Text {
                                 Layout.fillWidth: true
-                                theme: root.theme
-                                model: [
-                                    qsTr("Mock"),
-                                    qsTr("Xbox-compatible (planned)"),
-                                    qsTr("PlayStation (planned)")
-                                ]
-                                currentIndex: 0
-                                enabled: false
+                                text: qsTr("Mock backend — preview only")
+                                color: root.theme.textSecondary
+                                font.pixelSize: 12
                             }
 
                             Rectangle {
@@ -278,11 +322,7 @@ Item {
                                     wrapMode: Text.WordWrap
                                 }
 
-                                VcSwitch {
-                                    theme: root.theme
-                                    checked: true
-                                    enabled: false
-                                }
+
                             }
 
                             Text {
@@ -303,5 +343,6 @@ Item {
                 }
             }
         }
+    }
     }
 }

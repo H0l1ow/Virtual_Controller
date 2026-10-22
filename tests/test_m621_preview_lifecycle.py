@@ -35,7 +35,9 @@ class PreviewLifecycle(unittest.TestCase):
         self.assertIn('previewActive: window.currentPage === 5', main)
         self.assertIn('!window.presentationSuspended', main)
         self.assertIn('setMainWindowMinimized(presentationSuspended)', main)
-        self.assertIn('root.previewActive && root.visible ? videoOutput.videoSink : null', controller)
+        self.assertIn('const shouldAttach = root.previewActive && root.visible', controller)
+        self.assertIn('else if (root.sinkAttached)', controller)
+        self.assertIn('Qt.callLater(root.updatePreviewAttachment)', controller)
         self.assertIn('root.renderingPreview ? recordingVideo.videoSink : null', recording)
         self.assertIn('Component.onDestruction: {', recording)
 

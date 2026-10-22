@@ -4,6 +4,7 @@ Item {
     id: root
 
     required property QtObject theme
+    property string controllerLayout: "xbox" // visual labels only, not backend selection
 
     implicitWidth: 720
     implicitHeight: 440
@@ -71,46 +72,36 @@ Item {
         }
     }
 
-    // Shoulder buttons are deliberately kept inside the controller bounds.
-    Rectangle {
-        z: 1
-        width: 122 * root.scaleFactor
-        height: 30 * root.scaleFactor
-        x: root.width * 0.25 - width / 2
-        y: root.height * 0.245
-        radius: 7 * root.scaleFactor
-        color: root.theme.surfaceRaised
-        border.width: 1
-        border.color: root.theme.borderStrong
-
-        Text {
-            anchors.centerIn: parent
-            text: "LB"
-            color: root.theme.textMuted
-            font.family: root.theme.fontFamily
-            font.pixelSize: Math.max(8, 10 * root.scaleFactor)
-            font.weight: Font.DemiBold
-        }
-    }
-
-    Rectangle {
-        z: 1
-        width: 122 * root.scaleFactor
-        height: 30 * root.scaleFactor
-        x: root.width * 0.75 - width / 2
-        y: root.height * 0.245
-        radius: 7 * root.scaleFactor
-        color: root.theme.surfaceRaised
-        border.width: 1
-        border.color: root.theme.borderStrong
-
-        Text {
-            anchors.centerIn: parent
-            text: "RB"
-            color: root.theme.textMuted
-            font.family: root.theme.fontFamily
-            font.pixelSize: Math.max(8, 10 * root.scaleFactor)
-            font.weight: Font.DemiBold
+    // Each trigger and shoulder is an independent element. Do not combine
+    // LB/LT or L1/L2 into a single label: they are different inputs.
+    Repeater {
+        model: [
+            {side: 0.25, row: 0.10, xbox: "LT", playstation: "L2", trigger: true},
+            {side: 0.75, row: 0.10, xbox: "RT", playstation: "R2", trigger: true},
+            {side: 0.25, row: 0.195, xbox: "LB", playstation: "L1", trigger: false},
+            {side: 0.75, row: 0.195, xbox: "RB", playstation: "R1", trigger: false}
+        ]
+        delegate: Rectangle {
+            id: shoulder
+            required property var modelData
+            z: 3
+            width: (modelData.trigger ? 96 : 115) * root.scaleFactor
+            height: (modelData.trigger ? 28 : 27) * root.scaleFactor
+            x: root.width * modelData.side - width / 2
+            y: root.height * modelData.row
+            radius: 7 * root.scaleFactor
+            color: modelData.trigger ? root.theme.backgroundAlt : root.theme.surfaceRaised
+            border.width: 1
+            border.color: modelData.trigger ? root.theme.accentDim : root.theme.borderStrong
+            Text {
+                anchors.centerIn: parent
+                text: root.controllerLayout === "playstation"
+                    ? shoulder.modelData.playstation : shoulder.modelData.xbox
+                color: root.theme.textPrimary
+                font.family: root.theme.fontFamily
+                font.pixelSize: Math.max(9, 12 * root.scaleFactor)
+                font.weight: Font.DemiBold
+            }
         }
     }
 
@@ -169,6 +160,26 @@ Item {
         Component.onCompleted: requestPaint()
     }
 
+    // Individual D-pad directions remain legible at the supported scales.
+    Repeater {
+        model: [
+            {x: 0.250, y: 0.423, symbol: "↑"},
+            {x: 0.250, y: 0.557, symbol: "↓"},
+            {x: 0.209, y: 0.490, symbol: "←"},
+            {x: 0.291, y: 0.490, symbol: "→"}
+        ]
+        delegate: Text {
+            required property var modelData
+            z: 4
+            x: root.width * modelData.x - width / 2
+            y: root.height * modelData.y - height / 2
+            text: modelData.symbol
+            color: root.theme.textSecondary
+            font.pixelSize: Math.max(8, 15 * root.scaleFactor)
+            font.weight: Font.Bold
+        }
+    }
+
     Item {
         id: faceButtons
 
@@ -216,7 +227,9 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    text: modelData.title
+                    text: root.controllerLayout === "playstation"
+                        ? (modelData.title === "Y" ? "△" : modelData.title === "B" ? "○"
+                           : modelData.title === "A" ? "×" : "□") : modelData.title
                     color: root.theme.textPrimary
                     font.family: root.theme.fontFamily
                     font.pixelSize: Math.max(8, 11 * root.scaleFactor)
@@ -274,43 +287,82 @@ Item {
         }
     }
 
-    Row {
-        z: 3
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: root.height * 0.40
-        spacing: 14 * root.scaleFactor
-
-        Rectangle {
-            width: 30 * root.scaleFactor
-            height: 20 * root.scaleFactor
-            radius: 5 * root.scaleFactor
+    // Physical stick-clicks are shown separately from the analog knobs.
+    Repeater {
+        model: [
+            {x: 0.38, xbox: "LS", playstation: "L3"},
+            {x: 0.62, xbox: "RS", playstation: "R3"}
+        ]
+        delegate: Rectangle {
+            id: stickClick
+            required property var modelData
+            z: 4
+            width: 36 * root.scaleFactor
+            height: 19 * root.scaleFactor
+            radius: 6 * root.scaleFactor
+            x: root.width * modelData.x - width / 2
+            y: root.height * 0.795
             color: root.theme.surfaceRaised
             border.width: 1
-            border.color: root.theme.borderStrong
-
+            border.color: root.theme.accentDim
             Text {
                 anchors.centerIn: parent
-                text: "−"
-                color: root.theme.textMuted
-                font.family: root.theme.fontFamily
-                font.pixelSize: Math.max(8, 11 * root.scaleFactor)
+                text: root.controllerLayout === "playstation"
+                    ? stickClick.modelData.playstation : stickClick.modelData.xbox
+                color: root.theme.textPrimary
+                font.pixelSize: Math.max(8, 10 * root.scaleFactor)
+                font.weight: Font.DemiBold
             }
         }
+    }
 
-        Rectangle {
-            width: 30 * root.scaleFactor
-            height: 20 * root.scaleFactor
-            radius: 5 * root.scaleFactor
+    // PlayStation touchpad is a separate visual element; touch events have no
+    // live backend mapping yet and are not falsely animated as active.
+    Rectangle {
+        visible: root.controllerLayout === "playstation"
+        z: 2
+        x: root.width * 0.414
+        y: root.height * 0.278
+        width: root.width * 0.172
+        height: root.height * 0.085
+        radius: 6 * root.scaleFactor
+        color: root.theme.surfaceRaised
+        border.width: 1
+        border.color: root.theme.borderStrong
+        Text {
+            anchors.centerIn: parent
+            text: qsTr("Touchpad")
+            color: root.theme.textMuted
+            font.pixelSize: Math.max(8, 10 * root.scaleFactor)
+        }
+    }
+
+    Repeater {
+        model: [
+            {x: 0.385, xbox: "View", playstation: "Create"},
+            {x: 0.500, xbox: "Home", playstation: "PS"},
+            {x: 0.615, xbox: "Menu", playstation: "Options"}
+        ]
+        delegate: Rectangle {
+            id: centralButton
+            required property var modelData
+            z: 4
+            width: (modelData.x === 0.5 ? 55 : 65) * root.scaleFactor
+            height: 24 * root.scaleFactor
+            radius: 7 * root.scaleFactor
+            x: root.width * modelData.x - width / 2
+            y: root.height * 0.405
             color: root.theme.surfaceRaised
             border.width: 1
             border.color: root.theme.borderStrong
-
             Text {
                 anchors.centerIn: parent
-                text: "≡"
-                color: root.theme.textMuted
+                text: root.controllerLayout === "playstation"
+                    ? centralButton.modelData.playstation : centralButton.modelData.xbox
+                color: root.theme.textPrimary
                 font.family: root.theme.fontFamily
-                font.pixelSize: Math.max(8, 11 * root.scaleFactor)
+                font.pixelSize: Math.max(8, 9 * root.scaleFactor)
+                font.weight: Font.DemiBold
             }
         }
     }

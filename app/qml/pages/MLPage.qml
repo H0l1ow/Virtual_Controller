@@ -10,6 +10,12 @@ Item {
     required property QtObject theme
     required property QtObject uiState
     property bool previewActive: true
+    // The recording itself belongs to C++ and continues if this page is hidden;
+    // only optional offline help panels are released.
+    onPreviewActiveChanged: {
+        if (!previewActive && offlineTools)
+            offlineTools.expanded = false
+    }
 
     FileDialog {
         id: replayFileDialog
@@ -51,7 +57,7 @@ Item {
         PageToolbar {
             Layout.fillWidth: true
             theme: root.theme
-            title: qsTr("ML / Model")
+            title: qsTr("ML")
             subtitle: qsTr("ONNX inference, training data and offline model evaluation.")
             StatusBadge {
                 theme: root.theme
@@ -78,7 +84,7 @@ Item {
 
                 GridLayout {
                     Layout.fillWidth: true
-                    columns: root.width >= 1300 ? 2 : 1
+                    columns: 1
                     columnSpacing: 12
                     rowSpacing: 12
 
@@ -86,8 +92,8 @@ Item {
                         previewActive: root.previewActive
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
-                        Layout.columnSpan: root.width >= 1300 ? 2 : 1
-                        Layout.preferredHeight: root.width >= 1300 ? 580 : root.width >= 880 ? 640 : 940
+                        Layout.columnSpan: 1
+                        Layout.preferredHeight: root.width >= 880 ? 600 : 1050
                         theme: root.theme
                         uiState: root.uiState
                     }
@@ -95,8 +101,8 @@ Item {
                     RecordingFilesPanel {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
-                        Layout.columnSpan: root.width >= 1300 ? 2 : 1
-                        Layout.preferredHeight: 385
+                        Layout.columnSpan: 1
+                        Layout.preferredHeight: 335
                         theme: root.theme
                         uiState: root.uiState
                     }
@@ -104,78 +110,100 @@ Item {
                     VcCard {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
-                        Layout.preferredHeight: 380
+                        Layout.columnSpan: 1
+                        Layout.preferredHeight: root.width >= 900 ? 196 : 255
                         theme: root.theme
 
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: 16
-                            spacing: 10
-                            Text {
-                                font.family: root.theme.fontFamily
-                                text: qsTr("Recognition model")
-                                color: root.theme.textPrimary
-
-                                font.pixelSize: 17
-                                font.weight: Font.DemiBold
-                            }
-                            Text {
-                                font.family: root.theme.fontFamily
+                            anchors.margins: 15
+                            spacing: 8
+                            RowLayout {
                                 Layout.fillWidth: true
-                                text: qsTr("The runtime uses Rules unless a compatible ONNX TCN has been deployed.")
-                                wrapMode: Text.WordWrap
-                                color: root.theme.textMuted
-
-                                font.pixelSize: 11
-                            }
-                            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
-                            SettingsRow {
-                                Layout.fillWidth: true
-                                theme: root.theme
-                                title: qsTr("Recognition backend")
-                                description: root.uiState.gestureModelStatus
+                                spacing: 10
+                                VcIcon {
+                                    name: "ml"
+                                    color: root.theme.accent
+                                    Layout.preferredWidth: 28
+                                    Layout.preferredHeight: 28
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 3
+                                    Text {
+                                        text: qsTr("Recognition model")
+                                        color: root.theme.textPrimary
+                                        font.family: root.theme.fontFamily
+                                        font.pixelSize: 17
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: root.uiState.gestureModelStatus
+                                        color: root.theme.textMuted
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                    }
+                                }
                                 StatusBadge {
                                     theme: root.theme
                                     text: root.uiState.gestureBackendName
                                     kind: root.uiState.gestureModelActive ? "success" : "neutral"
                                 }
-                            }
-                            SettingsRow {
-                                Layout.fillWidth: true
-                                theme: root.theme
-                                title: qsTr("Gesture model")
-                                description: qsTr("Causal TCN exported to ONNX and executed by ONNX Runtime C++.")
-                                VcTextField {
+                                VcButton {
                                     theme: root.theme
-                                    text: "models/gesture_model.onnx"
-                                    readOnly: true
-                                    implicitWidth: 245
+                                    iconName: "reset"
+                                    text: qsTr("Reload model")
+                                    enabled: root.uiState.runtimeStateName === "Running"
+                                    onClicked: root.uiState.reloadGestureModel()
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 500
+                                    ToolTip.text: qsTr("Restart tracking and reload the model. Enabled system input pauses safely and resumes after tracking stabilizes.")
                                 }
+                            }
+                            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("Gesture model") + ": models/gesture_model.onnx"
+                                color: root.theme.textPrimary
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 12
+                                elide: Text.ElideMiddle
                             }
                             Text {
                                 Layout.fillWidth: true
                                 text: qsTr("Hand tracker") + ": models/hand_landmarker.task"
+                                color: root.theme.textSecondary
+                                font.family: root.theme.fontFamily
+                                font.pixelSize: 11
+                                elide: Text.ElideMiddle
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("The runtime uses Rules unless a compatible ONNX TCN has been deployed.")
+                                wrapMode: Text.WordWrap
                                 color: root.theme.textMuted
                                 font.family: root.theme.fontFamily
                                 font.pixelSize: 11
                             }
-                            SettingsRow {
-                                Layout.fillWidth: true
-                                theme: root.theme
-                                title: qsTr("Reload model")
-                                description: qsTr("Restart tracking and reload the model. Enabled system input pauses safely and resumes after tracking stabilizes.")
-                                VcButton {
-                                    theme: root.theme
-                                    iconName: "reset"
-                                    text: qsTr("Reload")
-                                    enabled: root.uiState.runtimeStateName === "Running"
-                                    onClicked: root.uiState.reloadGestureModel()
-                                }
-                            }
-                            Item { Layout.fillHeight: true }
                         }
                     }
 
+                    DisclosurePanel {
+                        id: offlineTools
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.columnSpan: 1
+                        theme: root.theme
+                        title: qsTr("Offline tools")
+                        description: qsTr("Gesture replay and local Python training instructions")
+                        iconName: "ml"
+                        bodyHeight: root.width >= 1100 ? 322 : 626
+                        bodyComponent: Component {
+                            GridLayout {
+                                columns: root.width >= 1100 ? 2 : 1
+                                columnSpacing: 12
+                                rowSpacing: 12
                     VcCard {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
@@ -251,7 +279,6 @@ Item {
                             Item { Layout.fillHeight: true }
                         }
                     }
-
                     VcCard {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
@@ -301,6 +328,10 @@ Item {
                             Item { Layout.fillHeight: true }
                         }
                     }
+                            }
+                        }
+                    }
+
                 }
                 Item { Layout.preferredHeight: 12 }
             }

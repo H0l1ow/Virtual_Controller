@@ -3,10 +3,6 @@ import QtQuick
 // Static UI catalog only. It deliberately contains no live runtime state so
 // the real UI no longer depends on UiMock just to obtain labels/demo rows.
 QtObject {
-    readonly property var profileNames: [
-        "Default", "Desktop", "Presentation", "Game"
-    ]
-
     readonly property var gestureHints: [
         { id: "right_hand_motion", gesture: "open", title: qsTr("Cursor Movement"), action: qsTr("Requires mapped enable gesture"), active: true },
         { id: "pinch", gesture: "pinch", title: qsTr("Pinch"), action: qsTr("Mapped action · see Mapping"), active: true },

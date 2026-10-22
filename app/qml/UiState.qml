@@ -69,7 +69,6 @@ QtObject {
     readonly property bool canDeleteActiveProfile: runtimeBackend.canDeleteActiveProfile
     readonly property string mappingProfileDirectory:
         runtimeBackend.mappingProfileDirectory
-    property string outputMode: "Mouse / Keyboard"
 
     // M2 continuous-control settings are owned by the C++ runtime so the UI
     // cannot drift away from the values actually used by cursor processing.

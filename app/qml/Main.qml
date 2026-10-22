@@ -13,9 +13,9 @@ ApplicationWindow {
 
     width: 1440
     height: 900
-    minimumWidth: 960
-    minimumHeight: 680
-    visibility: Window.FullScreen
+    minimumWidth: 780
+    minimumHeight: 520
+    visibility: Window.Maximized
     title: "Virtual Controller"
     color: theme.background
     flags: Qt.Window | Qt.FramelessWindowHint
@@ -40,6 +40,17 @@ ApplicationWindow {
         mockUi ? uiStateMock : runtimeUiState
 
     property int currentPage: 0
+    property bool sidebarCollapsed: false
+    property bool sidebarUserChoice: false
+    onWidthChanged: {
+        if (!sidebarUserChoice)
+            sidebarCollapsed = width < 1180
+    }
+    function selectPage(index) {
+        if (window.controllerFullscreen && index !== 0)
+            window.setControllerFullscreen(false)
+        window.currentPage = index
+    }
     // A window minimized by a gesture / Windows Show Desktop is NOT a user
     // request to stop tracking or disarm system output. Only its previews
     // should be detached. Keep PiP independent of the main window.
@@ -118,64 +129,73 @@ ApplicationWindow {
         border.color: theme.borderStrong
     }
 
-    ColumnLayout {
+    RowLayout {
         anchors.fill: parent
         anchors.margins: 1
         spacing: 0
 
-        AppTopBar {
-            Layout.fillWidth: true
-            Layout.preferredHeight: theme.topBarHeight
+        AppSideBar {
+            id: sideBar
+            visible: !window.controllerFullscreen
+            Layout.fillHeight: true
+            Layout.preferredWidth: implicitWidth
+            collapsed: window.sidebarCollapsed
             theme: theme
-            windowRef: window
+            uiState: window.uiState
             currentIndex: window.currentPage
-            onPageSelected: function(index) {
-                if (window.controllerFullscreen && index !== 0)
-                    window.setControllerFullscreen(false)
-                window.currentPage = index
+            onPageSelected: window.selectPage(index)
+            onCollapseToggled: {
+                window.sidebarUserChoice = true
+                window.sidebarCollapsed = !window.sidebarCollapsed
             }
         }
 
-        StackLayout {
+        ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: window.currentPage
+            spacing: 0
 
-            ControllerPage {
+            AppTopBar {
+                visible: !window.controllerFullscreen
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? 44 : 0
                 theme: theme
-                uiState: window.uiState
-                previewActive: window.currentPage === 0
-                               && !window.presentationSuspended
-                immersiveMode: window.controllerFullscreen
-                onImmersiveModeRequested: function(enabled) {
-                    window.setControllerFullscreen(enabled)
+                windowRef: window
+            }
+
+            StackLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                currentIndex: window.currentPage
+
+                ControllerPage {
+                    theme: theme
+                    uiState: window.uiState
+                    previewActive: window.currentPage === 0 && !window.presentationSuspended
+                    immersiveMode: window.controllerFullscreen
+                    onImmersiveModeRequested: function(enabled) {
+                        window.setControllerFullscreen(enabled)
+                    }
+                    onNavigateRequested: function(index) { window.selectPage(index) }
                 }
-            }
-            MappingPage {
-                theme: theme
-                uiState: window.uiState
-            }
-            GesturesPage {
-                theme: theme
-                uiState: window.uiState
-            }
-            TestPage {
-                theme: theme
-                uiState: window.uiState
-            }
-            GamepadPage {
-                theme: theme
-                uiState: window.uiState
-            }
-            MLPage {
-                theme: theme
-                uiState: window.uiState
-                previewActive: window.currentPage === 5
-                               && !window.presentationSuspended
-            }
-            SettingsPage {
-                theme: theme
-                uiState: window.uiState
+                MappingPage { theme: theme; uiState: window.uiState }
+                GesturesPage {
+                    theme: theme
+                    uiState: window.uiState
+                    previewActive: window.currentPage === 2 && !window.presentationSuspended
+                    onOpenDashboardRequested: {
+                        window.selectPage(0)
+                        window.setControllerFullscreen(true)
+                    }
+                }
+                TestPage { theme: theme; uiState: window.uiState }
+                GamepadPage { theme: theme; uiState: window.uiState }
+                MLPage {
+                    theme: theme
+                    uiState: window.uiState
+                    previewActive: window.currentPage === 5 && !window.presentationSuspended
+                }
+                SettingsPage { theme: theme; uiState: window.uiState }
             }
         }
     }

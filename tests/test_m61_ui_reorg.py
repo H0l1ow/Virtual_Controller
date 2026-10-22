@@ -14,16 +14,19 @@ def text(rel):
 class UiNavigationContracts(unittest.TestCase):
     def test_tabs_map_one_to_one_to_stack_pages(self):
         main = text('app/qml/Main.qml')
-        top = text('app/qml/components/AppTopBar.qml')
-        pages = re.findall(r'^            ([A-Za-z]+Page) \{', main, re.M)
-        tabs = re.findall(r'^            title: qsTr\("([^"]+)"\),', top, re.M)
+        side = text('app/qml/components/AppSideBar.qml')
+        pages = re.findall(r'\b(ControllerPage|MappingPage|GesturesPage|TestPage|GamepadPage|MLPage|SettingsPage)\s*\{', main)
         self.assertEqual(pages, [
             'ControllerPage', 'MappingPage', 'GesturesPage', 'TestPage',
             'GamepadPage', 'MLPage', 'SettingsPage'
         ])
-        self.assertEqual(tabs, ['Controller', 'Mapping', 'Gestures', 'Test', 'Gamepad', 'ML', 'Settings'])
+        for i in (0, 1, 2, 5, 6):
+            self.assertIn('page: '+str(i)+',', side)
+        self.assertIn('{ page: 3, title: qsTr("Test lab")', side)
+        self.assertIn('{ page: 4, title: qsTr("Gamepad monitor")', side)
         self.assertIn('currentIndex: window.currentPage', main)
-        self.assertIn('onClicked: root.pageSelected(index)', top)
+        self.assertIn('onPageSelected: window.selectPage(index)', main)
+        self.assertIn('onClicked: root.openPage(nav.modelData.page)', side)
 
     def test_ml_controls_exist_only_in_ml_page(self):
         ml = text('app/qml/pages/MLPage.qml')
@@ -67,7 +70,7 @@ class UiNavigationContracts(unittest.TestCase):
         self.assertIn('setGestureThreshold(thresholdSettingRow.modelData.code, value)', tuning)
         self.assertIn('setCooldownMs(parseInt(currentText))', tuning)
         self.assertIn('root.uiState.saveSettings()', gestures)
-        self.assertIn('onClicked: root.libraryFilter = modelData', gestures)
+        self.assertIn('onMoved: root.uiState.setGestureThreshold(gestureCard.modelData.code, value)', gestures)
 
     def test_performance_moved_to_test_and_pip_unchanged(self):
         test = text('app/qml/pages/TestPage.qml')
@@ -85,7 +88,7 @@ class UiNavigationContracts(unittest.TestCase):
         cmake = text('app/CMakeLists.txt')
         for name in ('MLPage.qml', 'GestureTuningPanel.qml', 'PerformancePanel.qml'):
             self.assertIn(name, cmake)
-        self.assertRegex(text('CMakeLists.txt'), r'project\(VirtualController VERSION 0\.14\.\d+ LANGUAGES CXX\)')
+        self.assertRegex(text('CMakeLists.txt'), r'project\(VirtualController VERSION 0\.(?:14|15)\.\d+ LANGUAGES CXX\)')
 
 
 if __name__ == '__main__':
