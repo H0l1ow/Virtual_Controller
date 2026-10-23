@@ -12,27 +12,51 @@ Item {
     property string gestureFilter: "ALL"
     readonly property var selectedMapping: selectedRow >= 0 && selectedRow < uiState.mappingRows.length
         ? uiState.mappingRows[selectedRow] : ({})
-    readonly property var handOptions: ["Left", "Right"]
-    readonly property var gestureOptions: ["PINCH", "FIST", "POINT", "OPEN HAND"]
+    property int editorTriggerMode: 0 // 0: single, 1: L+R; sequences are unavailable
+    readonly property var handOptions: ["Left", "Right", "Any"]
+    readonly property var gestureOptions: {
+        const registered = root.uiState.gestureCatalog || []
+        const available = registered.filter(g => g.available).map(g => g.id.replace(/_/g, " "))
+        return available.length > 0 ? available : ["PINCH", "FIST", "POINT", "OPEN HAND"]
+    }
     readonly property var behaviorOptions: ["Press", "Hold", "Toggle"]
     readonly property var actionOptions: [
         "Left click", "Right click", "Scroll up", "Scroll down", "Freeze cursor",
         "Enable cursor movement", "Key Space", "Key Enter", "Key Escape", "Key Tab",
         "Key Left", "Key Right", "Key Up", "Key Down", "Key Ctrl", "Key Shift", "Key Alt"
     ]
-    readonly property var filterOptions: [
-        {code: "ALL", title: qsTr("All gestures"), icon: "hand"},
-        {code: "OPEN HAND", title: qsTr("Open Hand"), icon: "open"},
-        {code: "POINT", title: qsTr("Point"), icon: "point"},
-        {code: "FIST", title: qsTr("Fist"), icon: "fist"},
-        {code: "PINCH", title: qsTr("Pinch"), icon: "pinch"}
-    ]
+    // Build the left filter from the recognizer's real catalog; with 12 static
+    // poses this area must scroll instead of clipping the bottom entries.
+    readonly property var filterOptions: {
+        const result = [
+            {code: "ALL", title: qsTr("All gestures"), icon: "open"},
+            {code: "COMBINATIONS", title: qsTr("Two-hand combinations"), icon: "two"}
+        ]
+        const entries = (root.uiState.gestureCatalog || []).filter(
+            item => item.category === "static" && item.available)
+        for (const entry of entries) {
+            const icon = entry.id === "FIST" ? "fist"
+                : entry.id === "OPEN_HAND" ? "open"
+                : entry.id === "POINT" ? "point"
+                : entry.id === "PINCH" ? "pinch"
+                : entry.id === "THUMBS_UP" ? "up"
+                : entry.id === "THUMBS_DOWN" ? "down"
+                : entry.id === "VICTORY" || entry.id === "ROCK" || entry.id === "CALL_ME" ? "two"
+                : entry.id === "OK" ? "pinch" : "open"
+            result.push({code: entry.id, title: root.displayOption(entry.title), icon: icon})
+        }
+        return result
+    }
     readonly property var displayedRows: {
         const rows = []
         const all = uiState.mappingRows || []
         for (let i = 0; i < all.length; ++i) {
-            if (gestureFilter === "ALL" || all[i].source === gestureFilter)
-                rows.push({mapping: all[i], realIndex: i})
+            const m = all[i]
+            if (gestureFilter === "ALL"
+                || (gestureFilter === "COMBINATIONS" && m.triggerType === "two_hand_combo")
+                || (gestureFilter !== "COMBINATIONS"
+                    && (m.gestureId === gestureFilter || m.rightGesture === gestureFilter)))
+                rows.push({mapping: m, realIndex: i})
         }
         return rows
     }
@@ -43,6 +67,15 @@ Item {
     function displayOption(text) {
         LanguageManager.language
         return qsTr(text || "")
+    }
+    function displayGestureOption(value) {
+        const id = String(value || "").replace(/ /g, "_")
+        const entry = (root.uiState.gestureCatalog || []).find(g => g.id === id)
+        return entry ? root.displayOption(entry.title) : root.displayOption(value)
+    }
+    function isExperimentalChoice(value) {
+        const id = String(value || "").replace(/ /g, "_")
+        return (root.uiState.gestureCatalog || []).some(g => g.id === id && g.experimental)
     }
     function issueDescription(issue) {
         LanguageManager.language
@@ -55,14 +88,26 @@ Item {
         case "cursor_gate_freeze": return qsTr("Cursor gating conflicts with freezing.")
         case "drag_exclusive": return qsTr("Cursor movement and drag cannot require different gestures on the same hand.")
         case "no_cursor_gate": return qsTr("No gesture unlocks cursor movement.")
+        case "combo_preempts_single": return qsTr("A two-hand combination takes priority over a single gesture.")
+        case "duplicate_combo": return qsTr("The same two-hand combination is mapped more than once.")
+        case "unavailable_gesture": return qsTr("This gesture is not available for recognition.")
+        case "invalid_combo_timing": return qsTr("Combination timing must be between 0 and 1500 ms.")
         default: return qsTr("Potential mapping conflict.")
         }
     }
     function syncEditor() {
         if (selectedRow < 0 || selectedRow >= uiState.mappingRows.length) return
         const m = uiState.mappingRows[selectedRow]
+        root.editorTriggerMode = m.triggerType === "two_hand_combo" ? 1 : 0
         handCombo.currentIndex = optionIndex(handOptions, m.hand || "Right", 1)
-        gestureCombo.currentIndex = optionIndex(gestureOptions, m.source || "PINCH", 0)
+        gestureCombo.currentIndex = optionIndex(gestureOptions,
+            (m.gestureId || "PINCH").replace(/_/g, " "), 0)
+        leftCombo.currentIndex = optionIndex(gestureOptions,
+            (m.leftGesture || "FIST").replace(/_/g, " "), 0)
+        rightCombo.currentIndex = optionIndex(gestureOptions,
+            (m.rightGesture || "FIST").replace(/_/g, " "), 0)
+        syncField.text = String(m.synchronizationMs === undefined ? 250 : m.synchronizationMs)
+        overlapField.text = String(m.overlapHoldMs === undefined ? 150 : m.overlapHoldMs)
         actionCombo.currentIndex = optionIndex(actionOptions, m.action || "Left click", 0)
         behaviorCombo.currentIndex = optionIndex(behaviorOptions, m.behavior || "Hold", 1)
         enabledSwitch.checked = m.enabled === true
@@ -227,51 +272,63 @@ Item {
                             font.pixelSize: 11
                             wrapMode: Text.WordWrap
                         }
-                        Repeater {
-                            model: root.filterOptions
-                            delegate: Rectangle {
-                                id: filterCard
-                                required property var modelData
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 67
-                                radius: root.theme.controlRadius
-                                color: root.gestureFilter === modelData.code
-                                    ? root.theme.accentSoft : root.theme.surfaceRaised
-                                border.width: 1
-                                border.color: root.gestureFilter === modelData.code
-                                    ? root.theme.accentDim : root.theme.borderSubtle
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 11
-                                    spacing: 10
-                                    GestureGlyph {
-                                        gesture: filterCard.modelData.code === "ALL" ? "open" : filterCard.modelData.icon
-                                        color: root.theme.accent
-                                        Layout.preferredWidth: 35
-                                        Layout.preferredHeight: 35
-                                    }
-                                    Text {
+                        ScrollView {
+                            id: filterScroll
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            contentWidth: availableWidth
+                            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                            ColumnLayout {
+                                width: Math.max(1, filterScroll.availableWidth - 5)
+                                spacing: 8
+                                Repeater {
+                                    model: root.filterOptions
+                                    delegate: Rectangle {
+                                        id: filterCard
+                                        required property var modelData
                                         Layout.fillWidth: true
-                                        text: filterCard.modelData.title
-                                        color: root.theme.textPrimary
-                                        font.family: root.theme.fontFamily
-                                        font.pixelSize: 13
-                                        font.weight: Font.DemiBold
+                                        Layout.preferredHeight: 52
+                                        radius: root.theme.controlRadius
+                                        color: root.gestureFilter === modelData.code
+                                            ? root.theme.accentSoft : root.theme.surfaceRaised
+                                        border.width: 1
+                                        border.color: root.gestureFilter === modelData.code
+                                            ? root.theme.accentDim : root.theme.borderSubtle
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 10
+                                            spacing: 9
+                                            GestureGlyph {
+                                                gesture: filterCard.modelData.icon
+                                                color: root.theme.accent
+                                                Layout.preferredWidth: 30
+                                                Layout.preferredHeight: 30
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: filterCard.modelData.title
+                                                color: root.theme.textPrimary
+                                                font.family: root.theme.fontFamily
+                                                font.pixelSize: 12
+                                                font.weight: Font.DemiBold
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                text: root.gestureFilter === filterCard.modelData.code ? "\u2713" : ">"
+                                                color: root.theme.accent
+                                                font.pixelSize: 16
+                                            }
+                                        }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.gestureFilter = filterCard.modelData.code
+                                        }
                                     }
-                                    Text {
-                                        text: root.gestureFilter === filterCard.modelData.code ? "\u2713" : ">"
-                                        color: root.theme.accent
-                                        font.pixelSize: 16
-                                    }
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.gestureFilter = filterCard.modelData.code
                                 }
                             }
                         }
-                        Item { Layout.fillHeight: true }
                     }
                 }
                 VcCard {
@@ -342,8 +399,10 @@ Item {
                                         spacing: 4
                                         Text {
                                             Layout.fillWidth: true
-                                            text: root.displayOption(mapCard.modelData.mapping.source) + "  /  "
-                                                + root.displayOption(mapCard.modelData.mapping.hand)
+                                            text: mapCard.modelData.mapping.triggerType === "two_hand_combo"
+                                                ? mapCard.modelData.mapping.source
+                                                : root.displayOption(mapCard.modelData.mapping.source) + "  /  "
+                                                    + root.displayOption(mapCard.modelData.mapping.hand)
                                             font.pixelSize: 12
                                             font.weight: Font.DemiBold
                                             color: root.theme.textPrimary
@@ -428,7 +487,7 @@ Item {
         x: Math.max(8, parent.width - width - 15)
         y: Math.max(12, (parent.height - height) / 2)
         width: Math.min(415, parent.width - 24)
-        height: Math.min(670, parent.height - 24)
+        height: Math.min(710, parent.height - 24)
         padding: 0
         modal: true
         focus: true
@@ -444,8 +503,8 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 58
-                Layout.leftMargin: 16
-                Layout.rightMargin: 13
+                Layout.leftMargin: 20
+                Layout.rightMargin: 20
                 Text {
                     Layout.fillWidth: true
                     text: qsTr("Edit mapping")
@@ -462,19 +521,166 @@ Item {
             }
             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: root.theme.borderSubtle }
             ScrollView {
+                id: editorScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 contentWidth: availableWidth
                 clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
                 ColumnLayout {
-                    width: parent.width
-                    spacing: 10
-                    anchors.margins: 16
-                    Item { Layout.preferredHeight: 8 }
-                    Text { text: qsTr("Hand"); color: root.theme.textSecondary; font.pixelSize: 11 }
-                    VcComboBox { id: handCombo; Layout.fillWidth: true; theme: root.theme; model: root.handOptions; labelFormatter: root.displayOption }
-                    Text { text: qsTr("Gesture"); color: root.theme.textSecondary; font.pixelSize: 11 }
-                    VcComboBox { id: gestureCombo; Layout.fillWidth: true; theme: root.theme; model: root.gestureOptions; labelFormatter: root.displayOption }
+                    // Explicit geometry: anchors.margins on a non-anchored
+                    // ColumnLayout was ignored and controls touched the frame.
+                    x: 20
+                    width: Math.max(1, editorScroll.availableWidth - 40)
+                    spacing: 11
+                    Item { Layout.preferredHeight: 10 }
+                    Text {
+                        text: qsTr("Trigger type")
+                        color: root.theme.textSecondary
+                        font.pixelSize: 11
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        VcButton {
+                            theme: root.theme
+                            Layout.fillWidth: true
+                            text: qsTr("Single gesture")
+                            variant: root.editorTriggerMode === 0 ? "primary" : "secondary"
+                            onClicked: root.editorTriggerMode = 0
+                        }
+                        VcButton {
+                            theme: root.theme
+                            Layout.fillWidth: true
+                            text: qsTr("Both hands")
+                            variant: root.editorTriggerMode === 1 ? "primary" : "secondary"
+                            onClicked: root.editorTriggerMode = 1
+                        }
+                    }
+                    Text {
+                        text: qsTr("Gesture sequence (planned)")
+                        color: root.theme.textMuted
+                        font.pixelSize: 11
+                        opacity: 0.65
+                    }
+                    Text {
+                        visible: root.editorTriggerMode === 0
+                        text: qsTr("Hand")
+                        color: root.theme.textSecondary
+                        font.pixelSize: 11
+                    }
+                    VcComboBox {
+                        id: handCombo
+                        visible: root.editorTriggerMode === 0
+                        Layout.fillWidth: true
+                        theme: root.theme
+                        model: root.handOptions
+                        labelFormatter: root.displayOption
+                    }
+                    Text {
+                        visible: root.editorTriggerMode === 0
+                        text: qsTr("Gesture")
+                        color: root.theme.textSecondary
+                        font.pixelSize: 11
+                    }
+                    VcComboBox {
+                        id: gestureCombo
+                        visible: root.editorTriggerMode === 0
+                        Layout.fillWidth: true
+                        theme: root.theme
+                        model: root.gestureOptions
+                        labelFormatter: root.displayGestureOption
+                    }
+                    GridLayout {
+                        visible: root.editorTriggerMode === 1
+                        Layout.fillWidth: true
+                        columns: width >= 300 ? 2 : 1
+                        columnSpacing: 8
+                        rowSpacing: 6
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+                            Text { text: qsTr("Left hand gesture"); color: root.theme.textSecondary; font.pixelSize: 11 }
+                            VcComboBox {
+                                id: leftCombo
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                model: root.gestureOptions
+                                labelFormatter: root.displayGestureOption
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+                            Text { text: qsTr("Right hand gesture"); color: root.theme.textSecondary; font.pixelSize: 11 }
+                            VcComboBox {
+                                id: rightCombo
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                model: root.gestureOptions
+                                labelFormatter: root.displayGestureOption
+                            }
+                        }
+                    }
+                    Text {
+                        visible: root.editorTriggerMode === 1
+                        Layout.fillWidth: true
+                        text: qsTr("Combination timing (ms)")
+                        color: root.theme.textSecondary
+                        font.pixelSize: 11
+                    }
+                    GridLayout {
+                        visible: root.editorTriggerMode === 1
+                        Layout.fillWidth: true
+                        columns: width >= 300 ? 2 : 1
+                        columnSpacing: 8
+                        rowSpacing: 8
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+                            Text {
+                                text: qsTr("Sync window")
+                                font.pixelSize: 11
+                                color: root.theme.textMuted
+                            }
+                            VcTextField {
+                                id: syncField
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                text: "250"
+                                inputMethodHints: Qt.ImhDigitsOnly
+                                validator: IntValidator { bottom: 0; top: 1500 }
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+                            Text {
+                                text: qsTr("Overlap hold")
+                                font.pixelSize: 11
+                                color: root.theme.textMuted
+                            }
+                            VcTextField {
+                                id: overlapField
+                                Layout.fillWidth: true
+                                theme: root.theme
+                                text: "150"
+                                inputMethodHints: Qt.ImhDigitsOnly
+                                validator: IntValidator { bottom: 0; top: 1500 }
+                            }
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.editorTriggerMode === 0
+                            ? root.isExperimentalChoice(gestureCombo.currentText)
+                            : (root.isExperimentalChoice(leftCombo.currentText)
+                                || root.isExperimentalChoice(rightCombo.currentText))
+                        text: qsTr("Experimental recognition uses landmark rules; test reliability before assigning system input.")
+                        color: root.theme.warning
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 11
+                    }
                     Text { text: qsTr("Action"); color: root.theme.textSecondary; font.pixelSize: 11 }
                     VcComboBox { id: actionCombo; Layout.fillWidth: true; theme: root.theme; model: root.actionOptions; labelFormatter: root.displayOption }
                     Text { text: qsTr("Behavior"); color: root.theme.textSecondary; font.pixelSize: 11 }
@@ -503,8 +709,8 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 70
-                Layout.leftMargin: 11
-                Layout.rightMargin: 11
+                Layout.leftMargin: 20
+                Layout.rightMargin: 20
                 spacing: 8
                 VcButton {
                     theme: root.theme
@@ -527,10 +733,15 @@ Item {
                     variant: "primary"
                     enabled: root.selectedRow >= 0
                     onClicked: {
-                        root.uiState.updateMapping(root.selectedRow, handCombo.currentText,
-                            gestureCombo.currentText, actionCombo.currentText,
-                            behaviorCombo.currentText, enabledSwitch.checked)
-                        editPopup.close()
+                        if (syncField.text.length === 0 || overlapField.text.length === 0)
+                            return
+                        const ok = root.uiState.updateTriggerMapping(root.selectedRow,
+                            root.editorTriggerMode === 1 ? "two_hand_combo" : "single",
+                            handCombo.currentText, gestureCombo.currentText,
+                            leftCombo.currentText, rightCombo.currentText,
+                            actionCombo.currentText, behaviorCombo.currentText,
+                            enabledSwitch.checked, Number(syncField.text), Number(overlapField.text))
+                        if (ok) editPopup.close()
                     }
                 }
             }

@@ -189,7 +189,7 @@ ApplicationWindow {
                     }
                 }
                 TestPage { theme: theme; uiState: window.uiState }
-                GamepadPage { theme: theme; uiState: window.uiState }
+                GamepadPage { theme: theme; uiState: window.uiState; mockData: window.mockUi }
                 MLPage {
                     theme: theme
                     uiState: window.uiState

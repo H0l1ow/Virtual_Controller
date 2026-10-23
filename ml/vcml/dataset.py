@@ -73,11 +73,18 @@ def session_windows(path: Path, session: str, subject: str) -> list[Sample]:
     for frame in read_frames(path):
         for side, hand in enumerate(frame['hands']):
             label = hand['label']
+            if label not in LABELS and label != 'UNLABELED':
+                raise ValueError(
+                    f'{path}: {label} was recorded for a future 13-class model, '
+                    'but the current dataset builder only supports the fixed '
+                    'five-class ONNX contract. Separate or archive extended '
+                    'sessions until the versioned 13-class trainer is available.'
+                )
             track = hand['track_id'] if hand['tracked'] else 0
             ts = frame['timestamp_us']
             g = geometry({'tracked': hand['tracked'], 'landmarks': hand['landmarks'],
                           'side': 'left' if side == 0 else 'right',
-                          'handedness_confidence': hand['handedness_confidence']},
+                          'handedness_confidence': hand.get('handedness_confidence', 0.0)},
                          frame['width'], frame['height']) if hand['tracked'] else None
             valid = track > 0 and label in LABELS and label != 'UNLABELED' and g is not None and g.valid
             reset = (not valid or label != previous_label[side] or track != previous_track[side]
@@ -95,7 +102,7 @@ def session_windows(path: Path, session: str, subject: str) -> list[Sample]:
             hand_record = {
                 'tracked': True, 'landmarks': hand['landmarks'],
                 'side': 'left' if side == 0 else 'right',
-                'handedness_confidence': hand['handedness_confidence'],
+                'handedness_confidence': hand.get('handedness_confidence', 0.0),
             }
             windows = streams[side].push(hand_record, frame['width'], frame['height'], ts)
             raw = rule_scores(g)

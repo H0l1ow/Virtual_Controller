@@ -95,8 +95,23 @@ void trackerIdentityAndTemporalGate()
     assert(!c.capturing());
 }
 
+void ignoreExperimentalPoseDuringLegacyCalibration()
+{
+    GestureCalibrator c;
+    c.start(HandSide::Right, GestureClass::Fist);
+    auto simulated = frame(0, HandSide::Right, GestureClass::Fist, .95F, .1F);
+    simulated.hands[handIndex(HandSide::Right)].gesture = GestureClass::ThumbsUp;
+    c.ingest(simulated);
+    assert(c.sampleCount() == 0);
+    c.cancel();
+    c.start(HandSide::Right, GestureClass::ThumbsUp);
+    assert(!c.capturing()); // no per-class calibrator for experimental poses
+    assert(c.suggestedThreshold(GestureClass::ThumbsUp) == -1);
+}
+
 int main()
 {
+    ignoreExperimentalPoseDuringLegacyCalibration();
     thresholds();
     goodSamplesAndBothHands();
     rejectAmbiguousAndWeak();

@@ -24,7 +24,12 @@ VcCard {
     }
 
     onRenderingPreviewChanged: updatePreviewAttachment()
-    readonly property var recordingLabels: ["UNLABELED", "NONE", "FIST", "OPEN_HAND", "POINT", "PINCH"]
+    // Reuse the runtime registry instead of maintaining a second hardcoded
+    // gesture list. Capturing samples does not enable an ONNX model for them.
+    readonly property var recordingLabels: ["UNLABELED", "NONE"].concat(
+        (root.uiState.gestureCatalog || [])
+            .filter(entry => entry.category === "static" && entry.available)
+            .map(entry => entry.id))
     readonly property var quality: uiState.recordingQuality
     readonly property var leftQuality: quality.left || {labelled: false, usable: 0, missing: 0, percent: 0, trackedPercent: 0}
     readonly property var rightQuality: quality.right || {labelled: false, usable: 0, missing: 0, percent: 0, trackedPercent: 0}
@@ -117,7 +122,7 @@ VcCard {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("FIST = closed hand; OPEN_HAND = open palm; POINT = index finger; PINCH = thumb touching index finger; NONE = tracked hand in a neutral pose. Ignore = do not use this hand for training.")
+                    text: qsTr("Choose one of the 12 static poses or NONE (neutral hand). Record multiple angles, distances and sessions; UNLABELED ignores that hand. New pose samples are for future 13-class training, not the current 5-class ONNX trainer.")
                     wrapMode: Text.WordWrap
                     color: root.theme.textMuted
                     font.pixelSize: 11

@@ -44,7 +44,7 @@ Item {
         }
     }
     onPreviewActiveChanged: {
-        if (!previewActive) { advancedDrawer.close(); eventsDrawer.close() }
+        if (!previewActive) { advancedDrawer.close(); eventsDrawer.close(); gestureDrawer.close() }
     }
     function setVisibilityOption(key, visible) {
         switch(key) {
@@ -74,6 +74,7 @@ Item {
         }
         uiOptionsOpen = false
         advancedDrawer.close()
+        gestureDrawer.close()
     }
 
     // Dashboard is a single viewport: no vertical or nested scrollbars.
@@ -127,7 +128,7 @@ Item {
                 theme: root.theme
                 iconName: "hand"
                 text: qsTr("Gestures & calibration")
-                onClicked: root.navigateRequested(2)
+                onClicked: gestureDrawer.open()
             }
             VcButton {
                 Layout.fillWidth: true
@@ -146,6 +147,16 @@ Item {
                 onClicked: eventsDrawer.open()
             }
         }
+    }
+
+    DashboardGestureDrawer {
+        id: gestureDrawer
+        parent: Overlay.overlay
+        width: Math.min(418, root.width * 0.85)
+        height: parent ? parent.height : root.height
+        theme: root.theme
+        uiState: root.uiState
+        onFullSettingsRequested: root.navigateRequested(2)
     }
 
     // Session history is still available without consuming permanent camera

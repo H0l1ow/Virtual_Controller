@@ -48,6 +48,9 @@ qt_add_executable(
     src/control/ContinuousControlInterpreter.cpp
 
     src/gestures/GestureTypes.hpp
+    src/gestures/GestureRegistry.hpp
+    src/gestures/TriggerCombinationEngine.hpp
+    src/gestures/TriggerCombinationEngine.cpp
     src/gestures/AsyncJsonlWriter.hpp
     src/gestures/AsyncJsonlWriter.cpp
     src/gestures/GestureDataRecorder.hpp
@@ -63,6 +66,7 @@ qt_add_executable(
     src/gestures/HandFeatures.cpp
     src/gestures/GestureEngine.hpp
     src/gestures/GestureEngine.cpp
+    src/gestures/ExperimentalStaticRecognizer.cpp
     src/gestures/GestureStateManager.hpp
     src/gestures/GestureStateManager.cpp
     src/gestures/OnnxGestureRecognizer.hpp
@@ -164,6 +168,7 @@ qt_add_resources(
         qml/components/AppTopBar.qml
         qml/components/AppSideBar.qml
         qml/components/DashboardSidePanel.qml
+        qml/components/DashboardGestureDrawer.qml
         qml/components/DisclosurePanel.qml
         qml/components/CameraStage.qml
         qml/components/CalibrationPanel.qml

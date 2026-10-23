@@ -8,7 +8,7 @@ namespace vc {
 void GestureCalibrator::start(HandSide side, GestureClass gesture)
 {
     cancel();
-    if (gesture == GestureClass::None)
+    if (gesture == GestureClass::None || gestureIndex(gesture) >= kGestureClassCount)
         return;
     side_ = side;
     gesture_ = gesture;
@@ -41,6 +41,10 @@ void GestureCalibrator::ingest(const GestureFrame &frame)
 
     const auto &p = frame.hands[handIndex(side_)];
     if (!p.tracked || !p.geometryValid || !p.ready || !p.trackId)
+        return;
+    // Prevent a THUMBS_UP pose (which still has a high legacy FIST score)
+    // from contaminating a five-class threshold calibration session.
+    if (gestureIndex(p.gesture) >= kGestureClassCount)
         return;
 
     // Do not combine measurements from two different tracked identities.
@@ -114,11 +118,15 @@ void GestureCalibrator::finalize()
 GestureCalibrator::Result GestureCalibrator::result(
     HandSide side, GestureClass gesture) const
 {
+    if (gestureIndex(gesture) >= kGestureClassCount)
+        return {};
     return results_[handIndex(side)][gestureIndex(gesture)];
 }
 
 int GestureCalibrator::suggestedThreshold(GestureClass gesture) const
 {
+    if (gestureIndex(gesture) >= kGestureClassCount)
+        return -1;
     int candidate = -1;
     for (std::size_t side = 0; side < kHandCount; ++side) {
         const auto &r = results_[side][gestureIndex(gesture)];

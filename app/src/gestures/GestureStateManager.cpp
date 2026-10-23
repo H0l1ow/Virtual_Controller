@@ -76,15 +76,49 @@ GestureEvent GestureStateManager::updateHand(
     }
     state.trackId = identity;
 
+    // Deliberately ambiguous/unstable recognition is not a tracking dropout.
+    // A held key/button from the preceding pose must not remain pressed while
+    // the new pose is being disambiguated. Fail closed immediately.
+    if (prediction.ready
+        && (prediction.decision == GestureDecision::Ambiguous
+            || prediction.decision == GestureDecision::PoseStabilizing)) {
+        if (state.active != GestureClass::None) {
+            event.gesture = state.active;
+            event.phase = GestureEventPhase::Release;
+            event.trackId = identity;
+            state.cooldownUntilUs = timestampUs
+                + static_cast<std::int64_t>(std::max(config.cooldownMs, 0)) * 1000;
+        }
+        state.active = GestureClass::None;
+        state.candidate = GestureClass::None;
+        state.candidateSinceUs = 0;
+        state.mismatchSinceUs = 0;
+        state.blockedUntilReleaseObserved = false;
+        state.blockedGesture = GestureClass::None;
+        // Do not restart cooldown every unstable frame. It begins at the
+        // actual RELEASE; otherwise a valid new pose could never stabilize
+        // promptly when the user spends time forming it.
+        return event;
+    }
+
     if (state.active != GestureClass::None) {
         const bool sameGesture = prediction.ready
             && observed == state.active;
         const float exitThreshold =
             static_cast<float>(std::clamp(config.releaseThresholdPercent, 0, 100))
             / 100.0F;
+        // Experimental poses have separate smoothed rules scores and can
+        // use the same exit hysteresis without indexing the ONNX score vector.
+        const auto activeIndex = gestureIndex(state.active);
+        float fallbackScore = 0.0F;
+        if (activeIndex < prediction.scores.size())
+            fallbackScore = prediction.scores[activeIndex];
+        else if (activeIndex < kStaticGestureCount)
+            fallbackScore = prediction.experimentalScores[
+                activeIndex - kGestureClassCount];
         const bool stillSupported = prediction.ready
             && observed == GestureClass::None
-            && prediction.scores[gestureIndex(state.active)] >= exitThreshold;
+            && fallbackScore >= exitThreshold;
 
         if (sameGesture || stillSupported) {
             state.mismatchSinceUs = 0;
@@ -92,7 +126,7 @@ GestureEvent GestureStateManager::updateHand(
             event.phase = GestureEventPhase::Hold;
             event.confidence = sameGesture
                 ? prediction.confidence
-                : prediction.scores[gestureIndex(state.active)];
+                : fallbackScore;
             event.trackId = identity;
             return event;
         }
@@ -106,7 +140,7 @@ GestureEvent GestureStateManager::updateHand(
         if (timestampUs - state.mismatchSinceUs < graceUs) {
             event.gesture = state.active;
             event.phase = GestureEventPhase::Hold;
-            event.confidence = prediction.scores[gestureIndex(state.active)];
+            event.confidence = fallbackScore;
             event.trackId = identity;
             return event;
         }

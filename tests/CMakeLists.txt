@@ -123,6 +123,7 @@ add_executable(
     GestureRecognitionTests.cpp
     ../app/src/gestures/HandFeatures.cpp
     ../app/src/gestures/GestureEngine.cpp
+    ../app/src/gestures/ExperimentalStaticRecognizer.cpp
 )
 
 target_include_directories(
@@ -292,3 +293,39 @@ target_include_directories(vc_async_jsonl_writer_tests PRIVATE ${CMAKE_SOURCE_DI
 target_compile_features(vc_async_jsonl_writer_tests PRIVATE cxx_std_20)
 target_link_libraries(vc_async_jsonl_writer_tests PRIVATE Threads::Threads)
 add_test(NAME vc_async_jsonl_writer_tests COMMAND vc_async_jsonl_writer_tests)
+
+# M6.4.1: deterministic two-hand arbitration and output safety (no Qt).
+add_executable(vc_trigger_combination_tests
+    TriggerCombinationTests.cpp
+    ../app/src/gestures/TriggerCombinationEngine.cpp
+    ../app/src/mapping/ActionMapper.cpp
+)
+target_include_directories(vc_trigger_combination_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
+target_compile_features(vc_trigger_combination_tests PRIVATE cxx_std_20)
+add_test(NAME vc_trigger_combination_tests COMMAND vc_trigger_combination_tests)
+
+# Profile migrations and atomic backups depend on QtCore only. These tests
+# run in a Windows/Qt Creator build; the Linux headless suite remains Qt-free.
+if(TARGET Qt6::Core)
+    add_executable(vc_profile_migration_tests
+        ProfileMigrationTests.cpp
+        ../app/src/mapping/ProfileStore.cpp
+    )
+    target_include_directories(vc_profile_migration_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
+    target_compile_features(vc_profile_migration_tests PRIVATE cxx_std_20)
+    target_link_libraries(vc_profile_migration_tests PRIVATE Qt6::Core)
+    add_test(NAME vc_profile_migration_tests COMMAND vc_profile_migration_tests)
+endif()
+
+# M6.4.2: deterministic two-hand-safe experimental landmark poses. These
+# tests intentionally have no Qt or ONNX dependency.
+add_executable(vc_experimental_static_gesture_tests
+    ExperimentalStaticGestureTests.cpp
+    ../app/src/gestures/ExperimentalStaticRecognizer.cpp
+    ../app/src/gestures/GestureEngine.cpp
+    ../app/src/gestures/HandFeatures.cpp
+    ../app/src/gestures/GestureStateManager.cpp
+)
+target_include_directories(vc_experimental_static_gesture_tests PRIVATE ${CMAKE_SOURCE_DIR}/app/src)
+target_compile_features(vc_experimental_static_gesture_tests PRIVATE cxx_std_20)
+add_test(NAME vc_experimental_static_gesture_tests COMMAND vc_experimental_static_gesture_tests)

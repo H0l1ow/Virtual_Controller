@@ -63,11 +63,11 @@ ComboBox {
     popup: Popup {
         y: root.height
         width: root.width
-        implicitHeight: contentItem.implicitHeight
+        implicitHeight: Math.min(300, contentItem.implicitHeight + 2)
         padding: 1
         contentItem: ListView {
             clip: true
-            implicitHeight: contentHeight
+            implicitHeight: Math.min(296, contentHeight)
             model: root.popup.visible ? root.delegateModel : null
             currentIndex: root.highlightedIndex
             ScrollIndicator.vertical: ScrollIndicator {

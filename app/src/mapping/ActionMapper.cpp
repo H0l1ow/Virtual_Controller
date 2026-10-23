@@ -50,52 +50,93 @@ ControllerState ActionMapper::apply(
     const GestureEventFrame &events,
     ControllerState baseState)
 {
-    for (std::size_t handIndexValue = 0;
-         handIndexValue < kHandCount;
-         ++handIndexValue) {
-        const HandSide hand = handIndexValue == handIndex(HandSide::Left)
-            ? HandSide::Left
-            : HandSide::Right;
-        const auto &event = events.hands[handIndexValue];
-        if (events.hasTrackingStatus) {
-            const auto id = events.tracked[handIndexValue]
-                ? events.trackIds[handIndexValue] : 0;
-            if (id == 0 || (trackIds_[handIndexValue] != 0
-                              && trackIds_[handIndexValue] != id)) {
-                neutralizeHand(hand);
-            }
-            trackIds_[handIndexValue] = id;
+    ResolvedTriggerFrame resolved;
+    resolved.timestampUs = events.timestampUs;
+    resolved.hasTrackingStatus = events.hasTrackingStatus;
+    resolved.tracked = events.tracked;
+    resolved.trackIds = events.trackIds;
+    for (std::size_t i = 0; i < kHandCount; ++i) {
+        const auto &event = events.hands[i];
+        if (event.phase != GestureEventPhase::None) {
+            resolved.triggers.push_back({TriggerKind::Single, event.phase,
+                i == handIndex(HandSide::Left) ? HandSide::Left : HandSide::Right,
+                event.gesture, {}, event.trackId});
         }
+    }
+    return applyResolved(resolved, std::move(baseState));
+}
 
-        for (const auto &rule : mappings_) {
-            if (!rule.enabled || !matches(rule, hand, event)) {
-                continue;
+ControllerState ActionMapper::applyResolved(
+    const ResolvedTriggerFrame &events,
+    ControllerState baseState)
+{
+    // Safety first: invalidate latched inputs before any new event on this frame.
+    if (events.hasTrackingStatus) {
+        for (std::size_t i = 0; i < kHandCount; ++i) {
+            const HandSide side = i == handIndex(HandSide::Left)
+                ? HandSide::Left : HandSide::Right;
+            const auto id = events.tracked[i] ? events.trackIds[i] : 0;
+            if (id == 0 || (trackIds_[i] != 0 && trackIds_[i] != id))
+                neutralizeHand(side);
+            trackIds_[i] = id;
+        }
+        for (auto it = comboTrackIds_.begin(); it != comboTrackIds_.end();) {
+            const auto &ids = it->second;
+            if (ids[0] != events.trackIds[0] || ids[1] != events.trackIds[1]
+                || !events.tracked[0] || !events.tracked[1]) {
+                held_.erase(it->first);
+                toggled_.erase(it->first);
+                it = comboTrackIds_.erase(it);
+            } else {
+                ++it;
             }
+        }
+    }
 
+    for (const auto &event : events.triggers) {
+        for (const auto &rule : mappings_) {
+            if (!rule.enabled || rule.triggerKind != event.kind)
+                continue;
+            if (event.kind == TriggerKind::TwoHandCombination) {
+                if (rule.id != event.combinationId)
+                    continue;
+                if (event.phase == GestureEventPhase::Press && events.hasTrackingStatus)
+                    comboTrackIds_[rule.id] = events.trackIds;
+            } else {
+                if (!matches(rule, event.hand,
+                             {event.gesture, event.phase, 0.0F, event.trackId}))
+                    continue;
+                if (rule.anyHand) {
+                    const auto owner = anyOwners_.find(rule.id);
+                    if (event.phase == GestureEventPhase::Press) {
+                        if (owner != anyOwners_.end())
+                            continue; // exactly one owner and one PRESS
+                        anyOwners_.insert_or_assign(rule.id, event.hand);
+                    } else {
+                        if (owner == anyOwners_.end() || owner->second != event.hand)
+                            continue;
+                        if (event.phase == GestureEventPhase::Release)
+                            anyOwners_.erase(owner);
+                    }
+                }
+            }
             switch (rule.behavior) {
             case ActionBehavior::Press:
-                if (event.phase == GestureEventPhase::Press) {
+                if (event.phase == GestureEventPhase::Press)
                     applyAction(baseState, rule.action);
-                }
                 break;
-
             case ActionBehavior::Hold:
-                if (event.phase == GestureEventPhase::Press) {
+                if (event.phase == GestureEventPhase::Press)
                     held_.insert(rule.id);
-                }
-                else if (event.phase == GestureEventPhase::Release) {
+                else if (event.phase == GestureEventPhase::Release)
                     held_.erase(rule.id);
-                }
                 break;
-
             case ActionBehavior::Toggle:
                 if (event.phase == GestureEventPhase::Press) {
-                    if (toggled_.contains(rule.id)) {
+                    if (toggled_.contains(rule.id))
                         toggled_.erase(rule.id);
-                    }
-                    else {
+                    else
                         toggled_.insert(rule.id);
-                    }
                 }
                 break;
             }
@@ -104,23 +145,12 @@ ControllerState ActionMapper::apply(
 
     applyPersistentStates(baseState);
 
-    // Cursor movement is fail-closed: Hold and Toggle mappings are OR-ed and
-    // any active CursorMoveEnable mapping is enough to unlock movement.
-    // Strict movement gate: arming system output alone never allows cursor
-    // movement. A mapped Enable cursor movement action must be active.
-    baseState.cursorMovementLocked =
-        !cursorMoveGateActive();
-
-    // Freeze and movement-gating are deliberately applied after
-    // ContinuousControlInterpreter has processed the current hand position.
-    // The interpreter therefore keeps advancing its reference position while
-    // the visible/system cursor stays still, preventing a catch-up jump when
-    // freeze is released or a movement gate becomes active.
+    // Keep the original fail-closed pointer movement gate invariant.
+    baseState.cursorMovementLocked = !cursorMoveGateActive();
     if (baseState.cursorFrozen || baseState.cursorMovementLocked) {
         baseState.mouseX = 0.0F;
         baseState.mouseY = 0.0F;
     }
-
     return baseState;
 }
 
@@ -128,15 +158,27 @@ void ActionMapper::reset()
 {
     held_.clear();
     toggled_.clear();
+    anyOwners_.clear();
+    comboTrackIds_.clear();
     trackIds_ = {};
 }
 
 void ActionMapper::neutralizeHand(HandSide hand)
 {
     // Toggle is persistent only while the originating hand stays tracked.
-    // A lost/changed hand must not leave Ctrl, mouse or movement gate latched.
     for (const auto &rule : mappings_) {
-        if (rule.hand == hand) {
+        if (rule.triggerKind == TriggerKind::TwoHandCombination) {
+            held_.erase(rule.id);
+            toggled_.erase(rule.id);
+            comboTrackIds_.erase(rule.id);
+        } else if (rule.anyHand) {
+            const auto owner = anyOwners_.find(rule.id);
+            if (owner != anyOwners_.end() && owner->second == hand) {
+                held_.erase(rule.id);
+                toggled_.erase(rule.id);
+                anyOwners_.erase(owner);
+            }
+        } else if (rule.hand == hand) {
             held_.erase(rule.id);
             toggled_.erase(rule.id);
         }
@@ -148,7 +190,8 @@ bool ActionMapper::matches(
     HandSide hand,
     const GestureEvent &event)
 {
-    return rule.hand == hand
+    return rule.triggerKind == TriggerKind::Single
+        && (rule.anyHand || rule.hand == hand)
         && rule.gesture == event.gesture
         && event.phase != GestureEventPhase::None;
 }

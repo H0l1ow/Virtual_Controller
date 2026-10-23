@@ -354,12 +354,6 @@ VcCard {
         anchors.topMargin: 14
         spacing: 8
 
-        VcIconButton {
-            theme: root.theme
-            iconName: "camera"
-            enabled: false
-        }
-
         // UI visibility controls are intentionally fullscreen-only. This keeps
         // the normal Controller page visually identical to M1 hardening.
         VcIconButton {
@@ -379,7 +373,7 @@ VcCard {
     }
 
     Column {
-        visible: root.showGestureHints
+        visible: root.immersiveMode && root.showGestureHints
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
@@ -542,8 +536,8 @@ VcCard {
         anchors.right: parent.right
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
-        width: Math.min(254, Math.max(178, parent.width * 0.30))
-        height: Math.min(285, Math.max(208, parent.height - 38))
+        width: Math.min(222, Math.max(190, parent.width * 0.25))
+        height: Math.min(385, Math.max(180, parent.height - 24))
         theme: root.theme
         uiState: root.uiState
     }

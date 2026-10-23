@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gestures/GestureTypes.hpp"
+#include "gestures/ExperimentalStaticRecognizer.hpp"
 #include "gestures/HandFeatures.hpp"
 #include "gestures/GestureTuning.hpp"
 #include "tracking/TrackingTypes.hpp"
@@ -47,6 +48,10 @@ private:
     struct HandState {
         HandFeatureStream stream{};
         GestureScores smoothed{};
+        ExperimentalStaticScores experimentalSmoothed{};
+        GestureClass experimentalCandidate{GestureClass::None};
+        std::int64_t experimentalCandidateSinceUs{};
+        std::int64_t previousTimestampUs{};
         std::uint64_t trackId{};
         bool initialized{};
     };

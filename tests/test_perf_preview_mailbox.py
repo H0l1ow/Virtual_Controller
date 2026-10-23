@@ -31,10 +31,11 @@ class PerformancePresentationContract(unittest.TestCase):
         fn = cpp.split('void RuntimeController::applyTrackingFrame(', 1)[1]
         event = fn.index('gestureStateManager_.update(gestures, eventConfig)')
         record = fn.index('recorder_.append(frame, usableGeometry)')
-        submit = fn.index('updateContinuousControl(frame, events)')
+        arbiter = fn.index('triggerCombinationEngine_.update(events)')
+        submit = fn.index('updateContinuousControl(frame, resolvedTriggers)')
         throttle = fn.index('const bool refreshUi =')
         notify = fn.index('emit stateChanged();')
-        assert event < throttle
+        assert event < arbiter < submit < throttle
         assert record < throttle
         assert submit < throttle
         assert throttle < notify

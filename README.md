@@ -1,3 +1,79 @@
+# VirtualController — M6.4.3 Gesture Recognition Stabilization (0.16.3)
+
+M6.4.3 makes the eight experimental static poses safer and more inspectable.
+It adds joint-angle support to the geometric rules, ambiguity rejection,
+120 ms candidate stability, fail-closed release of held actions on uncertain
+poses and per-hand scores/decisions on the Gestures page. The ML recorder
+accepts all 12 static gesture labels, but the old dataset builder and ONNX
+inference **remain five-class**; extra labels are recorded for a later
+versioned training pipeline. The update does **not** claim validated gesture
+accuracy or ship a newly trained model. Qt/MSVC + webcam validation is still
+required. See [release notes](docs/releases/PATCH_M6_4_3_README.md) and
+[install instructions](INSTALL_M6_4_3.txt).
+
+---
+
+# VirtualController — M6.4.2 Static Gesture Recognition (0.16.2)
+
+M6.4.2 implements eight **experimental** additional static poses (`THUMBS_UP`,
+`THUMBS_DOWN`, `VICTORY`, `ROCK`, `THREE_FINGERS`, `FOUR_FINGERS`, `CALL_ME`,
+`OK`) using landmark geometry and updates the Mapping editor spacing and
+scrollable lists. The existing four poses remain available, so 12 independent
+static gestures can now form 144 ordered two-hand mappings. This does not
+change the five-class ONNX model contract or `vc.mapping.profile.v2` schema.
+Recognition has been unit-tested but not camera-validated on Windows.
+
+See [M6.4.2 notes](docs/releases/PATCH_M6_4_2_README.md) and
+[installation](INSTALL_M6_4_2.txt). Keep output disarmed while evaluating
+experimental poses.
+
+---
+
+# VirtualController — M6.4.1 Gesture Engine Expansion (0.16.1)
+
+The M6.4.1 release adds the gesture registry, ordered left/right combinations,
+conflict arbitration, the `vc.mapping.profile.v2` schema with v1 migration, and
+an editor integrated with the existing Mapping and Gestures pages. See
+[`docs/releases/PATCH_M6_4_1_README.md`](docs/releases/PATCH_M6_4_1_README.md)
+for implementation scope, validation, and installation.
+
+---
+
+# Virtual Controller — M6.4 Recording Audit & ML Dataset Preflight (0.16.0)
+
+**Exact base: M6.3.5 (v0.15.5).** Adds `ml/scripts/audit_recordings.py`
+for offline validation of real camera-landmark JSONL sessions before TCN training.
+Reports class/hand/group coverage, trainable 16-frame windows, geometry failures,
+tracking interruptions and split leakage warnings. It runs without Qt and without
+PyTorch, using the NumPy-only `ml/requirements-audit.txt` environment. The
+feature schema and existing trainer/evaluator/exporter are unchanged. The ML
+offline-tools list links to the new audit step. **No model
+has been trained or deployed; real recordings are still required.**
+See `PATCH_M6_4_0_README.md` and `ml/README.md`.
+
+# Virtual Controller — M6.3.5 Gamepad Monitor visibility fix (0.15.5)
+
+**Exact base: M6.3.4 (v0.15.4).** Fixes the invisible Xbox/PlayStation
+controller illustration by placing its card at full width, above the input
+and backend status cards. Previously the two-column GridLayout could assign
+zero width to the card with `GamepadVisual.qml` while making diagnostic cards
+occupy the screen. Both layouts now remain visible even when no gamepad
+backend is connected. Xbox and PlayStation shoulder buttons and triggers stay
+separate; mock input values are never presented as real backend readings.
+No changes to C++ tracking, camera, input, output safety, or gesture logic.
+See **PATCH_M6_3_5_README.md** for installation and acceptance checks.
+
+# Virtual Controller — M6.3.4 Dashboard polish & Gamepad audit (0.15.4)
+
+**Based directly on M6.3.3.** Removed the duplicate Dashboard header Start
+button, made the camera-contained status overlay narrower/taller with bigger
+text, moved Dashboard Gestures & calibration into a compact real right drawer,
+and removed live-view gesture hints and L/R badges outside fullscreen.
+Xbox/PlayStation gamepad diagrams are visually complete but remain layout
+previews; unavailable native gamepad readings are no longer presented as live.
+No C++ gesture, camera, input or persistent-output code was changed.
+See **PATCH_M6_3_4_README.md** and **INSTALL_M6_3_4.txt**.
+
 # Virtual Controller — M6.3.3 UI Layout Refinement (0.15.3)
 
 **M6.3.3 (from M6.3.1, not the rejected M6.3.2):** Dashboard camera status
@@ -181,7 +257,7 @@ remains a separate mapping action and has priority over the movement gate.
 - `ActionMapper`: mouse buttons, wheel, cursor freeze, cursor movement gate and
   retained special/navigation keyboard actions.
 - editable Mapping page with `Press`, `Hold`, `Toggle` behavior and row removal.
-- JSON mapping profiles (`vc.mapping.profile.v1`), with safe duplicate/delete and live conflict diagnostics.
+- JSON mapping profiles (`vc.mapping.profile.v1` import and `v2` save), with combinations, safe duplicate/delete and live conflict diagnostics.
 - Movement range and PINCH calibration for each hand; explicit Apply then Save.
 - Offline Rules replay for previously recorded landmark sessions.
 - Independent live performance timings for camera interval, conversion,

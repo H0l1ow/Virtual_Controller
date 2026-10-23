@@ -5,14 +5,14 @@ VcCard {
     id: root
     required property QtObject uiState
     translucent: true
-    translucentOpacity: theme.isLight ? 0.90 : 0.80
+    translucentOpacity: theme.isLight ? 0.78 : 0.68
 
-    readonly property bool compact: width < 214 || height < 250
+    readonly property bool compact: width < 198 || height < 320
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: root.compact ? 10 : 14
-        spacing: root.compact ? 5 : 9
+        anchors.margins: root.compact ? 10 : 15
+        spacing: root.compact ? 7 : 12
 
         RowLayout {
             Layout.fillWidth: true
@@ -28,7 +28,7 @@ VcCard {
                 Layout.fillWidth: true
                 text: qsTr("System output")
                 font.family: root.theme.fontFamily
-                font.pixelSize: root.compact ? 11 : 12
+                font.pixelSize: root.compact ? 12 : 14
                 font.weight: Font.DemiBold
                 color: root.theme.textPrimary
                 elide: Text.ElideRight
@@ -49,7 +49,7 @@ VcCard {
             color: root.uiState.outputActive ? root.theme.success
                 : root.uiState.outputArmed ? root.theme.warning : root.theme.textSecondary
             font.family: root.theme.fontFamily
-            font.pixelSize: root.compact ? 10 : 11
+            font.pixelSize: root.compact ? 13 : 15
             elide: Text.ElideRight
         }
         Rectangle {
@@ -62,14 +62,14 @@ VcCard {
             text: qsTr("Active profile")
             color: root.theme.textMuted
             font.family: root.theme.fontFamily
-            font.pixelSize: root.compact ? 10 : 11
+            font.pixelSize: root.compact ? 13 : 15
         }
         Text {
             Layout.fillWidth: true
             text: root.uiState.activeProfile
             color: root.theme.textPrimary
             font.family: root.theme.fontFamily
-            font.pixelSize: root.compact ? 11 : 13
+            font.pixelSize: root.compact ? 13 : 16
             font.weight: Font.DemiBold
             elide: Text.ElideRight
         }
@@ -92,7 +92,7 @@ VcCard {
                 text: qsTr("Left hand")
                 color: root.theme.textSecondary
                 font.family: root.theme.fontFamily
-                font.pixelSize: root.compact ? 10 : 11
+                font.pixelSize: root.compact ? 13 : 15
             }
         }
         Text {
@@ -100,7 +100,7 @@ VcCard {
             text: root.uiState.leftTracked ? qsTr(root.uiState.leftGesture) : qsTr("Not detected")
             color: root.uiState.leftTracked ? root.theme.leftHand : root.theme.textMuted
             font.family: root.theme.fontFamily
-            font.pixelSize: root.compact ? 11 : 12
+            font.pixelSize: root.compact ? 12 : 14
             font.weight: Font.DemiBold
             elide: Text.ElideRight
         }
@@ -118,7 +118,7 @@ VcCard {
                 text: qsTr("Right hand")
                 color: root.theme.textSecondary
                 font.family: root.theme.fontFamily
-                font.pixelSize: root.compact ? 10 : 11
+                font.pixelSize: root.compact ? 13 : 15
             }
         }
         Text {
@@ -126,7 +126,7 @@ VcCard {
             text: root.uiState.rightTracked ? qsTr(root.uiState.rightGesture) : qsTr("Not detected")
             color: root.uiState.rightTracked ? root.theme.rightHand : root.theme.textMuted
             font.family: root.theme.fontFamily
-            font.pixelSize: root.compact ? 11 : 12
+            font.pixelSize: root.compact ? 12 : 14
             font.weight: Font.DemiBold
             elide: Text.ElideRight
         }

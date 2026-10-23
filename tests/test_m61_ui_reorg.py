@@ -41,7 +41,9 @@ class UiNavigationContracts(unittest.TestCase):
         self.assertIn('stopGestureRecording()', recorder)
         self.assertIn('startGestureReplay(selectedFile.toString())', ml)
         self.assertIn('stopGestureReplay()', ml)
-        self.assertIn('"UNLABELED", "NONE", "FIST", "OPEN_HAND", "POINT", "PINCH"', recorder)
+        self.assertIn('["UNLABELED", "NONE"].concat(', recorder)
+        self.assertIn('root.uiState.gestureCatalog', recorder)
+        self.assertIn('entry.category === "static" && entry.available', recorder)
         self.assertNotIn('reloadGestureModel()', settings)
         self.assertNotIn('startGestureRecording(', gestures)
         self.assertNotIn('startGestureReplay(', gestures)
@@ -88,7 +90,7 @@ class UiNavigationContracts(unittest.TestCase):
         cmake = text('app/CMakeLists.txt')
         for name in ('MLPage.qml', 'GestureTuningPanel.qml', 'PerformancePanel.qml'):
             self.assertIn(name, cmake)
-        self.assertRegex(text('CMakeLists.txt'), r'project\(VirtualController VERSION 0\.(?:14|15)\.\d+ LANGUAGES CXX\)')
+        self.assertRegex(text('CMakeLists.txt'), r'project\(VirtualController VERSION 0\.(?:14|15|16)\.\d+ LANGUAGES CXX\)')
 
 
 if __name__ == '__main__':

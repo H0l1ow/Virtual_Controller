@@ -1,4 +1,4 @@
-# Virtual Controller M6.0 - causal TCN training and evaluation
+# Virtual Controller M6.4 - recording audit, causal TCN training and evaluation
 
 The Qt/C++ application already supports **optional ONNX inference**. M6.0
 connects the M5 labeled JSONL recordings to training, offline validation, a
@@ -22,7 +22,7 @@ suitable recordings of real hands.
 subtracts the wrist and does not preserve translation of the entire hand;
 dynamic gestures require a new feature/model contract.
 
-## 1. Record a real dataset with the M5.5 application
+## 1. Record a real dataset with the current application
 
 - `ML > Dataset recording`: select the correct label for LEFT
   and RIGHT; use `UNLABELED` for hands you are *not* supervising. Use `NONE`
@@ -47,15 +47,61 @@ sessions into one folder without renaming them to the same name.
 
 ```powershell
 py -m venv .venv
-.venv\Scripts\python.exe -m pip install -r ml\requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r ml\requirements.txt
 ```
 
 The normal Qt Creator Build/Run/Debug still **does not need Python**.
 
-## 3. Build the dataset (no leakage across groups)
+## 3. Audit recording quality **before** building a dataset (M6.4)
+
+The new preflight tool reads the same JSONL and uses the same 30-Hz / 16-frame
+feature contract as `prepare_dataset.py`. It checks schema, temporal gaps,
+track resets, geometrically invalid samples, trainable windows per class and
+hand, and coverage per split group. Reports contain **counts, filenames and
+warnings, not raw landmarks**. The audit neither verifies manual labels nor
+makes claims about real-world accuracy.
+
+For the audit alone, only NumPy is required (not PyTorch or ONNX):
 
 ```powershell
-.venv\Scripts\python.exe ml\scripts\prepare_dataset.py --input data\recordings --out data\processed\dataset.npz --stride 2 --seed 42
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r ml\requirements-audit.txt
+```
+
+Example without subject manifest (session-safe only, *not* person-safe):
+
+```powershell
+.\.venv\Scripts\python.exe ml\scripts\audit_recordings.py --input data\recordings --out data\reports\recording_audit.json
+```
+
+If several recordings belong to the same person, create a CSV `file,subject_id`
+covering **every** JSONL recording, then use:
+
+```powershell
+.\.venv\Scripts\python.exe ml\scripts\audit_recordings.py --input data\recordings --subjects data\subjects.csv --out data\reports\recording_audit.json
+```
+
+Return codes are `0` for basic dataset-build readiness, `2` for incomplete
+coverage or invalid recordings, and `1` for invalid arguments/IO/manifest.
+The JSON also reports stricter `readyForFiveClassHeldOutEvaluation`.
+
+**Interpretation:** At least three independent people with all five gesture
+classes are recommended for a subject-held-out train/validation/test evaluation.
+With one person, you can still inspect session-level behavior, but do not claim
+generalization to unseen users. The default **100 windows/class** is a *low
+volume warning threshold*, not proof that training data are sufficient:
+overlapping windows are highly correlated. Prefer multiple sessions, positions,
+light conditions and participants for every gesture and both hands.
+
+The report never determines whether an intentional `FIST` was accidentally
+labeled `OPEN_HAND`. Review a subset of recordings manually and keep a stable
+pose during each labeled session. Never treat the preflight status as a
+safety certification for game, keyboard or mouse output.
+
+## 4. Build the dataset (no leakage across groups)
+
+```powershell
+.\.venv\Scripts\python.exe ml\scripts\prepare_dataset.py --input data\recordings --out data\processed\dataset.npz --stride 2 --seed 42
 ```
 
 Use a manifest if one person has multiple recording sessions, e.g.:
@@ -83,10 +129,10 @@ approximately group-stratified and deterministic with the chosen seed.
 NPZ fields include `X`, `y`, `split`, `session`, `subject`, `side`, `segment`,
 `timestamp_us`, `rule_scores`. `split`: `0=train, 1=validation, 2=test`.
 
-## 4. Train TCN (PyTorch)
+## 5. Train TCN (PyTorch)
 
 ```powershell
-.venv\Scripts\python.exe ml\scripts\train.py --data data\processed\dataset.npz --run runs\tcn_01 --epochs 60 --patience 10 --device cpu
+.\.venv\Scripts\python.exe ml\scripts\train.py --data data\processed\dataset.npz --run runs\tcn_01 --epochs 60 --patience 10 --device cpu
 ```
 
 Training uses only the training split for normalization and gradient updates.
@@ -95,10 +141,10 @@ for training or tuning**. Inverse-square-root class weights reduce imbalance.
 `best.pt` contains the checkpoint and validation score. `config.json` records
 the dataset SHA256, model configuration and class counts.
 
-## 5. Evaluate TCN vs Rules (held-out test)
+## 6. Evaluate TCN vs Rules (held-out test)
 
 ```powershell
-.venv\Scripts\python.exe ml\scripts\evaluate.py --data data\processed\dataset.npz --run runs\tcn_01 --out runs\tcn_01\test_report.json
+.\.venv\Scripts\python.exe ml\scripts\evaluate.py --data data\processed\dataset.npz --run runs\tcn_01 --out runs\tcn_01\test_report.json
 ```
 
 Output includes a confusion matrix, per-class precision/recall/F1, macro-F1,
@@ -113,10 +159,10 @@ windows are correlated; comparing their F1 does not establish statistically
 independent results. For model selection, compare validation metrics first and
 only use the test split once for final reporting.
 
-## 6. Export ONNX and deploy on Windows
+## 7. Export ONNX and deploy on Windows
 
 ```powershell
-.venv\Scripts\python.exe ml\scripts\export_onnx.py --run runs\tcn_01 --out models --evaluation runs\tcn_01\test_report.json
+.\.venv\Scripts\python.exe ml\scripts\export_onnx.py --run runs\tcn_01 --out models --evaluation runs\tcn_01\test_report.json
 ```
 
 Produces `models/gesture_model.onnx`, `model_metadata.json` and
@@ -144,7 +190,7 @@ included in M6.0. Those are separate follow-up projects.
 ## Verification
 
 ```powershell
-.venv\Scripts\python.exe -m unittest discover -s ml\tests -p "test_*.py"
+.\.venv\Scripts\python.exe -m unittest discover -s ml\tests -p "test_*.py"
 ```
 
 The tests use generated geometry **only as software test fixtures** and are

@@ -9,6 +9,11 @@
 
 namespace vc {
 
+enum class TriggerKind : std::uint8_t {
+    Single = 0,
+    TwoHandCombination
+};
+
 enum class ActionBehavior : std::uint8_t {
     Press = 0,
     Hold,
@@ -42,6 +47,13 @@ struct MappingRule {
     LogicalAction action{LogicalAction::MouseLeft};
     ActionBehavior behavior{ActionBehavior::Hold};
     bool enabled{true};
+    // Added after the legacy fields to keep existing C++ aggregate initializers
+    // and v1 profile semantics byte-for-byte compatible.
+    TriggerKind triggerKind{TriggerKind::Single};
+    bool anyHand{false};  // only applies to Single
+    GestureClass rightGesture{GestureClass::None}; // combo: gesture is Left
+    int synchronizationMs{250};
+    int overlapHoldMs{150};
 };
 
 struct MappingProfile {

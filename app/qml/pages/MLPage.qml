@@ -307,7 +307,8 @@ Item {
                             Text {
                                 font.family: root.theme.fontFamily
                                 Layout.fillWidth: true
-                                text: qsTr("1. Prepare dataset") + "  ·  ml/scripts/prepare_dataset.py\n"
+                                text: qsTr("0. Audit recordings") + "  ·  ml/scripts/audit_recordings.py\n"
+                                    + qsTr("1. Prepare dataset") + "  ·  ml/scripts/prepare_dataset.py\n"
                                     + qsTr("2. Train TCN") + "  ·  ml/scripts/train.py\n"
                                     + qsTr("3. Evaluate TCN vs Rules") + "  ·  ml/scripts/evaluate.py\n"
                                     + qsTr("4. Export ONNX") + "  ·  ml/scripts/export_onnx.py"

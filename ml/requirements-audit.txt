@@ -1,0 +1,2 @@
+# Lightweight M6.4 recording audit; no PyTorch/ONNX installation required.
+numpy>=2.0

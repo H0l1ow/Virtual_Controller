@@ -1,6 +1,7 @@
 #include "runtime/RuntimeController.hpp"
 
 #include "gestures/GestureEngine.hpp"
+#include "gestures/GestureRegistry.hpp"
 #include "gestures/OnnxGestureRecognizer.hpp"
 #include "tracking/HandIdentityStabilizer.hpp"
 #include "tracking/MediaPipeTracker.hpp"
@@ -43,6 +44,18 @@ namespace {
 QString gestureDisplayName(GestureClass gesture)
 {
     switch (gesture) {
+    case GestureClass::ThumbsUp:
+    case GestureClass::ThumbsDown:
+    case GestureClass::Victory:
+    case GestureClass::Rock:
+    case GestureClass::ThreeFingers:
+    case GestureClass::FourFingers:
+    case GestureClass::CallMe:
+    case GestureClass::Ok: {
+        auto text = QString::fromLatin1(gestureCanonicalName(gesture));
+        text.replace('_', ' ');
+        return text;
+    }
     case GestureClass::Fist:
         return QStringLiteral("FIST");
     case GestureClass::OpenHand:
@@ -83,12 +96,29 @@ QVariantMap diagnosticMap(const GesturePrediction &prediction,
     item.insert(QStringLiteral("blocked"), state.waitingForRelease);
     item.insert(QStringLiteral("geometryValid"), prediction.geometryValid);
     item.insert(QStringLiteral("pinch"), prediction.pinchDistance);
+    item.insert(QStringLiteral("experimentalTop"),
+                QString::fromLatin1(gestureCanonicalName(prediction.experimentalTop)));
+    item.insert(QStringLiteral("experimentalRunnerUp"),
+                QString::fromLatin1(gestureCanonicalName(prediction.experimentalRunnerUp)));
+    item.insert(QStringLiteral("experimentalTopScore"), prediction.experimentalTopScore);
+    item.insert(QStringLiteral("experimentalRunnerUpScore"), prediction.experimentalRunnerUpScore);
+    item.insert(QStringLiteral("experimentalMargin"), prediction.experimentalMargin);
+    item.insert(QStringLiteral("experimentalStableMs"), prediction.experimentalStableMs);
     QVariantList scores;
     for (std::size_t i = 1; i < kGestureClassCount; ++i) {
         QVariantMap score;
         score.insert(QStringLiteral("name"),
                      QString::fromLatin1(kGestureCanonicalNames[i]));
         score.insert(QStringLiteral("value"), prediction.scores[i]);
+        scores.append(score);
+    }
+    // Diagnostics present confidence for all 12 static poses, even though
+    // ONNX inference still exposes the original five output classes.
+    for (std::size_t i = 0; i < kExperimentalStaticGestureCount; ++i) {
+        QVariantMap score;
+        score.insert(QStringLiteral("name"),
+                     QString::fromLatin1(kGestureCanonicalNames[i + kGestureClassCount]));
+        score.insert(QStringLiteral("value"), prediction.experimentalScores[i]);
         scores.append(score);
     }
     QVariantList curls;
@@ -446,6 +476,28 @@ QStringList RuntimeController::logicalKeys() const
     return keys;
 }
 
+QVariantList RuntimeController::gestureCatalog() const
+{
+    QVariantList items;
+    for (const auto &entry : kGestureRegistry) {
+        QVariantMap item;
+        item.insert(QStringLiteral("id"), QString::fromLatin1(entry.id.data(),
+                                                              static_cast<qsizetype>(entry.id.size())));
+        item.insert(QStringLiteral("title"), QString::fromLatin1(entry.label.data(),
+                                                                 static_cast<qsizetype>(entry.label.size())));
+        item.insert(QStringLiteral("category"), QString::fromLatin1(
+            gestureCategoryId(entry.category).data()));
+        item.insert(QStringLiteral("availability"), QString::fromLatin1(
+            gestureAvailabilityId(entry.availability).data()));
+        item.insert(QStringLiteral("available"),
+                    entry.availability != GestureAvailability::Planned);
+        item.insert(QStringLiteral("experimental"),
+                    entry.availability == GestureAvailability::Experimental);
+        items.append(item);
+    }
+    return items;
+}
+
 QVariantList RuntimeController::mappingRows() const
 {
     QVariantList rows;
@@ -453,22 +505,35 @@ QVariantList RuntimeController::mappingRows() const
 
     for (const auto &rule : activeMappingProfile_.mappings) {
         QVariantMap row;
+        const bool pair = rule.triggerKind == TriggerKind::TwoHandCombination;
+        const QString leftId = QString::fromLatin1(gestureCanonicalName(rule.gesture));
+        const QString rightId = QString::fromLatin1(gestureCanonicalName(rule.rightGesture));
         row.insert(QStringLiteral("id"), QString::fromStdString(rule.id));
-        row.insert(QStringLiteral("hand"), rule.hand == HandSide::Left
-            ? QStringLiteral("Left")
-            : QStringLiteral("Right"));
-        row.insert(QStringLiteral("source"), gestureDisplayName(rule.gesture));
-        row.insert(QStringLiteral("type"), QStringLiteral("Gesture"));
+        row.insert(QStringLiteral("triggerType"), pair
+            ? QStringLiteral("two_hand_combo") : QStringLiteral("single"));
+        row.insert(QStringLiteral("hand"), pair ? QStringLiteral("Both")
+            : (rule.anyHand ? QStringLiteral("Any")
+                            : rule.hand == HandSide::Left
+                                ? QStringLiteral("Left") : QStringLiteral("Right")));
+        row.insert(QStringLiteral("source"), pair
+            ? QStringLiteral("L: %1 + R: %2").arg(gestureDisplayName(rule.gesture),
+                                                    gestureDisplayName(rule.rightGesture))
+            : gestureDisplayName(rule.gesture));
+        row.insert(QStringLiteral("gestureId"), leftId);
+        row.insert(QStringLiteral("leftGesture"), leftId);
+        row.insert(QStringLiteral("rightGesture"), rightId);
+        row.insert(QStringLiteral("synchronizationMs"), rule.synchronizationMs);
+        row.insert(QStringLiteral("overlapHoldMs"), rule.overlapHoldMs);
+        row.insert(QStringLiteral("type"), pair
+            ? QStringLiteral("Combination") : QStringLiteral("Gesture"));
         row.insert(QStringLiteral("action"), actionDisplayName(rule.action));
         row.insert(QStringLiteral("output"), actionOutputName(rule.action));
         row.insert(QStringLiteral("behavior"), QString::fromLatin1(actionBehaviorName(rule.behavior)));
         row.insert(QStringLiteral("state"), rule.enabled
-            ? QStringLiteral("Enabled")
-            : QStringLiteral("Disabled"));
+            ? QStringLiteral("Enabled") : QStringLiteral("Disabled"));
         row.insert(QStringLiteral("enabled"), rule.enabled);
         rows.append(row);
     }
-
     return rows;
 }
 
@@ -581,6 +646,7 @@ bool RuntimeController::loadProfile(const QString &name)
 void RuntimeController::applyActiveMappings()
 {
     actionMapper_.setMappings(activeMappingProfile_.mappings);
+    triggerCombinationEngine_.setMappings(activeMappingProfile_.mappings);
 }
 
 void RuntimeController::setActiveProfile(const QString &name)
@@ -697,6 +763,8 @@ bool RuntimeController::updateMapping(
 
     auto &rule = activeMappingProfile_.mappings[static_cast<std::size_t>(index)];
     rule.hand = *parsedHand;
+    rule.anyHand = false;
+    rule.triggerKind = TriggerKind::Single;
     rule.gesture = *parsedGesture;
     rule.action = *parsedAction;
     rule.behavior = *parsedBehavior;
@@ -707,6 +775,104 @@ bool RuntimeController::updateMapping(
     gestureStateManager_.reset();
     leftGestureEvent_ = QStringLiteral("IDLE");
     rightGestureEvent_ = QStringLiteral("IDLE");
+    emit stateChanged();
+    return saved;
+}
+
+bool RuntimeController::updateTriggerMapping(
+    int index, const QString &type, const QString &hand,
+    const QString &gesture, const QString &leftGesture,
+    const QString &rightGesture, const QString &action,
+    const QString &behavior, bool enabled,
+    int synchronizationMs, int overlapHoldMs)
+{
+    if (index < 0 || index >= static_cast<int>(activeMappingProfile_.mappings.size())) {
+        mappingError_ = QStringLiteral("Invalid mapping row.");
+        emit mappingChanged();
+        return false;
+    }
+    const auto parsedAction = parseActionName(action);
+    const auto parsedBehavior = parseBehaviorName(behavior);
+    MappingRule proposed = activeMappingProfile_.mappings[static_cast<std::size_t>(index)];
+    if (!parsedAction || !parsedBehavior) {
+        mappingError_ = QStringLiteral("Invalid mapping action or behavior.");
+        emit mappingChanged();
+        return false;
+    }
+    proposed.action = *parsedAction;
+    proposed.behavior = *parsedBehavior;
+    proposed.enabled = enabled;
+    if (type == QStringLiteral("two_hand_combo")) {
+        const auto left = parseGestureName(leftGesture);
+        const auto right = parseGestureName(rightGesture);
+        if (!left || !right || !isRecognizedGesture(*left)
+            || !isRecognizedGesture(*right)
+            || synchronizationMs < 0 || synchronizationMs > 1500
+            || overlapHoldMs < 0 || overlapHoldMs > 1500) {
+            mappingError_ = QStringLiteral("Invalid or unavailable combination gesture/timing.");
+            emit mappingChanged();
+            return false;
+        }
+        proposed.triggerKind = TriggerKind::TwoHandCombination;
+        proposed.gesture = *left;
+        proposed.rightGesture = *right;
+        proposed.anyHand = false;
+        proposed.synchronizationMs = synchronizationMs;
+        proposed.overlapHoldMs = overlapHoldMs;
+    } else if (type == QStringLiteral("single")) {
+        const auto selected = parseGestureName(gesture);
+        const bool any = hand.compare(QStringLiteral("Any"), Qt::CaseInsensitive) == 0;
+        const auto side = parseHandName(hand);
+        if (!selected || !isRecognizedGesture(*selected) || (!any && !side)) {
+            mappingError_ = QStringLiteral("Invalid or unavailable single-hand gesture.");
+            emit mappingChanged();
+            return false;
+        }
+        proposed.triggerKind = TriggerKind::Single;
+        proposed.gesture = *selected;
+        proposed.anyHand = any;
+        if (side) proposed.hand = *side;
+        proposed.rightGesture = GestureClass::None;
+    } else {
+        mappingError_ = QStringLiteral("Unsupported trigger type.");
+        emit mappingChanged();
+        return false;
+    }
+
+    if ((proposed.action == LogicalAction::ScrollUp
+         || proposed.action == LogicalAction::ScrollDown)
+        && proposed.behavior == ActionBehavior::Toggle) {
+        mappingError_ = QStringLiteral("Toggle is not allowed for mouse wheel actions.");
+        emit mappingChanged();
+        return false;
+    }
+    if (proposed.action == LogicalAction::CursorMoveEnable
+        && proposed.behavior == ActionBehavior::Press) {
+        mappingError_ = QStringLiteral("Enable cursor movement supports Hold or Toggle.");
+        emit mappingChanged();
+        return false;
+    }
+    MappingProfile check = activeMappingProfile_;
+    check.mappings[static_cast<std::size_t>(index)] = proposed;
+    for (const auto &issue : validateMappings(check)) {
+        if (issue.severity == MappingIssue::Severity::Error
+            && (issue.first == index || issue.second == index)) {
+            mappingError_ = QStringLiteral("Mapping conflict: %1").arg(
+                QString::fromStdString(issue.code));
+            emit mappingChanged();
+            return false;
+        }
+    }
+    if (outputService_.status().requested) {
+        outputService_.pause("Profile or gesture mapping changed");
+        refreshOutputStatus();
+    }
+    activeMappingProfile_.mappings[static_cast<std::size_t>(index)] = std::move(proposed);
+    applyActiveMappings();
+    gestureStateManager_.reset();
+    leftGestureEvent_ = QStringLiteral("IDLE");
+    rightGestureEvent_ = QStringLiteral("IDLE");
+    const bool saved = saveActiveProfile();
     emit stateChanged();
     return saved;
 }
@@ -1082,7 +1248,8 @@ QVariantMap RuntimeController::gestureThresholds() const
 void RuntimeController::setGestureThreshold(const QString &name, int value)
 {
     const auto gesture = parseGestureName(name);
-    if (!gesture || *gesture == GestureClass::None)
+    if (!gesture || *gesture == GestureClass::None
+        || gestureIndex(*gesture) >= kGestureClassCount)
         return;
     // -1 means inherit global; any explicit override has a conservative floor.
     value = value < 0 ? -1 : std::clamp(value, 60, 100);
@@ -1145,7 +1312,9 @@ QVariantList RuntimeController::calibrationResults() const
 bool RuntimeController::startGestureCalibration(const QString &hand, const QString &name)
 {
     const auto gesture = parseGestureName(name);
-    if (!gesture || *gesture == GestureClass::None || runtimeState_ != RuntimeState::Running)
+    if (!gesture || *gesture == GestureClass::None
+        || gestureIndex(*gesture) >= kGestureClassCount
+        || runtimeState_ != RuntimeState::Running)
         return false;
     const HandSide side = hand.compare(QStringLiteral("Left"), Qt::CaseInsensitive) == 0
         ? HandSide::Left : HandSide::Right;
@@ -2879,7 +3048,8 @@ void RuntimeController::applyTrackingFrame(
     }
 
     const auto outputStartUs = nowUs();
-    updateContinuousControl(frame, events);
+    const auto resolvedTriggers = triggerCombinationEngine_.update(events);
+    updateContinuousControl(frame, resolvedTriggers);
     const auto outputSubmittedUs = nowUs();
     if (metrics_) {
         metrics_->recordOutputDispatch(outputSubmittedUs - outputStartUs);
@@ -2981,6 +3151,7 @@ void RuntimeController::resetContinuousControl()
 void RuntimeController::resetGestureActions()
 {
     gestureStateManager_.reset();
+    triggerCombinationEngine_.reset();
     actionMapper_.reset();
     leftGestureEvent_ = QStringLiteral("IDLE");
     rightGestureEvent_ = QStringLiteral("IDLE");
@@ -3013,7 +3184,7 @@ void RuntimeController::updateCursorGeometry()
 
 void RuntimeController::updateContinuousControl(
     const TrackingFrame &frame,
-    const GestureEventFrame &events)
+    const ResolvedTriggerFrame &events)
 {
     ContinuousControlConfig config;
     config.sensitivity = sensitivity_;
@@ -3034,7 +3205,7 @@ void RuntimeController::updateContinuousControl(
             frame.captureUs,
             config);
 
-    controllerState_ = actionMapper_.apply(
+    controllerState_ = actionMapper_.applyResolved(
         events,
         result.controller);
 
@@ -3248,6 +3419,7 @@ bool RuntimeController::startGestureReplay(const QString &filePath)
     // Fail closed even if a previously running pipeline left a native button
     // latched. This replay path never calls OutputService::arm or submit.
     outputService_.stop();
+    triggerCombinationEngine_.reset();
     actionMapper_.reset();
     refreshOutputStatus();
     if (!replayReader_.open(filePath)) {

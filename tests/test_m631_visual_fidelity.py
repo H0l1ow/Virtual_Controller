@@ -68,7 +68,8 @@ class M631VisualFidelity(unittest.TestCase):
         for s in ('PINCH', 'FIST', 'POINT', 'OPEN HAND', 'Left click', 'Key Space'):
             self.assertIn('"' + s + '"', page)
         self.assertIn('root.uiState.addMapping()', page)
-        self.assertIn('root.uiState.updateMapping(', page)
+        self.assertIn('root.uiState.updateTriggerMapping(', page)
+        self.assertIn('runtimeBackend.updateMapping(', qml('UiState.qml'))  # legacy API preserved
         self.assertIn('root.uiState.removeMapping(index)', page)
         self.assertIn('root.uiState.saveActiveProfile()', page)
         self.assertIn('root.uiState.duplicateActiveProfile(', page)

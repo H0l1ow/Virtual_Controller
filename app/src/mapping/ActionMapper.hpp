@@ -1,10 +1,11 @@
 #pragma once
 
 #include "control/ControllerState.hpp"
-#include "gestures/GestureStateManager.hpp"
+#include "gestures/TriggerCombinationEngine.hpp"
 #include "mapping/MappingTypes.hpp"
 
 #include <set>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,10 @@ public:
 
     ControllerState apply(
         const GestureEventFrame &events,
+        ControllerState baseState); // compatibility for legacy synthetic callers
+
+    ControllerState applyResolved(
+        const ResolvedTriggerFrame &events,
         ControllerState baseState);
 
     void reset();
@@ -38,6 +43,8 @@ private:
     std::vector<MappingRule> mappings_;
     std::set<std::string> held_;
     std::set<std::string> toggled_;
+    std::map<std::string, HandSide> anyOwners_;
+    std::map<std::string, std::array<std::uint64_t, kHandCount>> comboTrackIds_;
     std::array<std::uint64_t, kHandCount> trackIds_{};
     void neutralizeHand(HandSide hand);
 };

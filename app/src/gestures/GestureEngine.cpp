@@ -60,6 +60,10 @@ void GestureEngine::reset()
     for (auto &state : handStates_) {
         state.stream.reset();
         state.smoothed = {};
+        state.experimentalSmoothed = {};
+        state.experimentalCandidate = GestureClass::None;
+        state.experimentalCandidateSinceUs = 0;
+        state.previousTimestampUs = 0;
         state.trackId = 0;
         state.initialized = false;
     }
@@ -82,23 +86,38 @@ GesturePrediction GestureEngine::updateHand(
         || timestampUs <= 0) {
         state.stream.reset();
         state.smoothed = {};
+        state.experimentalSmoothed = {};
+        state.experimentalCandidate = GestureClass::None;
+        state.experimentalCandidateSinceUs = 0;
+        state.previousTimestampUs = 0;
         state.trackId = 0;
         state.initialized = false;
         return prediction;
     }
 
-    if (state.trackId != hand.trackId) {
+    // A stalled capture must not preserve a stable pose across missing frames.
+    const bool staleStream = state.previousTimestampUs > 0
+        && (timestampUs <= state.previousTimestampUs
+            || timestampUs - state.previousTimestampUs > kGestureMaxGapUs);
+    if (state.trackId != hand.trackId || staleStream) {
         state.stream.reset();
         state.smoothed = {};
+        state.experimentalSmoothed = {};
+        state.experimentalCandidate = GestureClass::None;
+        state.experimentalCandidateSinceUs = 0;
         state.trackId = hand.trackId;
         state.initialized = false;
     }
+    state.previousTimestampUs = timestampUs;
 
     const auto geometry = extractGestureGeometry(
         hand, frameWidth, frameHeight);
     if (!geometry.valid) {
         state.stream.reset();
         state.smoothed = {};
+        state.experimentalSmoothed = {};
+        state.experimentalCandidate = GestureClass::None;
+        state.experimentalCandidateSinceUs = 0;
         state.initialized = false;
         prediction.decision = GestureDecision::InvalidGeometry;
         return prediction;
@@ -157,6 +176,85 @@ GesturePrediction GestureEngine::updateHand(
             gestureIndex(GestureClass::None)];
 
     prediction.ready = true;
+
+    // This channel recognizes the eight additional poses independently of
+    // the immutable five-class ONNX contract. Scores within this channel
+    // are comparable; ONNX probabilities and rules scores are NOT directly
+    // comparable. Never choose a class by comparing those two scales.
+    const auto experimental = experimentalStaticScores(geometry);
+    const float rawExtraPeak = *std::max_element(experimental.begin(), experimental.end());
+    for (std::size_t i = 0; i < experimental.size(); ++i) {
+        state.experimentalSmoothed[i] =
+            state.experimentalSmoothed[i] * 0.60F + experimental[i] * 0.40F;
+    }
+    prediction.experimentalScores = state.experimentalSmoothed;
+
+    std::size_t first = 0;
+    std::size_t second = 1;
+    if (state.experimentalSmoothed[second] > state.experimentalSmoothed[first])
+        std::swap(first, second);
+    for (std::size_t i = 2; i < state.experimentalSmoothed.size(); ++i) {
+        if (state.experimentalSmoothed[i] > state.experimentalSmoothed[first]) {
+            second = first;
+            first = i;
+        } else if (state.experimentalSmoothed[i] > state.experimentalSmoothed[second]) {
+            second = i;
+        }
+    }
+    prediction.experimentalTop = experimentalStaticClass(first);
+    prediction.experimentalRunnerUp = experimentalStaticClass(second);
+    prediction.experimentalTopScore = state.experimentalSmoothed[first];
+    prediction.experimentalRunnerUpScore = state.experimentalSmoothed[second];
+    prediction.experimentalMargin = prediction.experimentalTopScore
+        - prediction.experimentalRunnerUpScore;
+
+    // An unclear new pose fails closed instead of activating the old FIST,
+    // PINCH or OPEN_HAND mapping while the hand is still forming the pose.
+    constexpr float kPotentialPose = 0.64F;
+    constexpr float kMinimumMargin = 0.14F;
+    constexpr std::int64_t kMinimumStableUs = 120'000;
+    const float extraThreshold = std::max(
+        0.82F, static_cast<float>(thresholds.fallbackPercent) / 100.0F);
+    // React to raw evidence immediately; waiting for EMA to cross the guard
+    // would briefly expose an old keyboard/mouse mapping during a new pose.
+    if (prediction.experimentalTopScore >= kPotentialPose
+        || rawExtraPeak >= 0.80F) {
+        prediction.confidence = prediction.experimentalTopScore;
+        if (prediction.experimentalTopScore < kPotentialPose) {
+            state.experimentalCandidate = GestureClass::None;
+            state.experimentalCandidateSinceUs = 0;
+            prediction.decision = GestureDecision::PoseStabilizing;
+            return prediction;
+        }
+        if (prediction.experimentalMargin < kMinimumMargin) {
+            state.experimentalCandidate = GestureClass::None;
+            state.experimentalCandidateSinceUs = 0;
+            prediction.decision = GestureDecision::Ambiguous;
+            return prediction;
+        }
+        if (prediction.experimentalTopScore < extraThreshold) {
+            state.experimentalCandidate = GestureClass::None;
+            state.experimentalCandidateSinceUs = 0;
+            prediction.decision = GestureDecision::BelowThreshold;
+            return prediction;
+        }
+        if (state.experimentalCandidate != prediction.experimentalTop) {
+            state.experimentalCandidate = prediction.experimentalTop;
+            state.experimentalCandidateSinceUs = timestampUs;
+        }
+        prediction.experimentalStableMs = static_cast<int>(
+            std::max<std::int64_t>(0, timestampUs - state.experimentalCandidateSinceUs)
+            / 1000);
+        if (timestampUs - state.experimentalCandidateSinceUs < kMinimumStableUs) {
+            prediction.decision = GestureDecision::PoseStabilizing;
+            return prediction;
+        }
+        prediction.gesture = prediction.experimentalTop;
+        prediction.decision = GestureDecision::Recognized;
+        return prediction;
+    }
+    state.experimentalCandidate = GestureClass::None;
+    state.experimentalCandidateSinceUs = 0;
 
     if (best != state.smoothed.end()
         && *best >= threshold

@@ -26,8 +26,9 @@ class PerformanceStabilization(unittest.TestCase):
         method = cpp.split("void RuntimeController::applyTrackingFrame(", 1)[1]
         self.assertLess(method.index("gestureStateManager_.update("),
                         method.index("const bool refreshUi ="))
-        self.assertLess(method.index("updateContinuousControl(frame, events)"),
+        self.assertLess(method.index("updateContinuousControl(frame, resolvedTriggers)"),
                         method.index("const bool refreshUi ="))
+        self.assertIn("triggerCombinationEngine_.update(events)", method)
         self.assertIn("outputService_.stop();", cpp)
 
     def test_async_recording_flushes_on_pipeline_stop(self):

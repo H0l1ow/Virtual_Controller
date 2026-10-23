@@ -6,9 +6,11 @@ import math
 from pathlib import Path
 from typing import Iterator
 
+from .schema import RECORDING_LABELS
+
 SCHEMA = "vc.gestures.jsonl.v1"
 SIDES = ("LEFT", "RIGHT")
-LABELS = {"UNLABELED", "NONE", "FIST", "OPEN_HAND", "POINT", "PINCH"}
+LABELS = {"UNLABELED", *RECORDING_LABELS}
 MAX_BYTES = 100 * 1024 * 1024
 MAX_FRAMES = 18_000
 MAX_LINE = 32_768

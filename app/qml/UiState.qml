@@ -254,6 +254,8 @@ QtObject {
         catalog.gestureHints
     readonly property var mappingRows:
         runtimeBackend.mappingRows
+    readonly property var gestureCatalog:
+        runtimeBackend.gestureCatalog
     readonly property var gestureLibrary:
         catalog.gestureLibrary
 
@@ -413,6 +415,12 @@ QtObject {
 
     function updateMapping(index, hand, gesture, action, behavior, enabled) {
         return runtimeBackend.updateMapping(index, hand, gesture, action, behavior, enabled)
+    }
+
+    function updateTriggerMapping(index, type, hand, gesture, left, right,
+                                  action, behavior, enabled, synchronizationMs, overlapHoldMs) {
+        return runtimeBackend.updateTriggerMapping(index, type, hand, gesture,
+            left, right, action, behavior, enabled, synchronizationMs, overlapHoldMs)
     }
 
     function saveActiveProfile() {

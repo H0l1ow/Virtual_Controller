@@ -57,6 +57,8 @@ Rectangle {
             }
         }
         VcButton {
+            // Dashboard already has a Start/Stop button below the preview.
+            visible: root.windowRef.currentPage !== 0
             theme: root.theme
             implicitHeight: 34
             iconName: root.windowRef.uiState.canStop ? "stop" : "play"

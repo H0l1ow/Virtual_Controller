@@ -11,6 +11,7 @@
 #include "gestures/GestureTuning.hpp"
 #include "control/CursorPlayground.hpp"
 #include "gestures/GestureStateManager.hpp"
+#include "gestures/TriggerCombinationEngine.hpp"
 #include "mapping/ActionMapper.hpp"
 #include "mapping/ProfileStore.hpp"
 #include "mapping/MappingValidator.hpp"
@@ -453,6 +454,7 @@ public:
             READ mappingRows
                 NOTIFY mappingChanged)
 
+    Q_PROPERTY(QVariantList gestureCatalog READ gestureCatalog CONSTANT)
     Q_PROPERTY(QVariantList mappingIssues READ mappingIssues NOTIFY mappingChanged)
     Q_PROPERTY(bool canDeleteActiveProfile READ canDeleteActiveProfile NOTIFY mappingChanged)
 
@@ -893,6 +895,7 @@ public:
     }
 
     QVariantList mappingRows() const;
+    QVariantList gestureCatalog() const;
 
     QString mappingError() const
     {
@@ -1019,6 +1022,12 @@ public:
         const QString &action,
         const QString &behavior,
         bool enabled);
+    Q_INVOKABLE bool updateTriggerMapping(
+        int index, const QString &type, const QString &hand,
+        const QString &gesture, const QString &leftGesture,
+        const QString &rightGesture, const QString &action,
+        const QString &behavior, bool enabled,
+        int synchronizationMs, int overlapHoldMs);
     Q_INVOKABLE bool saveActiveProfile();
     Q_INVOKABLE bool reloadActiveProfile();
     Q_INVOKABLE bool duplicateActiveProfile(const QString &newName);
@@ -1090,7 +1099,7 @@ private:
     void resetGestureActions();
     void updateContinuousControl(
         const TrackingFrame &frame,
-        const GestureEventFrame &events);
+        const ResolvedTriggerFrame &events);
 
     void initializeProfiles();
     bool loadProfile(const QString &name);
@@ -1192,6 +1201,7 @@ private:
     std::array<std::atomic_int, kGestureClassCount> gestureThresholdOverrides_{};
 
     GestureStateManager gestureStateManager_;
+    TriggerCombinationEngine triggerCombinationEngine_;
     GestureCalibrator calibrator_;
     HandRangeCalibrator rangeCalibrator_;
     std::array<float, kHandCount> appliedMotionX_{1.0F, 1.0F};

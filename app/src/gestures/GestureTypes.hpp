@@ -10,21 +10,33 @@ namespace vc {
 
 inline constexpr std::size_t kGestureClassCount = 5;
 
+// Preserve the five-class ONNX label order and output tensor size. The eight
+// additional static poses are recognized by a separate landmark classifier.
+// They are runtime gesture IDs, NOT extra ONNX output classes.
 enum class GestureClass : std::size_t {
     None = 0,
     Fist,
     OpenHand,
     Point,
-    Pinch
+    Pinch,
+    ThumbsUp,
+    ThumbsDown,
+    Victory,
+    Rock,
+    ThreeFingers,
+    FourFingers,
+    CallMe,
+    Ok
 };
 
-inline constexpr std::array<const char *, kGestureClassCount>
+inline constexpr std::size_t kStaticGestureCount = 13;
+inline constexpr std::size_t kExperimentalStaticGestureCount =
+    kStaticGestureCount - kGestureClassCount;
+inline constexpr std::array<const char *, kStaticGestureCount>
     kGestureCanonicalNames{
-        "NONE",
-        "FIST",
-        "OPEN_HAND",
-        "POINT",
-        "PINCH"
+        "NONE", "FIST", "OPEN_HAND", "POINT", "PINCH",
+        "THUMBS_UP", "THUMBS_DOWN", "VICTORY", "ROCK",
+        "THREE_FINGERS", "FOUR_FINGERS", "CALL_ME", "OK"
     };
 
 constexpr std::size_t gestureIndex(GestureClass gesture)
@@ -49,6 +61,8 @@ enum class GestureDecision : std::uint8_t {
     ModelWarmup,
     BelowThreshold,
     NoneDominant,
+    Ambiguous,
+    PoseStabilizing,
     Recognized
 };
 
@@ -60,6 +74,8 @@ inline const char *gestureDecisionName(GestureDecision decision)
     case GestureDecision::ModelWarmup: return "MODEL_WARMUP";
     case GestureDecision::BelowThreshold: return "BELOW_THRESHOLD";
     case GestureDecision::NoneDominant: return "NONE_DOMINANT";
+    case GestureDecision::Ambiguous: return "AMBIGUOUS";
+    case GestureDecision::PoseStabilizing: return "POSE_STABILIZING";
     case GestureDecision::Recognized: return "RECOGNIZED";
     }
     return "UNKNOWN";
@@ -77,7 +93,16 @@ struct GesturePrediction {
     bool tracked{};
     bool geometryValid{};
     GestureDecision decision{GestureDecision::NoTracking};
-    GestureScores scores{}; // smoothed class scores; rules scores are not probabilities
+    GestureScores scores{}; // five legacy/ONNX scores; not probabilities in Rules
+    std::array<float, kExperimentalStaticGestureCount> experimentalScores{};
+    // Comparable only within the experimental rules channel. These are
+    // heuristic scores, not calibrated class probabilities/ONNX posteriors.
+    GestureClass experimentalTop{GestureClass::None};
+    GestureClass experimentalRunnerUp{GestureClass::None};
+    float experimentalTopScore{};
+    float experimentalRunnerUpScore{};
+    float experimentalMargin{};
+    int experimentalStableMs{};
     std::array<float, 4> fingerCurl{};
     float pinchDistance{};
     std::uint64_t trackId{};
